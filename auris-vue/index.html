@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Auris">
+    <meta name="theme-color" id="theme-color-meta" content="#0f0e0d">
+    <meta name="mobile-web-app-capable" content="yes">
+    <script>
+      (function(){
+        var THEME_BG={cream:'#f7f5f2',warm:'#ede8e0',dark:'#0f0e0d',gray:'#f0eef2',ocean:'#eef2f5',matcha:'#eff3ee'};
+        function applyBg(bg){
+          document.documentElement.style.background=bg;
+          document.body&&(document.body.style.background=bg);
+        }
+        try{
+          var cached=localStorage.getItem('auris-theme');
+          if(cached&&THEME_BG[cached]){applyBg(THEME_BG[cached]);}
+        }catch(e){}
+        try{
+          var req=indexedDB.open('AurisDB_v2',1);
+          req.onsuccess=function(e){
+            try{
+              var db=e.target.result;
+              var tx=db.transaction('settings','readonly');
+              var st=tx.objectStore('settings');
+              st.get('theme').onsuccess=function(ev){
+                if(ev.target.result&&THEME_BG[ev.target.result.value || ev.target.result]){
+                  var bg = THEME_BG[ev.target.result.value || ev.target.result];
+                  applyBg(bg);
+                  localStorage.setItem('auris-theme', ev.target.result.value || ev.target.result);
+                }
+              };
+            }catch(err){}
+          };
+        }catch(err){}
+      })();
+    </script>
+    <title>auris-vue</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
