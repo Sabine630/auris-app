@@ -25,15 +25,18 @@
 
 <script setup>
 import { ref, onMounted, computed, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from './store/index.js';
+import { getSetting } from './services/db.js';
 import BottomNav from './components/BottomNav.vue';
 
 const route = useRoute();
+const router = useRouter();
 const time = ref('');
 
 const showNav = computed(() => {
-  return route.name !== 'chat';
+  const hiddenRoutes = ['chat', 'onboarding', 'api', 'lock', 'char-edit', 'char-manage', 'group-room', 'group-create', 'post-detail', 'diary-detail', 'dream-detail'];
+  return !hiddenRoutes.includes(route.name);
 });
 
 function updateClock() {
@@ -48,6 +51,12 @@ onMounted(async () => {
   await globalStore.init();
   updateClock();
   timer = setInterval(updateClock, 10000);
+
+  // Check onboarding
+  const obDone = await getSetting('onboarding_done');
+  if (!obDone && route.name !== 'onboarding') {
+    router.push('/onboarding');
+  }
 });
 
 onUnmounted(() => {

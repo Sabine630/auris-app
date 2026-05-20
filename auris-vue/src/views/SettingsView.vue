@@ -2,96 +2,93 @@
   <div class="page active" id="pg-settings">
     <div class="ph">
       <div class="ph-back" @click="$router.push('/')">
-        <svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg> 返回
+        <svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回
       </div>
       <div class="ph-title">設定</div>
-      <div class="ph-act"></div>
+      <div></div>
     </div>
     
-    <div style="padding-bottom: 60px;">
-      <!-- Stats -->
-      <div class="s-card" style="margin-top:16px">
-        <div class="s-row">
-          <div class="s-row-ic"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></div>
-          <div class="s-row-name">所有角色</div>
-          <div class="s-row-val">{{ globalStore.characters.length }} 個角色</div>
-        </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:28px 24px 20px">
+      <div style="width:68px;height:68px;border-radius:20px;background:linear-gradient(135deg,var(--rose),#e8b09e);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(201,136,122,0.28)">
+        <svg width="30" height="30" viewBox="0 0 24 24" style="stroke:#fff;fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round"><path d="M3 18v-1a5 5 0 015-5h8a5 5 0 015 5v1"/><circle cx="12" cy="7" r="4"/></svg>
       </div>
+      <div style="font-family:var(--font-serif);font-size:20px;font-style:italic;color:var(--text)">Auris</div>
+      <div style="font-size:12px;font-weight:300;color:var(--text-3)">你說，他在聽</div>
+    </div>
 
-      <!-- Theme -->
-      <div class="sec-label" style="margin-top:24px">主題風格</div>
-      <div class="theme-picker">
-        <div v-for="t in themes" :key="t.id" class="theme-opt" :class="{ sel: globalStore.theme === t.id }" @click="applyTheme(t.id)">
-          <div class="theme-preview" :style="{ background: t.bg }">
-            <div class="theme-preview-dot" :style="{ background: t.rose }"></div>
-            <div class="theme-preview-dot" :style="{ background: t.text, opacity: 0.3 }"></div>
-            <div class="theme-preview-dot" :style="{ background: t.surface, border: '1px solid rgba(0,0,0,.08)' }"></div>
+    <div class="sg-label">角色與世界</div>
+    <div class="sg">
+      <div class="sr" @click="$router.push('/char-manage')">
+        <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <div class="sr-text">角色管理</div>
+        <div class="sr-val">{{ globalStore.characters.length > 0 ? `${globalStore.characters.length} 個角色` : '尚未建立' }}</div><div class="sr-chev">›</div>
+      </div>
+      <div class="sr" @click="$router.push('/me')">
+        <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <div class="sr-text">我的設定</div>
+        <div class="sr-val">未設定</div><div class="sr-chev">›</div>
+      </div>
+      <div class="sr" @click="console.log('多世界模式 — Phase 4')">
+        <div class="sr-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg></div>
+        <div class="sr-text">多世界模式</div><div class="sr-val">主世界</div><div class="sr-chev">›</div>
+      </div>
+      <div class="sr" @click="console.log('世界書 — 即將加入')">
+        <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg></div>
+        <div class="sr-text">世界書</div><div class="sr-chev">›</div>
+      </div>
+    </div>
+
+    <div class="sg-label">API 設定</div>
+    <div class="sg">
+      <div class="sr" @click="$router.push('/api')">
+        <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></div>
+        <div class="sr-text">API 金鑰與模型</div>
+        <div class="sr-val" :style="{ color: apiKey ? 'var(--text-3)' : 'var(--red)' }">{{ apiKey ? '已設定' : '未設定' }}</div><div class="sr-chev">›</div>
+      </div>
+    </div>
+
+    <div class="sg-label">外觀</div>
+    <div class="sg">
+      <div style="padding:14px 16px">
+        <div style="font-size:13px;font-weight:300;color:var(--text);margin-bottom:12px">主題</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px" id="theme-picker">
+          <div v-for="t in themes" :key="t.id" class="theme-opt" :class="{ sel: globalStore.theme === t.id }" @click="applyTheme(t.id)">
+            <div class="theme-preview" :style="{ background: t.bg }">
+              <div class="theme-preview-dot" :style="{ background: t.rose }"></div>
+              <div class="theme-preview-dot" :style="{ background: t.text, opacity: 0.3 }"></div>
+              <div class="theme-preview-dot" :style="{ background: t.surface, border: '1px solid rgba(0,0,0,.08)' }"></div>
+            </div>
+            <div class="theme-name">{{ t.name }}</div>
           </div>
-          <div class="theme-name">{{ t.name }}</div>
         </div>
       </div>
+    </div>
 
-      <!-- API Settings -->
-      <div class="sec-label" style="margin-top:24px">連線設定 (API)</div>
-      <div class="s-card">
-        <div class="api-bar" :class="apiKey ? 'ok' : 'err'">
-          <div class="api-bar-ic">
-            <svg v-if="apiKey" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-            <svg v-else viewBox="0 0 24 24"><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/><circle cx="12" cy="12" r="10"/></svg>
-          </div>
-          <div class="api-bar-msg">{{ apiKey ? 'API 金鑰已設定' : '尚未設定 API 金鑰' }}</div>
-        </div>
-
-        <div style="margin-top:16px">
-          <div class="form-label">服務商</div>
-          <select class="form-input" v-model="apiProvider" @change="onProviderChange">
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic (Claude)</option>
-            <option value="google">Google (Gemini)</option>
-          </select>
-          <div class="form-hint" style="margin-top:4px;margin-bottom:12px">{{ providerHint }}</div>
-
-          <div class="form-label">模型</div>
-          <div class="model-opt-group">
-            <div v-for="m in availableModels" :key="m" class="opt-btn" :class="{ sel: apiModel === m }" @click="apiModel = m">{{ m }}</div>
-          </div>
-
-          <div class="form-label" style="margin-top:12px">API 金鑰</div>
-          <input class="form-input" type="password" v-model="apiKey" placeholder="sk-...">
-
-          <div class="form-label" style="margin-top:12px">自訂節點 (Proxy Base URL) - 選填</div>
-          <input class="form-input" type="text" v-model="apiBase" :placeholder="defaultBase">
-        </div>
-
-        <div style="display:flex;gap:12px;margin-top:20px">
-          <button class="api-test-btn" @click="testApi" :disabled="isTesting">{{ isTesting ? '測試中...' : '測試連線' }}</button>
-          <button class="api-save-btn" @click="saveApi">儲存設定</button>
-        </div>
+    <div class="sg-label">資料</div>
+    <div class="sg" style="margin-bottom:32px">
+      <div class="sr" @click="exportData">
+        <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+        <div class="sr-text">匯出資料</div><div class="sr-chev">›</div>
       </div>
-
-      <!-- Backup -->
-      <div class="sec-label" style="margin-top:24px">資料管理</div>
-      <div class="s-card">
-        <div class="s-row" @click="exportData">
-          <div class="s-row-ic"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
-          <div class="s-row-name">匯出備份</div>
-        </div>
-        <div style="height:1px;background:var(--border);margin-left:46px"></div>
-        <div class="s-row" @click="importData">
-          <div class="s-row-ic"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
-          <div class="s-row-name">匯入還原</div>
-        </div>
+      <div class="sr" @click="importData">
+        <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+        <div class="sr-text">匯入資料</div><div class="sr-chev">›</div>
       </div>
-      
-      <div class="about-footer">
-        Auris v2.0 (Vue 重構版)<br>你說，他在聽
+    </div>
+
+    <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
+      <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
+        Auris · v0.36
+      </div>
+      <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
+        群組點名修正 · 貼文留言釘底 · 清洗保險絲
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted } from 'vue';
 import { globalStore } from '../store/index.js';
 import { getSetting, setSetting } from '../services/db.js';
 
@@ -104,41 +101,11 @@ const themes = [
   {id:'matcha',name:'抹茶', bg:'#eff3ee', surface:'#f8fbf8', rose:'#6a9272', text:'#0e1e12'},
 ];
 
-const apiProvider = ref('openai');
-const apiModel = ref('gpt-4o-mini');
 const apiKey = ref('');
-const apiBase = ref('');
-const isTesting = ref(false);
-
-const availableModels = computed(() => {
-  if (apiProvider.value === 'anthropic') return ['claude-3-5-sonnet-20240620', 'claude-3-haiku-20240307'];
-  if (apiProvider.value === 'google') return ['gemini-1.5-flash', 'gemini-1.5-pro'];
-  return ['gpt-4o-mini', 'gpt-4o'];
-});
-
-const providerHint = computed(() => {
-  if (apiProvider.value === 'anthropic') return '前往 console.anthropic.com 申請';
-  if (apiProvider.value === 'google') return '前往 aistudio.google.com 申請';
-  return '前往 platform.openai.com 申請';
-});
-
-const defaultBase = computed(() => {
-  if (apiProvider.value === 'anthropic') return 'https://api.anthropic.com/v1';
-  if (apiProvider.value === 'google') return 'https://generativelanguage.googleapis.com/v1beta/openai';
-  return 'https://api.openai.com/v1';
-});
 
 onMounted(async () => {
-  apiProvider.value = (await getSetting('api_provider')) || 'openai';
   apiKey.value = (await getSetting('api_key')) || '';
-  apiModel.value = (await getSetting('api_model')) || availableModels.value[0];
-  apiBase.value = (await getSetting('api_base')) || '';
 });
-
-function onProviderChange() {
-  apiModel.value = availableModels.value[0];
-  apiBase.value = '';
-}
 
 async function applyTheme(id) {
   globalStore.theme = id;
@@ -147,57 +114,6 @@ async function applyTheme(id) {
   if (t) {
     document.documentElement.style.background = t.bg;
     document.body.style.background = t.bg;
-  }
-}
-
-async function saveApi() {
-  await setSetting('api_provider', apiProvider.value);
-  await setSetting('api_key', apiKey.value);
-  await setSetting('api_model', apiModel.value);
-  await setSetting('api_base', apiBase.value);
-  alert('API 設定已儲存！');
-}
-
-async function testApi() {
-  if (!apiKey.value) {
-    alert('請先填寫金鑰');
-    return;
-  }
-  isTesting.value = true;
-  try {
-    const { fetchWithTimeout } = await import('../services/api.js');
-    const base = apiBase.value || defaultBase.value;
-    const isAnt = apiProvider.value === 'anthropic';
-    const url = isAnt ? `${base}/messages` : `${base}/chat/completions`;
-    const headers = { 'Content-Type': 'application/json' };
-    
-    if (isAnt) {
-      headers['x-api-key'] = apiKey.value;
-      headers['anthropic-version'] = '2023-06-01';
-    } else {
-      headers['Authorization'] = `Bearer ${apiKey.value}`;
-    }
-
-    const res = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: apiModel.value,
-        max_tokens: 10,
-        messages: [{role: 'user', content: 'hi'}]
-      })
-    }, 10000);
-
-    if (res.ok) {
-      alert('連線成功！');
-    } else {
-      const d = await res.json();
-      alert('連線失敗：' + (d.error?.message || `HTTP ${res.status}`));
-    }
-  } catch (err) {
-    alert('連線異常：' + err.message);
-  } finally {
-    isTesting.value = false;
   }
 }
 
