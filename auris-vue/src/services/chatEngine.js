@@ -249,3 +249,112 @@ async function generateHeartVoice(c, allMsgs, lastAiText, provider, model, base,
     console.error('HeartVoice error', e);
   }
 }
+
+// ──────────────────────────────────────────────
+// Group Chat Logic
+// ──────────────────────────────────────────────
+export async function sendGroupMessage(groupId, charId, content) {
+  const msg = {
+    id: 'gmsg_' + Date.now(),
+    groupId,
+    charId, // If 'user', it's from the user. Otherwise, from a character.
+    content,
+    createdAt: Date.now()
+  };
+  await dbPut('group_messages', msg);
+  return msg;
+}
+
+export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs, members) {
+  const apiKey = await getSetting('api_key');
+  if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
+
+  const c = await dbGet('characters', charIdToRespond);
+  if (!c) return null;
+
+  const me = await getSetting('me_settings') || {};
+  const provider = await getSetting('api_provider') || 'openai';
+  const model = await getSetting('api_model') || getDefModel(provider);
+  const base = await getSetting('api_base') || getDefBase(provider);
+
+  const styleMap = {
+    casual: '說話輕鬆自然，像朋友聊天',
+    sweet: '說話甜蜜可愛，偶爾撒嬌',
+    cool: '說話冷靜簡短，高冷，話不多',
+    gentle: '說話溫柔體貼，善解人意',
+    playful: '說話活潑俏皮，喜歡開玩笑',
+    mature: '說話成熟穩重，有深度',
+    literary: '說話文藝感性，有時引用詩句或比喻'
+  };
+
+  const memberCtx = members.map(m => `- ${m.name}: ${m.tagline || ''} (個性: ${m.persona || ''})`).join('\n');
+
+  let lang = '繁體中文';
+  if (c.lang === 'zh-cn') lang = '簡體中文';
+  if (c.lang === 'ja') lang = '日文';
+
+  const systemPrompt = `你是「${c.name}」，現在在一個多人聊天群組中。
+群組裡有以下成員：
+${memberCtx}
+使用者也在群組裡，叫做「${me.name || '你'}」。
+
+【你的個性】${c.persona || ''}
+【說話風格】${styleMap[c.style] || '輕鬆自然'}
+${c.phrase ? \`口頭禪：\${c.phrase}。\` : ''}
+
+【回覆品質要求】
+・這是群組聊天，請注意對話上下文，回應其他人或使用者的發言。
+・用\${lang}回覆。
+・一次回1到2句話即可，不要太長，符合群聊的節奏。
+・禁止加前綴（如「\${c.name}:」），直接輸出你想說的話。`;
+
+  // Format history: "charName: content"
+  const history = allMsgs.slice(-15).map(m => {
+    let name = '你';
+    if (m.charId !== 'user') {
+      const char = members.find(x => x.id === m.charId);
+      name = char ? char.name : 'Unknown';
+    }
+    return {
+      role: m.charId === c.id ? 'assistant' : 'user',
+      content: m.charId === c.id ? m.content : \`\${name}：\${m.content}\`
+    };
+  });
+
+  let aiText = '';
+  
+  if (provider === 'anthropic') {
+    const r = await fetchWithTimeout(\`\${base}/messages\`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 300, system: systemPrompt, messages: history })
+    }, 30000);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    aiText = d.content?.[0]?.text || '';
+  } else {
+    const r = await fetchWithTimeout(\`\${base}/chat/completions\`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': \`Bearer \${apiKey}\` },
+      body: JSON.stringify({ model, max_tokens: 300, temperature: 0.8, messages: [{ role: 'system', content: systemPrompt }, ...history] })
+    }, 30000);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    aiText = d.choices?.[0]?.message?.content || '';
+  }
+
+  aiText = aiText.replace(new RegExp(\`^\${c.name}：\\\\s*\`), ''); // Remove name prefix if AI added it
+
+  if (aiText) {
+    const msg = {
+      id: 'gmsg_' + Date.now() + '_ai',
+      groupId,
+      charId: c.id,
+      content: aiText.trim(),
+      createdAt: Date.now()
+    };
+    await dbPut('group_messages', msg);
+    return msg;
+  }
+  return null;
+}

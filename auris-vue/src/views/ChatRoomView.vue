@@ -204,7 +204,7 @@ async function sendMsg() {
 }
 
 function openSettings() {
-  alert('角色設定頁即將移植');
+  router.push('/char-edit/' + charId);
 }
 </script>
 
