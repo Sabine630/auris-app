@@ -6,3 +6,4 @@ export default defineConfig({
   plugins: [vue()],
   base: '/auris-app/', // 添加 base 路徑以適應 GitHub Pages
 })
+// trigger re-deploy
