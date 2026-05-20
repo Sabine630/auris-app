@@ -78,10 +78,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · v0.36
+        Auris · v0.38
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        群組點名修正 · 貼文留言釘底 · 清洗保險絲
+        Vue 3 重構 · 架構規格文件 · UI 全面修復
       </div>
     </div>
   </div>
