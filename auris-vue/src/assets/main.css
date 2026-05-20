@@ -286,6 +286,14 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 
 /* ═══ 設定頁群組 ═══ */
 .sg{margin:0 16px 8px;background:var(--surface);border-radius:14px;border:.5px solid var(--border);overflow:hidden}
+.model-opt{display:flex;align-items:center;padding:13px 16px;gap:12px;cursor:pointer;transition:background .12s;border-bottom:.5px solid var(--border)}
+.model-opt:last-child{border-bottom:none}
+.model-opt:active{background:var(--surface2)}
+.model-opt.sel{background:var(--rose-pale)}
+.m-radio{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:border-color .15s}
+.m-radio.sel{border-color:var(--rose)}
+.m-radio-in{width:10px;height:10px;border-radius:50%;background:var(--rose);opacity:0;transition:opacity .15s}
+.model-opt.sel .m-radio-in{opacity:1}
 /* 群組標題：用 serif 斜體取代全大寫小字 */
 .sg-label{
   font-family:var(--font-serif);font-style:italic;

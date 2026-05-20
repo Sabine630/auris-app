@@ -34,9 +34,13 @@
     
     <div class="sg-label">選擇模型</div>
     <div class="sg" style="margin-bottom:8px">
-      <div id="model-list" style="padding:14px 16px">
-        <div style="display:flex;flex-wrap:wrap;gap:8px">
-          <div v-for="m in availableModels" :key="m" class="opt-btn" :class="{ sel: apiModel === m }" @click="apiModel = m">{{ m }}</div>
+      <div id="model-list">
+        <div v-for="m in availableModels" :key="m.id" class="model-opt" :class="{ sel: apiModel === m.id }" @click="apiModel = m.id">
+          <div class="m-radio" :class="{ sel: apiModel === m.id }"><div class="m-radio-in"></div></div>
+          <div>
+            <div style="font-size:13px;font-weight:400;color:var(--text)">{{ m.name }}</div>
+            <div style="font-size:11px;font-weight:300;color:var(--text-3);margin-top:2px">{{ m.desc }}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -52,19 +56,36 @@ import { ref, computed, onMounted } from 'vue';
 import { getSetting, setSetting } from '../services/db.js';
 
 const apiProvider = ref('openai');
-const apiModel = ref('gpt-4o-mini');
+const apiModel = ref('gpt-5.4-mini');
 const apiKey = ref('');
 const apiBase = ref('');
 const isTesting = ref(false);
 
-const availableModels = computed(() => {
-  if (apiProvider.value === 'anthropic') return ['claude-3-5-sonnet-20240620', 'claude-3-haiku-20240307'];
-  if (apiProvider.value === 'google') return ['gemini-1.5-flash', 'gemini-1.5-pro'];
-  return ['gpt-4o-mini', 'gpt-4o'];
-});
+const MODELS = {
+  openai: [
+    { id: 'gpt-5.5',     name: 'GPT-5.5',          desc: '最新旗艦，最強' },
+    { id: 'gpt-5.4',     name: 'GPT-5.4',           desc: '專業工作推薦' },
+    { id: 'gpt-5.4-mini',name: 'GPT-5.4 mini',      desc: '速度快，費用低，推薦' },
+    { id: 'gpt-4o',      name: 'GPT-4o',            desc: '舊版旗艦，仍可用' },
+  ],
+  anthropic: [
+    { id: 'claude-opus-4-7',          name: 'Claude Opus 4.7',   desc: '最新旗艦' },
+    { id: 'claude-opus-4-6',          name: 'Claude Opus 4.6',   desc: '推薦，穩定' },
+    { id: 'claude-sonnet-4-6',        name: 'Claude Sonnet 4.6', desc: '推薦日常使用' },
+    { id: 'claude-haiku-4-5-20251001',name: 'Claude Haiku 4.5',  desc: '最快最省' },
+  ],
+  google: [
+    { id: 'gemini-2.5-flash',       name: 'Gemini 2.5 Flash',      desc: '推薦，快速穩定' },
+    { id: 'gemini-2.5-flash-lite',  name: 'Gemini 2.5 Flash-Lite', desc: '最快最省' },
+    { id: 'gemini-2.5-pro',         name: 'Gemini 2.5 Pro',        desc: '複雜任務' },
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash（預覽）', desc: '最新前沿性能' },
+  ],
+};
+
+const availableModels = computed(() => MODELS[apiProvider.value] || MODELS.openai);
 
 const providerHint = computed(() => {
-  if (apiProvider.value === 'anthropic') return '前往 console.anthropic.com 申請';
+  if (apiProvider.value === 'anthropic') return '前往 console.anthropic.com 申請，格式：sk-ant-…';
   if (apiProvider.value === 'google') return '前往 aistudio.google.com 申請';
   return '前往 platform.openai.com 申請，格式：sk-…';
 });
@@ -78,12 +99,12 @@ const defaultBase = computed(() => {
 onMounted(async () => {
   apiProvider.value = (await getSetting('api_provider')) || 'openai';
   apiKey.value = (await getSetting('api_key')) || '';
-  apiModel.value = (await getSetting('api_model')) || availableModels.value[0];
+  apiModel.value = (await getSetting('api_model')) || availableModels.value[0].id;
   apiBase.value = (await getSetting('api_base')) || '';
 });
 
 function onProviderChange() {
-  apiModel.value = availableModels.value[0];
+  apiModel.value = availableModels.value[0].id;
   apiBase.value = '';
 }
 
