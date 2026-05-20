@@ -250,6 +250,7 @@ async function generateHeartVoice(c, allMsgs, lastAiText, provider, model, base,
   }
 }
 
+
 // ──────────────────────────────────────────────
 // Group Chat Logic
 // ──────────────────────────────────────────────
@@ -257,7 +258,7 @@ export async function sendGroupMessage(groupId, charId, content) {
   const msg = {
     id: 'gmsg_' + Date.now(),
     groupId,
-    charId, // If 'user', it's from the user. Otherwise, from a character.
+    charId,
     content,
     createdAt: Date.now()
   };
@@ -287,44 +288,42 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
     literary: '說話文藝感性，有時引用詩句或比喻'
   };
 
-  const memberCtx = members.map(m => `- ${m.name}: ${m.tagline || ''} (個性: ${m.persona || ''})`).join('\n');
+  const memberCtx = members.map(m => '- ' + m.name + ': ' + (m.tagline || '') + ' (' + (m.persona || '') + ')').join('\n');
 
-  let lang = '繁體中文';
-  if (c.lang === 'zh-cn') lang = '簡體中文';
-  if (c.lang === 'ja') lang = '日文';
+  let lang = '\u7e41\u9ad4\u4e2d\u6587';
+  if (c.lang === 'zh-cn') lang = '\u7c21\u9ad4\u4e2d\u6587';
+  if (c.lang === 'ja') lang = '\u65e5\u6587';
 
-  const systemPrompt = `你是「${c.name}」，現在在一個多人聊天群組中。
-群組裡有以下成員：
-${memberCtx}
-使用者也在群組裡，叫做「${me.name || '你'}」。
+  const phraseLine = c.phrase ? '\u53e3\u982d\u7985\uff1a' + c.phrase + '\u3002' : '';
 
-【你的個性】${c.persona || ''}
-【說話風格】${styleMap[c.style] || '輕鬆自然'}
-${c.phrase ? \`口頭禪：\${c.phrase}。\` : ''}
+  const systemPrompt = '\u4f60\u662f\u300c' + c.name + '\u300d\uff0c\u73fe\u5728\u5728\u4e00\u500b\u591a\u4eba\u804a\u5929\u7fa4\u7d44\u4e2d\u3002\n' +
+    '\u7fa4\u7d44\u88e1\u6709\u4ee5\u4e0b\u6210\u54e1\uff1a\n' + memberCtx + '\n' +
+    '\u4f7f\u7528\u8005\u4e5f\u5728\u7fa4\u7d44\u88e1\uff0c\u53eb\u505a\u300c' + (me.name || '\u4f60') + '\u300d\u3002\n\n' +
+    '\u3010\u4f60\u7684\u500b\u6027\u3011' + (c.persona || '') + '\n' +
+    '\u3010\u8aaa\u8a71\u98a8\u683c\u3011' + (styleMap[c.style] || '\u8f15\u9b06\u81ea\u7136') + '\n' +
+    phraseLine + '\n\n' +
+    '\u3010\u56de\u8986\u54c1\u8cea\u8981\u6c42\u3011\n' +
+    '\u30fb\u9019\u662f\u7fa4\u7d44\u804a\u5929\uff0c\u8acb\u6ce8\u610f\u5c0d\u8a71\u4e0a\u4e0b\u6587\uff0c\u56de\u61c9\u5176\u4ed6\u4eba\u6216\u4f7f\u7528\u8005\u7684\u767c\u8a00\u3002\n' +
+    '\u30fb\u7528' + lang + '\u56de\u8986\u3002\n' +
+    '\u30fb\u4e00\u6b21\u56de1\u52302\u53e5\u8a71\u5373\u53ef\uff0c\u4e0d\u8981\u592a\u9577\uff0c\u7b26\u5408\u7fa4\u804a\u7684\u7bc0\u594f\u3002\n' +
+    '\u30fb\u7981\u6b62\u52a0\u524d\u7db4\uff08\u5982\u300c' + c.name + ':\u300d\uff09\uff0c\u76f4\u63a5\u8f38\u51fa\u4f60\u60f3\u8aaa\u7684\u8a71\u3002';
 
-【回覆品質要求】
-・這是群組聊天，請注意對話上下文，回應其他人或使用者的發言。
-・用\${lang}回覆。
-・一次回1到2句話即可，不要太長，符合群聊的節奏。
-・禁止加前綴（如「\${c.name}:」），直接輸出你想說的話。`;
-
-  // Format history: "charName: content"
   const history = allMsgs.slice(-15).map(m => {
-    let name = '你';
+    let name = '\u4f60';
     if (m.charId !== 'user') {
-      const char = members.find(x => x.id === m.charId);
-      name = char ? char.name : 'Unknown';
+      const ch = members.find(x => x.id === m.charId);
+      name = ch ? ch.name : 'Unknown';
     }
     return {
       role: m.charId === c.id ? 'assistant' : 'user',
-      content: m.charId === c.id ? m.content : \`\${name}：\${m.content}\`
+      content: m.charId === c.id ? m.content : name + '\uff1a' + m.content
     };
   });
 
   let aiText = '';
-  
+
   if (provider === 'anthropic') {
-    const r = await fetchWithTimeout(\`\${base}/messages\`, {
+    const r = await fetchWithTimeout(base + '/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({ model, max_tokens: 300, system: systemPrompt, messages: history })
@@ -333,9 +332,9 @@ ${c.phrase ? \`口頭禪：\${c.phrase}。\` : ''}
     if (d.error) throw new Error(d.error.message);
     aiText = d.content?.[0]?.text || '';
   } else {
-    const r = await fetchWithTimeout(\`\${base}/chat/completions\`, {
+    const r = await fetchWithTimeout(base + '/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': \`Bearer \${apiKey}\` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
       body: JSON.stringify({ model, max_tokens: 300, temperature: 0.8, messages: [{ role: 'system', content: systemPrompt }, ...history] })
     }, 30000);
     const d = await r.json();
@@ -343,7 +342,8 @@ ${c.phrase ? \`口頭禪：\${c.phrase}。\` : ''}
     aiText = d.choices?.[0]?.message?.content || '';
   }
 
-  aiText = aiText.replace(new RegExp(\`^\${c.name}：\\\\s*\`), ''); // Remove name prefix if AI added it
+  const namePrefix = new RegExp('^' + c.name + '[：:]\\s*');
+  aiText = aiText.replace(namePrefix, '');
 
   if (aiText) {
     const msg = {

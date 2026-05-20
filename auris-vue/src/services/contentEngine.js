@@ -1,0 +1,307 @@
+import { dbGet, dbPut, getSetting } from './db.js';
+import { fetchWithTimeout } from './api.js';
+
+function getDefModel(provider) {
+  if (provider === 'anthropic') return 'claude-3-5-sonnet-20240620';
+  if (provider === 'google') return 'gemini-1.5-flash';
+  return 'gpt-4o-mini';
+}
+
+function getDefBase(provider) {
+  if (provider === 'anthropic') return 'https://api.anthropic.com/v1';
+  if (provider === 'google') return 'https://generativelanguage.googleapis.com/v1beta/openai';
+  return 'https://api.openai.com/v1';
+}
+
+function dedupeRepeats(text) {
+  const sentences = text.match(/[^。！？.!?]+[。！？.!?]?/g);
+  if (!sentences) return text;
+  const res = [];
+  for (let s of sentences) {
+    if (res.length > 0 && res[res.length - 1].trim() === s.trim()) continue;
+    res.push(s);
+  }
+  return res.join('');
+}
+
+export async function generatePost(charId) {
+  const apiKey = await getSetting('api_key');
+  if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
+
+  const c = await dbGet('characters', charId);
+  if (!c) throw new Error('找不到角色');
+
+  const provider = await getSetting('api_provider') || 'openai';
+  const model = await getSetting('api_model') || getDefModel(provider);
+  const base = await getSetting('api_base') || getDefBase(provider);
+
+  const styleMap = {
+    casual: '輕鬆日常', sweet: '甜蜜撒嬌', cool: '冷靜高冷',
+    gentle: '溫柔體貼', playful: '活潑俏皮', mature: '成熟穩重', literary: '文藝感性'
+  };
+
+  const storyCtx = c.stories?.filter(s => s.content).map(s => `【${s.title}】${s.content}`).join('\n') || '';
+
+  const prompt = `你是「${c.name}」。請根據以下設定，寫一則短篇社群貼文（類似 IG 或 Twitter），分享你此刻的想法或生活片段。
+【個性】${c.persona || ''}
+${storyCtx ? `【背景】${storyCtx}` : ''}
+${c.status ? `【近況】${c.status}` : ''}
+${c.hobby ? `【喜好】${c.hobby}` : ''}
+【說話風格】${styleMap[c.style] || '輕鬆自然'}
+
+【格式要求】
+1. 直接輸出貼文內容，不要加引號，長度約 20~80 字。
+2. 可以在最後加上幾個相關 hashtag（在同一行或新行）。
+3. 如果角色個性適合，可以使用少量 emoji。`;
+
+  let text = '';
+  let truncated = false;
+
+  if (provider === 'anthropic') {
+    const r = await fetchWithTimeout(`${base}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 2500, system: prompt, messages: [{ role: 'user', content: '請開始生成。' }] })
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    text = d.content?.[0]?.text || '';
+    if (d.stop_reason === 'max_tokens') truncated = true;
+  } else {
+    const postPayload = { model, max_tokens: 2500, temperature: 0.75, messages: [{ role: 'system', content: prompt }, { role: 'user', content: '請開始生成。' }] };
+    if (provider === 'openai') { postPayload.frequency_penalty = 0.6; postPayload.presence_penalty = 0.3; }
+    const r = await fetchWithTimeout(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify(postPayload)
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    text = d.choices?.[0]?.message?.content || '';
+    if (d.choices?.[0]?.finish_reason === 'length') truncated = true;
+  }
+
+  if (text.trim()) {
+    let content = text.trim();
+    let tags = [];
+    const tagMatch = content.match(/(?:^|\n)\s*#\w+/g);
+    if (tagMatch) {
+      tags = tagMatch.map(t => t.trim().substring(1));
+      // Try to clean tags from content if they are isolated at the end
+      content = content.replace(/(?:\n\s*#\w+\s*)+$/, '').trim();
+    }
+
+    content = dedupeRepeats(content);
+    const entry = { id: 'post_' + Date.now(), charId, content, tags, likes: 0, likedByMe: false, comments: [], createdAt: Date.now() };
+    await dbPut('moments', entry);
+    return { entry, truncated };
+  }
+  return null;
+}
+
+export async function generateCommentReply(postId, charId, userComment) {
+  const apiKey = await getSetting('api_key');
+  if (!apiKey) return;
+
+  const c = await dbGet('characters', charId);
+  const p = await dbGet('moments', postId);
+  if (!c || !p) return;
+
+  const provider = await getSetting('api_provider') || 'openai';
+  const model = await getSetting('api_model') || getDefModel(provider);
+  const base = await getSetting('api_base') || getDefBase(provider);
+  const me = await getSetting('me_settings') || {};
+
+  const prompt = `你是「${c.name}」，個性：${c.persona || ''}。你剛發了一則貼文：「${p.content.substring(0, 80)}」。
+${me.name || '對方'}留言說：「${userComment}」
+請用角色口吻回覆這則留言，30字以內，自然簡短，像社群留言回覆的語氣。直接輸出回覆內容，不加引號。`;
+
+  try {
+    let text = '';
+    if (provider === 'anthropic') {
+      const r = await fetchWithTimeout(`${base}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model, max_tokens: 200, messages: [{ role: 'user', content: prompt }] })
+      });
+      const d = await r.json();
+      text = d.content?.[0]?.text || '';
+    } else {
+      const r = await fetchWithTimeout(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, max_tokens: 200, temperature: 0.85, messages: [{ role: 'user', content: prompt }] })
+      });
+      const d = await r.json();
+      text = d.choices?.[0]?.message?.content || '';
+    }
+
+    if (text.trim()) {
+      const reply = { role: 'assistant', content: text.trim(), createdAt: Date.now() };
+      p.comments.push(reply);
+      await dbPut('moments', p);
+    }
+  } catch (e) {
+    console.error('Failed to generate comment reply', e);
+  }
+}
+
+// ──────────────────────────────────────────────
+// 日記生成
+// ──────────────────────────────────────────────
+export async function generateDiary(charId) {
+  const apiKey = await getSetting('api_key');
+  if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
+
+  const c = await dbGet('characters', charId);
+  if (!c) throw new Error('找不到角色');
+
+  const me = await getSetting('me_settings') || {};
+  const provider = await getSetting('api_provider') || 'openai';
+  const model = await getSetting('api_model') || getDefModel(provider);
+  const base = await getSetting('api_base') || getDefBase(provider);
+
+  // 取最近對話
+  const { dbIdx } = await import('./db.js');
+  const msgs = await dbIdx('messages', 'charId', charId);
+  msgs.sort((a, b) => b.createdAt - a.createdAt);
+  const recentChat = msgs.slice(0, 8).reverse().map(m =>
+    `${m.role === 'user' ? (me.name || '你') : c.name}：${m.content.substring(0, 60)}`
+  ).join('\n');
+
+  const n = new Date();
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  const today = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+
+  const sysPrompt = `你是「${c.name}」。個性：${c.persona || ''}。
+今天是 ${n.getFullYear()}年${n.getMonth() + 1}月${n.getDate()}日，星期${weekdays[n.getDay()]}。
+${recentChat ? `今天和對方的對話內容：\n${recentChat}\n` : ''}
+請以角色的第一人稱，用繁體中文寫今天的日記。
+
+【日記品質要求】
+・要有具體的事件、細節或感受，不能只寫抽象心情
+・文字要有角色自己的聲音和語氣，不能像模板或作文
+・可以有矛盾、糾結、沒說出口的話，讓日記有真實的層次
+・禁止使用「今天過得很充實」「學到了很多」「期待明天」等空洞結語
+・正文 200-300 字，情感要流動，不要分條列點
+
+格式：
+第一行：日記標題（一句有畫面感的話，不要用問號，不要加引號）
+（空行）
+日記正文
+（空行）
+最後一行：單一心情 emoji`;
+
+  let text = '';
+  let truncated = false;
+
+  if (provider === 'anthropic') {
+    const r = await fetchWithTimeout(`${base}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 2500, system: sysPrompt, messages: [{ role: 'user', content: '請開始寫日記。' }] })
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    text = d.content?.[0]?.text || '';
+    if (d.stop_reason === 'max_tokens') truncated = true;
+  } else {
+    const payload = { model, max_tokens: 2500, temperature: 0.78, messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: '請開始寫日記。' }] };
+    if (provider === 'openai') { payload.frequency_penalty = 0.5; payload.presence_penalty = 0.2; }
+    const r = await fetchWithTimeout(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    text = d.choices?.[0]?.message?.content || '';
+    if (d.choices?.[0]?.finish_reason === 'length') truncated = true;
+  }
+
+  if (text.trim()) {
+    text = dedupeRepeats(text);
+    const lines = text.trim().split('\n');
+    let mood = '📔';
+    const lastLine = lines[lines.length - 1].trim();
+    if ([...lastLine].length <= 2 && /\p{Emoji}/u.test(lastLine)) {
+      mood = lastLine;
+      lines.pop();
+    }
+    const entry = { id: 'diary_' + Date.now(), charId, date: today, content: lines.join('\n').trim(), mood, createdAt: Date.now() };
+    await dbPut('diary', entry);
+    return { entry, truncated };
+  }
+  return null;
+}
+
+// ──────────────────────────────────────────────
+// 夢境生成
+// ──────────────────────────────────────────────
+export async function generateDream(charId) {
+  const apiKey = await getSetting('api_key');
+  if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
+
+  const c = await dbGet('characters', charId);
+  if (!c) throw new Error('找不到角色');
+
+  const provider = await getSetting('api_provider') || 'openai';
+  const model = await getSetting('api_model') || getDefModel(provider);
+  const base = await getSetting('api_base') || getDefBase(provider);
+
+  const { dbIdx } = await import('./db.js');
+  const msgs = await dbIdx('messages', 'charId', charId);
+  msgs.sort((a, b) => b.createdAt - a.createdAt);
+  const recentTopics = msgs.slice(0, 6).map(m => m.content.substring(0, 40)).join('、');
+
+  const prompt = `你是「${c.name}」，個性：${c.persona || ''}。
+${recentTopics ? `最近聊過的話題：${recentTopics}。` : ''}
+
+請用第一人稱，寫一段完整、飄渺、詩意的夢境敘述。夢境可以與最近的話題有若有似無的關聯，也可以完全陌生的意象。
+
+【夢境品質要求】
+・要有具體的畫面、感官細節（顏色、聲音、溫度、氣味），不能只說「我夢見…」然後沒有細節
+・夢的邏輯可以跳躍、矛盾、不合理，這才是夢
+・語氣是清醒後回想的感覺，有些模糊，有些片段特別清晰
+・不要解釋夢的象徵意義，直接描述所見所感所聞
+・禁止使用「美麗的夢境」「奇異的感覺」「醒來後若有所思」等陳腔濫調
+・150-220字，寫完整，不要截斷
+
+直接輸出夢境文字，不要加標題或說明。`;
+
+  let text = '';
+  let truncated = false;
+
+  if (provider === 'anthropic') {
+    const r = await fetchWithTimeout(`${base}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 2500, system: prompt, messages: [{ role: 'user', content: '請開始描述夢境。' }] })
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    text = d.content?.[0]?.text || '';
+    if (d.stop_reason === 'max_tokens') truncated = true;
+  } else {
+    const payload = { model, max_tokens: 2500, temperature: 0.88, messages: [{ role: 'system', content: prompt }, { role: 'user', content: '請開始描述夢境。' }] };
+    if (provider === 'openai') { payload.frequency_penalty = 0.5; payload.presence_penalty = 0.2; }
+    const r = await fetchWithTimeout(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    text = d.choices?.[0]?.message?.content || '';
+    if (d.choices?.[0]?.finish_reason === 'length') truncated = true;
+  }
+
+  if (text.trim()) {
+    text = dedupeRepeats(text);
+    const entry = { id: 'dream_' + Date.now(), charId, content: text.trim(), createdAt: Date.now() };
+    await dbPut('dreams', entry);
+    return { entry, truncated };
+  }
+  return null;
+}
+

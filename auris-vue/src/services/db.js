@@ -2,7 +2,7 @@ let db = null;
 
 export function initDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('auris', 3);
+    const r = indexedDB.open('auris', 4);
     r.onupgradeneeded = (e) => {
       const d = e.target.result;
       [
@@ -15,6 +15,7 @@ export function initDB() {
         ['worlds', []],
         ['groups', []],
         ['group_messages', [['groupId', 'groupId'], ['createdAt', 'createdAt']]],
+        ['notifications', [['charId', 'charId'], ['createdAt', 'createdAt']]],
       ].forEach(([name, idx]) => {
         if (!d.objectStoreNames.contains(name)) {
           const os = d.createObjectStore(name, { keyPath: 'id' });
