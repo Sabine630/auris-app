@@ -32,7 +32,7 @@
       <div v-if="filteredChats.length === 0" style="text-align:center;padding:60px 20px;color:var(--text-3);font-size:13px;font-weight:300">
         {{ tab === 'unread' ? '沒有未讀訊息' : (searchQuery ? '找不到相關對話' : '還沒有對話記錄') }}
         <div v-if="globalStore.characters.length === 0" style="margin-top:16px">
-          <button class="btn-primary" @click="$router.push('/char-manage')" style="width:auto;padding:8px 16px">＋ 新增角色</button>
+          <button class="empty-cta" @click="$router.push('/char-manage')">＋ 新增角色</button>
         </div>
       </div>
       

@@ -13,7 +13,7 @@
       </div>
     </div>
 
-    <div v-if="showGenPanel" style="margin:4px 16px 0">
+    <div v-if="showGenPanel && globalStore.characters.length > 0" style="margin:4px 16px 0">
       <div v-if="filterCharId === 'all'" style="font-size:12px;color:var(--text-3);padding:8px 0">
         請先在上方選擇要發佈貼文的角色。
       </div>

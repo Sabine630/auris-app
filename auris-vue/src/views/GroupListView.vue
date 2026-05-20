@@ -8,7 +8,7 @@
     <div id="group-list-body">
       <div v-if="groups.length === 0" style="text-align:center;padding:60px 20px;color:var(--text-3);font-size:13px;font-weight:300">
         還沒有群組<br><br>
-        <button class="btn-primary" @click="$router.push('/group-create')" style="width:auto;padding:8px 16px">＋ 建立群組</button>
+        <button class="empty-cta" @click="$router.push('/group-create')">＋ 建立群組</button>
       </div>
       <div v-else style="padding:8px 0">
         <div v-for="g in groups" :key="g.id">

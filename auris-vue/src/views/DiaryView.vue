@@ -15,7 +15,7 @@
     </div>
 
     <!-- 生成面板 -->
-    <div v-if="showGenPanel" style="margin:8px 16px 0">
+    <div v-if="showGenPanel && globalStore.characters.length > 0" style="margin:8px 16px 0">
       <div v-if="genTargetChar" class="diary-gen-btn" @click="doGenerate" :style="isGenerating ? 'opacity:0.6;pointer-events:none' : ''">
         <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         <span>{{ isGenerating ? '生成中…' : `為${genTargetChar.name}寫今天的日記` }}</span>
