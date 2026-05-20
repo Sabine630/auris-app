@@ -2,9 +2,9 @@ import { dbGet, dbPut, getSetting } from './db.js';
 import { fetchWithTimeout } from './api.js';
 
 function getDefModel(provider) {
-  if (provider === 'anthropic') return 'claude-3-5-sonnet-20240620';
-  if (provider === 'google') return 'gemini-1.5-flash';
-  return 'gpt-4o-mini';
+  if (provider === 'anthropic') return 'claude-sonnet-4-6';
+  if (provider === 'google') return 'gemini-2.5-flash';
+  return 'gpt-5.4-mini';
 }
 
 function getDefBase(provider) {
