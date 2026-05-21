@@ -29,12 +29,102 @@
         <div class="char-btns">
           <button class="char-chat-btn" @click="$router.push('/chat/' + c.id)">聊天</button>
           <button class="char-edit-btn" @click="$router.push('/char-edit/' + c.id)">編輯</button>
+          <button class="char-del-btn" @click="deleteCharacter(c)">刪除</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="menu-overlay" v-if="showDeleteConfirm" @click="showDeleteConfirm = false"></div>
+    <div class="bottom-menu" :style="{ display: showDeleteConfirm ? 'block' : 'none' }">
+      <div style="padding:20px 16px;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px">{{ deleteTarget?.avatar || '🌸' }}</div>
+        <div style="font-weight:500;font-size:15px;margin-bottom:6px">確定要刪除「{{ deleteTarget?.name }}」嗎？</div>
+        <div style="font-size:12px;color:var(--text-3);font-weight:300;line-height:1.6">
+          刪除後，與此角色的所有聊天記錄、日記、夢境、<br>貼文和心聲記憶都會一併刪除，且無法復原。
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;padding:0 16px 20px">
+        <button @click="showDeleteConfirm = false"
+          style="flex:1;padding:12px;border-radius:12px;background:var(--surface);color:var(--text);border:.5px solid var(--border);font-size:14px;font-weight:400;cursor:pointer">取消</button>
+        <button @click="confirmDelete" :disabled="isDeleting"
+          style="flex:1;padding:12px;border-radius:12px;background:#e74c3c;color:#fff;border:none;font-size:14px;font-weight:500;cursor:pointer;transition:opacity .15s"
+          :style="isDeleting ? 'opacity:0.5' : ''">{{ isDeleting ? '刪除中…' : '確認刪除' }}</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { ref } from 'vue';
 import { globalStore } from '../store/index.js';
+import { dbDel, dbIdx } from '../services/db.js';
+
+const showDeleteConfirm = ref(false);
+const deleteTarget = ref(null);
+const isDeleting = ref(false);
+
+function deleteCharacter(c) {
+  deleteTarget.value = c;
+  showDeleteConfirm.value = true;
+}
+
+async function confirmDelete() {
+  if (!deleteTarget.value || isDeleting.value) return;
+  isDeleting.value = true;
+  
+  const charId = deleteTarget.value.id;
+  
+  try {
+    // Delete all related data for this character
+    const stores = [
+      { name: 'messages', index: 'charId' },
+      { name: 'memories', index: 'charId' },
+      { name: 'moments', index: 'charId' },
+      { name: 'diary', index: 'charId' },
+      { name: 'dreams', index: 'charId' },
+      { name: 'notifications', index: 'charId' },
+    ];
+    
+    for (const store of stores) {
+      const items = await dbIdx(store.name, store.index, charId);
+      for (const item of items) {
+        await dbDel(store.name, item.id);
+      }
+    }
+    
+    // Delete the character itself
+    await dbDel('characters', charId);
+    
+    // Reload characters in the global store
+    await globalStore.reloadCharacters();
+    
+    showDeleteConfirm.value = false;
+    deleteTarget.value = null;
+  } catch (err) {
+    console.error('Failed to delete character:', err);
+    // TODO(security): Use custom modal instead of alert in production
+    window.alert('刪除失敗，請稍後再試');
+  } finally {
+    isDeleting.value = false;
+  }
+}
 </script>
+
+<style scoped>
+.char-del-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: transparent;
+  color: #e74c3c;
+  border: .5px solid #e74c3c;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all .15s;
+}
+.char-del-btn:active {
+  background: #e74c3c;
+  color: #fff;
+}
+</style>

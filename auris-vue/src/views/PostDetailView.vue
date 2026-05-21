@@ -50,6 +50,19 @@
             </div>
           </div>
         </div>
+        <!-- Replying Indicator -->
+        <div v-if="isReplying" class="post-comment-item" style="opacity:0.6">
+          <div class="comment-av">
+            <img v-if="getAvatar(post.charId) && getAvatar(post.charId).startsWith('data:')" :src="getAvatar(post.charId)" style="width:100%;height:100%;object-fit:cover;border-radius:10px">
+            <span v-else>{{ getAvatar(post.charId) || '🌸' }}</span>
+          </div>
+          <div class="comment-body">
+            <div class="comment-name">{{ getName(post.charId) }}</div>
+            <div style="display:flex;gap:4px;align-items:center;padding:4px 0">
+              <div class="tdot"></div><div class="tdot"></div><div class="tdot"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     
@@ -165,7 +178,9 @@ async function submitComment() {
     // Reload post to get the reply
     await loadPost();
   } catch (err) {
-    console.error(err);
+    console.error('Comment reply error:', err);
+    // Still reload to check if there's a partial result
+    await loadPost();
   } finally {
     isReplying.value = false;
   }

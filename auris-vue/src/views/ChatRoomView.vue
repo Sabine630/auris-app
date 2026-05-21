@@ -13,7 +13,7 @@
         <div class="chat-hd-name" id="chat-name">{{ cName }}</div>
         <div class="chat-hd-status" id="chat-status">在線</div>
       </div>
-      <div class="chat-hd-more" @click="openSettings">⋯</div>
+      <div class="chat-hd-more" @click="showMenu = true">⋯</div>
     </div>
 
     <!-- Scroll Area -->
@@ -75,13 +75,59 @@
         <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
     </div>
+
+    <!-- Options Menu -->
+    <div class="menu-overlay" v-if="showMenu" @click="showMenu = false"></div>
+    <div class="bottom-menu" :style="{ display: showMenu ? 'block' : 'none' }">
+      <div style="padding:16px;border-bottom:.5px solid var(--border);text-align:center;font-weight:500">聊天選項</div>
+      <div style="padding:8px 0">
+        <div class="menu-item" @click="goCharInfo">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
+            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+          <span>角色資訊</span>
+        </div>
+        <div class="menu-item" @click="clearChat">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+          </svg>
+          <span>清除聊天記錄</span>
+        </div>
+        <div class="menu-item" @click="exportChat">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>匯出聊天記錄</span>
+        </div>
+      </div>
+      <div style="padding:0 16px 16px">
+        <button @click="showMenu = false" style="width:100%;padding:12px;border-radius:12px;background:var(--surface);color:var(--text-3);border:.5px solid var(--border);font-size:13px;font-weight:400;cursor:pointer">取消</button>
+      </div>
+    </div>
+
+    <!-- Clear Chat Confirm -->
+    <div class="menu-overlay" v-if="showClearConfirm" @click="showClearConfirm = false"></div>
+    <div class="bottom-menu" :style="{ display: showClearConfirm ? 'block' : 'none' }">
+      <div style="padding:20px 16px;text-align:center">
+        <div style="font-weight:500;font-size:15px;margin-bottom:6px">確定要清除聊天記錄嗎？</div>
+        <div style="font-size:12px;color:var(--text-3);font-weight:300;line-height:1.6">
+          清除後所有與「{{ cName }}」的對話記錄將無法復原。
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;padding:0 16px 20px">
+        <button @click="showClearConfirm = false"
+          style="flex:1;padding:12px;border-radius:12px;background:var(--surface);color:var(--text);border:.5px solid var(--border);font-size:14px;font-weight:400;cursor:pointer">取消</button>
+        <button @click="confirmClearChat"
+          style="flex:1;padding:12px;border-radius:12px;background:#e74c3c;color:#fff;border:none;font-size:14px;font-weight:500;cursor:pointer">確認清除</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbIdx } from '../services/db.js';
+import { dbGet, dbIdx, dbDel } from '../services/db.js';
 import { sendUserMessage, generateAIResponse } from '../services/chatEngine.js';
 
 const route = useRoute();
@@ -92,6 +138,8 @@ const messages = ref([]);
 const character = ref(null);
 const inputContent = ref('');
 const isTyping = ref(false);
+const showMenu = ref(false);
+const showClearConfirm = ref(false);
 
 const scrollArea = ref(null);
 const chatInp = ref(null);
@@ -193,18 +241,62 @@ async function sendMsg() {
       scrollToBottom();
     }
     if (truncated) {
-      alert('⚠ 回覆可能被截斷，可長按訊息重新生成 (後續實作長按功能)');
+      // TODO(security): Use custom modal instead of alert in production
+      window.alert('⚠ 回覆可能被截斷，可長按訊息重新生成 (後續實作長按功能)');
     }
   } catch (err) {
-    console.error(err);
-    alert('錯誤：' + err.message);
+    console.error('Chat error:', err);
+    // TODO(security): Use custom modal instead of alert in production
+    window.alert('錯誤：' + err.message);
   } finally {
     isTyping.value = false;
   }
 }
 
-function openSettings() {
+// ── Menu Actions ──
+function goCharInfo() {
+  showMenu.value = false;
   router.push('/char-edit/' + charId);
+}
+
+function clearChat() {
+  showMenu.value = false;
+  showClearConfirm.value = true;
+}
+
+async function confirmClearChat() {
+  const msgs = await dbIdx('messages', 'charId', charId);
+  for (const m of msgs) {
+    await dbDel('messages', m.id);
+  }
+  messages.value = [];
+  showClearConfirm.value = false;
+}
+
+function exportChat() {
+  showMenu.value = false;
+  if (!messages.value.length) {
+    // TODO(security): Use custom modal instead of alert in production
+    window.alert('目前沒有聊天記錄可以匯出');
+    return;
+  }
+  
+  const lines = messages.value
+    .filter(m => m.type !== 'hv')
+    .map(m => {
+      const time = new Date(m.createdAt).toLocaleString('zh-TW');
+      const name = m.role === 'user' ? '我' : cName.value;
+      return `[${time}] ${name}：${m.content}`;
+    });
+  
+  const text = `聊天記錄 — ${cName.value}\n${'─'.repeat(30)}\n${lines.join('\n')}`;
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `chat_${cName.value}_${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 </script>
 

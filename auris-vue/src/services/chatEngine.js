@@ -90,11 +90,12 @@ ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
 ${timeCtx}
 【回覆品質要求】
-・每則訊息要有具體內容，不能只是「嗯」「好啊」「哈哈」等空洞回應
+・每則訊息至少 50～150 字，要有具體內容，不能只是「嗯」「好啊」「哈哈」等空洞回應
 ・要回應對方說的具體內容，展現你真的在聽、在意
-・可以分享自己的感受、想法、記憶，讓對話有深度
+・可以分享自己的感受、想法、記憶、日常細節，讓對話有深度和溫度
 ・語氣、用詞要完全符合角色個性，不能像客服或 AI
 ・禁止使用「我理解你的感受」「這很有趣」「確實如此」等通用句
+・回覆要有延伸性，可以反問、聊到相關話題、分享自身經歷
 【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 3}則訊息，每則之間用換行分隔。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。`;
 
   const history = allMsgs.slice(-(c.memory || 20)).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
@@ -105,7 +106,7 @@ ${timeCtx}
   const lastUserMsg = history[history.length - 1]?.content || '';
   const longFormTriggers = /(\d{2,}\s*字|\d{2,}\s*words?|[一二三四五六七八九兩幾]百\s*字|[一二兩三]千\s*字|[一二三四五六七八九十兩]+\s*萬\s*字|(寫|說|講|來|編|想|聽|給我).{0,6}(故事|小說|文章|信|詩|散文|劇本|演講|報告|論文|介紹|長篇|短篇|童話|寓言|傳記|日記|劇情)|睡前故事|床邊故事|長一?點|詳細|完整|具體說明|長篇|大綱)/i;
   const isLongForm = longFormTriggers.test(lastUserMsg);
-  const dynamicMaxTokens = isLongForm ? 8000 : 2000;
+  const dynamicMaxTokens = isLongForm ? 8000 : 4000;
   const finalSystemPrompt = isLongForm
     ? systemPrompt + `\n\n【特別提示】使用者要求較長內容，請完整寫完整段，不要中途收尾或省略。如果是故事，要有開頭、發展、結尾；如果是文章，要有段落結構。寫到結束為止，不要刻意縮短。`
     : systemPrompt;
@@ -342,7 +343,8 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
     aiText = d.choices?.[0]?.message?.content || '';
   }
 
-  const namePrefix = new RegExp('^' + c.name + '[：:]\\s*');
+  const escapedName = c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const namePrefix = new RegExp('^' + escapedName + '[：:]\\s*');
   aiText = aiText.replace(namePrefix, '');
 
   if (aiText) {

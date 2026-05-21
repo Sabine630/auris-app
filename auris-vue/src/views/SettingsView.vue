@@ -78,10 +78,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · v0.38
+        Auris · v0.39
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        Vue 3 重構 · 架構規格文件 · UI 全面修復
+        7 項 Bug 修復 · 動態 PWA/Favicon 圖示
       </div>
     </div>
   </div>

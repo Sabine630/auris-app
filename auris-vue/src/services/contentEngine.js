@@ -50,7 +50,7 @@ ${c.hobby ? `【喜好】${c.hobby}` : ''}
 【說話風格】${styleMap[c.style] || '輕鬆自然'}
 
 【格式要求】
-1. 直接輸出貼文內容，不要加引號，長度約 20~80 字。
+1. 直接輸出貼文內容，不要加引號，長度約 60~200 字，要有具體的事件、感受或想法，不要只寫一句話。
 2. 可以在最後加上幾個相關 hashtag（在同一行或新行）。
 3. 如果角色個性適合，可以使用少量 emoji。`;
 
@@ -112,9 +112,9 @@ export async function generateCommentReply(postId, charId, userComment) {
   const base = await getSetting('api_base') || getDefBase(provider);
   const me = await getSetting('me_settings') || {};
 
-  const prompt = `你是「${c.name}」，個性：${c.persona || ''}。你剛發了一則貼文：「${p.content.substring(0, 80)}」。
-${me.name || '對方'}留言說：「${userComment}」
-請用角色口吻回覆這則留言，30字以內，自然簡短，像社群留言回覆的語氣。直接輸出回覆內容，不加引號。`;
+  const sysPrompt = `你是「${c.name}」，個性：${c.persona || ''}。你剛發了一則貼文：「${p.content.substring(0, 120)}」。
+請用角色口吻回覆留言，20~60字，自然簡短，像社群留言回覆的語氣。直接輸出回覆內容，不加引號。不要只回一個字或一個 emoji。`;
+  const userPrompt = `${me.name || '對方'}留言說：「${userComment}」`;
 
   try {
     let text = '';
@@ -122,17 +122,19 @@ ${me.name || '對方'}留言說：「${userComment}」
       const r = await fetchWithTimeout(`${base}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 200, messages: [{ role: 'user', content: prompt }] })
+        body: JSON.stringify({ model, max_tokens: 400, system: sysPrompt, messages: [{ role: 'user', content: userPrompt }] })
       });
       const d = await r.json();
+      if (d.error) throw new Error(d.error.message);
       text = d.content?.[0]?.text || '';
     } else {
       const r = await fetchWithTimeout(`${base}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, max_tokens: 200, temperature: 0.85, messages: [{ role: 'user', content: prompt }] })
+        body: JSON.stringify({ model, max_tokens: 400, temperature: 0.85, messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: userPrompt }] })
       });
       const d = await r.json();
+      if (d.error) throw new Error(d.error.message);
       text = d.choices?.[0]?.message?.content || '';
     }
 
@@ -183,7 +185,7 @@ ${recentChat ? `今天和對方的對話內容：\n${recentChat}\n` : ''}
 ・文字要有角色自己的聲音和語氣，不能像模板或作文
 ・可以有矛盾、糾結、沒說出口的話，讓日記有真實的層次
 ・禁止使用「今天過得很充實」「學到了很多」「期待明天」等空洞結語
-・正文 200-300 字，情感要流動，不要分條列點
+・正文 300-500 字，情感要流動，不要分條列點，要有足夠的篇幅展開敘述
 
 格式：
 第一行：日記標題（一句有畫面感的話，不要用問號，不要加引號）
@@ -265,7 +267,7 @@ ${recentTopics ? `最近聊過的話題：${recentTopics}。` : ''}
 ・語氣是清醒後回想的感覺，有些模糊，有些片段特別清晰
 ・不要解釋夢的象徵意義，直接描述所見所感所聞
 ・禁止使用「美麗的夢境」「奇異的感覺」「醒來後若有所思」等陳腔濫調
-・150-220字，寫完整，不要截斷
+・200-400字，寫完整，不要截斷，要有足夠的細節讓夢境畫面豐富
 
 直接輸出夢境文字，不要加標題或說明。`;
 

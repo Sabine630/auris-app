@@ -70,17 +70,69 @@
       </button>
     </div>
 
-    <!-- Modals -->
+    <!-- Group Info / Edit Modal -->
     <div class="menu-overlay" v-if="showGroupInfo" @click="showGroupInfo = false"></div>
     <div class="bottom-menu" :style="{ display: showGroupInfo ? 'block' : 'none' }">
-      <div style="padding:16px;border-bottom:.5px solid var(--border);text-align:center;font-weight:500">群組成員</div>
-      <div style="max-height:50vh;overflow-y:auto;padding:8px 0">
-        <div v-for="m in members" :key="m.id" class="menu-item" @click="startChat(m.id)">
-          <div style="width:36px;height:36px;border-radius:10px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden">
-            <img v-if="m.avatar && m.avatar.startsWith('data:')" :src="m.avatar" style="width:100%;height:100%;object-fit:cover;border-radius:10px">
-            <span v-else>{{ m.avatar || '🌸' }}</span>
+      <div style="padding:16px;border-bottom:.5px solid var(--border);text-align:center;font-weight:500">群組設定</div>
+      <div style="max-height:60vh;overflow-y:auto;padding:8px 0">
+        
+        <!-- Group Name Edit -->
+        <div style="padding:12px 16px">
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:6px;font-weight:400;letter-spacing:.04em">群組名稱</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input v-if="isEditingName" class="form-input" v-model="editNameValue" type="text" maxlength="20"
+              style="flex:1;font-size:14px;padding:8px 12px" @keydown.enter="saveGroupName">
+            <div v-else style="flex:1;font-size:14px;font-weight:500">{{ groupName }}</div>
+            <button v-if="isEditingName" @click="saveGroupName"
+              style="padding:6px 14px;border-radius:8px;background:var(--rose);color:#fff;border:none;font-size:12px;font-weight:500;cursor:pointer">儲存</button>
+            <button v-else @click="startEditName"
+              style="padding:6px 14px;border-radius:8px;background:var(--surface);color:var(--text);border:.5px solid var(--border);font-size:12px;font-weight:400;cursor:pointer">修改</button>
           </div>
-          <span>{{ m.name }}</span>
+        </div>
+        
+        <div style="height:.5px;background:var(--border);margin:4px 16px"></div>
+        
+        <!-- Members Management -->
+        <div style="padding:12px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-size:11px;color:var(--text-3);font-weight:400;letter-spacing:.04em">成員管理</div>
+            <button v-if="!isEditingMembers" @click="startEditMembers"
+              style="padding:4px 12px;border-radius:8px;background:var(--surface);color:var(--text);border:.5px solid var(--border);font-size:11px;font-weight:400;cursor:pointer">變更成員</button>
+            <button v-else @click="saveMembers"
+              style="padding:4px 12px;border-radius:8px;background:var(--rose);color:#fff;border:none;font-size:11px;font-weight:500;cursor:pointer">確認</button>
+          </div>
+          
+          <!-- Normal member list -->
+          <div v-if="!isEditingMembers">
+            <div v-for="m in members" :key="m.id" class="menu-item" @click="startChat(m.id)">
+              <div style="width:36px;height:36px;border-radius:10px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden">
+                <img v-if="m.avatar && m.avatar.startsWith('data:')" :src="m.avatar" style="width:100%;height:100%;object-fit:cover;border-radius:10px">
+                <span v-else>{{ m.avatar || '🌸' }}</span>
+              </div>
+              <span>{{ m.name }}</span>
+            </div>
+          </div>
+          
+          <!-- Edit member list (select/deselect) -->
+          <div v-else>
+            <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">勾選要加入群組的角色（至少 2 位）</div>
+            <div v-for="c in allCharacters" :key="c.id" 
+                 style="display:flex;align-items:center;gap:10px;padding:8px 4px;cursor:pointer;border-radius:8px;transition:background .15s"
+                 :style="editMemberIds.includes(c.id) ? 'background:var(--rose-pale)' : ''"
+                 @click="toggleMember(c.id)">
+              <div style="width:20px;height:20px;border-radius:6px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0"
+                   :style="editMemberIds.includes(c.id) ? 'background:var(--rose);border-color:var(--rose)' : ''">
+                <svg v-if="editMemberIds.includes(c.id)" viewBox="0 0 16 16" style="width:12px;height:12px;stroke:#fff;stroke-width:2;fill:none">
+                  <polyline points="3 8 7 12 13 4"/>
+                </svg>
+              </div>
+              <div style="width:32px;height:32px;border-radius:8px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;flex-shrink:0">
+                <img v-if="c.avatar && c.avatar.startsWith('data:')" :src="c.avatar" style="width:100%;height:100%;object-fit:cover;border-radius:8px">
+                <span v-else>{{ c.avatar || '🌸' }}</span>
+              </div>
+              <span style="font-size:13px;font-weight:400">{{ c.name }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -90,7 +142,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbIdx } from '../services/db.js';
+import { dbGet, dbIdx, dbPut, dbAll } from '../services/db.js';
 import { sendGroupMessage, generateGroupAIResponse } from '../services/chatEngine.js';
 
 const route = useRoute();
@@ -104,6 +156,13 @@ const messages = ref([]);
 const inputContent = ref('');
 const typingCharId = ref(null);
 const showGroupInfo = ref(false);
+
+// Edit state
+const isEditingName = ref(false);
+const editNameValue = ref('');
+const isEditingMembers = ref(false);
+const editMemberIds = ref([]);
+const allCharacters = ref([]);
 
 const scrollArea = ref(null);
 const chatInp = ref(null);
@@ -178,6 +237,56 @@ function startChat(id) {
   router.push('/chat/' + id);
 }
 
+// ── Group Name Edit ──
+function startEditName() {
+  editNameValue.value = groupName.value;
+  isEditingName.value = true;
+}
+
+async function saveGroupName() {
+  const newName = editNameValue.value.trim();
+  if (!newName) return;
+  groupName.value = newName;
+  group.value.name = newName;
+  await dbPut('groups', JSON.parse(JSON.stringify(group.value)));
+  isEditingName.value = false;
+}
+
+// ── Members Edit ──
+async function startEditMembers() {
+  // Load all characters for selection
+  allCharacters.value = await dbAll('characters');
+  editMemberIds.value = [...group.value.members];
+  isEditingMembers.value = true;
+}
+
+function toggleMember(id) {
+  const idx = editMemberIds.value.indexOf(id);
+  if (idx > -1) editMemberIds.value.splice(idx, 1);
+  else editMemberIds.value.push(id);
+}
+
+async function saveMembers() {
+  if (editMemberIds.value.length < 2) {
+    // Use a visible inline warning instead of alert for better UX
+    // TODO(security): Consider using a custom modal component instead of alert
+    window.alert('群組至少需要 2 位成員');
+    return;
+  }
+  group.value.members = [...editMemberIds.value];
+  await dbPut('groups', JSON.parse(JSON.stringify(group.value)));
+  
+  // Reload members data
+  members.value = [];
+  for (const charId of group.value.members) {
+    const c = await dbGet('characters', charId);
+    if (c) members.value.push(c);
+  }
+  
+  isEditingMembers.value = false;
+}
+
+// ── Send Message ──
 async function sendMsg() {
   const content = inputContent.value.trim();
   if (!content || typingCharId.value) return;
@@ -206,18 +315,35 @@ async function sendMsg() {
   if (targetChar) {
     typingCharId.value = targetChar.id;
     scrollToBottom();
-    try {
-      const msg = await generateGroupAIResponse(groupId, targetChar.id, messages.value, members.value);
-      if (msg) {
-        messages.value.push(msg);
-        scrollToBottom();
+    
+    let retries = 0;
+    const maxRetries = 2;
+    
+    while (retries < maxRetries) {
+      try {
+        const msg = await generateGroupAIResponse(groupId, targetChar.id, messages.value, members.value);
+        if (msg) {
+          messages.value.push(msg);
+          scrollToBottom();
+          break;
+        } else {
+          retries++;
+          if (retries >= maxRetries) {
+            // Silent fail — no message generated after retries
+            console.warn('Group AI response was empty after retries');
+          }
+        }
+      } catch (err) {
+        console.error('Group chat error:', err);
+        retries++;
+        if (retries >= maxRetries) {
+          // TODO(security): Use custom modal instead of alert in production
+          window.alert('回覆失敗：' + err.message);
+        }
       }
-    } catch (err) {
-      console.error(err);
-      alert('錯誤：' + err.message);
-    } finally {
-      typingCharId.value = null;
     }
+    
+    typingCharId.value = null;
   }
 }
 </script>

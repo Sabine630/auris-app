@@ -46,11 +46,72 @@ function updateClock() {
   time.value = `${h}:${m}`;
 }
 
+const THEME_BG = {
+  cream: '#f7f5f2', warm: '#ede8e0', dark: '#0f0e0d',
+  gray: '#f0eef2', ocean: '#eef2f5', matcha: '#eff3ee'
+};
+
+function generatePWAIcon() {
+  try {
+    const c = document.createElement('canvas');
+    c.width = c.height = 192;
+    const ctx = c.getContext('2d');
+    // 圓角矩形背景
+    const r = 42;
+    ctx.beginPath();
+    ctx.moveTo(r, 0); ctx.lineTo(192 - r, 0); ctx.quadraticCurveTo(192, 0, 192, r);
+    ctx.lineTo(192, 192 - r); ctx.quadraticCurveTo(192, 192, 192 - r, 192);
+    ctx.lineTo(r, 192); ctx.quadraticCurveTo(0, 192, 0, 192 - r);
+    ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0);
+    ctx.closePath();
+    ctx.fillStyle = '#f7f5f2'; ctx.fill();
+    // 文字 A
+    ctx.fillStyle = '#c9887a';
+    ctx.font = 'italic 300 96px Georgia,serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('A', 96, 134);
+    const png = c.toDataURL('image/png');
+    // 設定 Apple Touch Icon
+    const atiEl = document.getElementById('ati');
+    if (atiEl) atiEl.href = png;
+    // 設定 Favicon
+    const favEl = document.getElementById('fav');
+    if (favEl) favEl.href = png;
+    // 動態生成 manifest（跟當前主題同步）
+    const themeBg = THEME_BG[globalStore.theme] || THEME_BG.cream;
+    const manifest = {
+      name: 'Auris',
+      short_name: 'Auris',
+      description: '你說，他在聽',
+      start_url: './',
+      display: 'standalone',
+      background_color: themeBg,
+      theme_color: themeBg,
+      icons: [
+        { src: png, sizes: '192x192', type: 'image/png' },
+        { src: png, sizes: '512x512', type: 'image/png' }
+      ]
+    };
+    const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+    const manifestURL = URL.createObjectURL(manifestBlob);
+    const manifestLink = document.getElementById('manifest-link');
+    if (manifestLink) manifestLink.href = manifestURL;
+    // 同步 theme-color meta
+    const themeMeta = document.getElementById('theme-color-meta');
+    if (themeMeta) themeMeta.content = themeBg;
+  } catch (e) {
+    console.error('PWA Icon generation failed:', e);
+  }
+}
+
 let timer;
 onMounted(async () => {
   await globalStore.init();
   updateClock();
   timer = setInterval(updateClock, 10000);
+
+  // Generate PWA icon and manifest
+  generatePWAIcon();
 
   // Check onboarding
   const obDone = await getSetting('onboarding_done');
