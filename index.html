@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- PWA Icons (dynamically generated) -->
+    <link rel="icon" type="image/png" sizes="192x192" href="" id="fav">
+    <link rel="apple-touch-icon" sizes="180x180" href="" id="ati">
+    <link rel="manifest" href="" id="manifest-link">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Auris">
+    <meta name="theme-color" id="theme-color-meta" content="#0f0e0d">
+    <meta name="mobile-web-app-capable" content="yes">
+    <script>
+      (function(){
+        var THEME_BG={cream:'#f7f5f2',warm:'#ede8e0',dark:'#0f0e0d',gray:'#f0eef2',ocean:'#eef2f5',matcha:'#eff3ee'};
+        function applyBg(bg){
+          document.documentElement.style.background=bg;
+          document.body&&(document.body.style.background=bg);
+        }
+        try{
+          var cached=localStorage.getItem('auris-theme');
+          if(cached&&THEME_BG[cached]){applyBg(THEME_BG[cached]);}
+        }catch(e){}
+        try{
+          var req=indexedDB.open('AurisDB_v2',1);
+          req.onsuccess=function(e){
+            try{
+              var db=e.target.result;
+              var tx=db.transaction('settings','readonly');
+              var st=tx.objectStore('settings');
+              st.get('theme').onsuccess=function(ev){
+                if(ev.target.result&&THEME_BG[ev.target.result.value || ev.target.result]){
+                  var bg = THEME_BG[ev.target.result.value || ev.target.result];
+                  applyBg(bg);
+                  localStorage.setItem('auris-theme', ev.target.result.value || ev.target.result);
+                }
+              };
+            }catch(err){}
+          };
+        }catch(err){}
+      })();
+    </script>
+    <!-- SPA redirect restoration for GitHub Pages -->
+    <script>
+      (function(l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&')
+          }).join('?');
+          window.history.replaceState(null, null,
+            l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location));
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet">
+    <title>Auris</title>
+    <script type="module" crossorigin src="/auris-app/assets/index-CkQcUUjG.js"></script>
+    <link rel="stylesheet" crossorigin href="/auris-app/assets/index-D7v9dArz.css">
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>

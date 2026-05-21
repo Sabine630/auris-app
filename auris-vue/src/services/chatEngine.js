@@ -268,69 +268,63 @@ export async function sendGroupMessage(groupId, charId, content) {
 }
 
 export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs, members) {
-  const apiKey = await getSetting('api_key');
-  if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
-
   const c = await dbGet('characters', charIdToRespond);
   if (!c) return null;
 
-  const me = await getSetting('me_settings') || {};
+  const me = await dbGet('settings', 'my_profile') || {};
+  const apiKey = await getSetting('api_key');
+  if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
   const provider = await getSetting('api_provider') || 'openai';
-  const model = await getSetting('api_model') || getDefModel(provider);
-  const base = await getSetting('api_base') || getDefBase(provider);
+  const model = await getSetting('api_model') || 'gpt-5.4-mini';
+  let base = await getSetting('api_base');
+  // Need getDefBase from api.js if imported, but we can't easily. Wait, getDefBase is defined in chatEngine.js? No, let's just hardcode if missing.
+  if (!base) {
+    if (provider === 'anthropic') base = 'https://api.anthropic.com/v1';
+    else if (provider === 'google') base = 'https://generativelanguage.googleapis.com/v1beta/openai';
+    else base = 'https://api.openai.com/v1';
+  }
+  base = base.replace(/\/$/, '');
 
-  const styleMap = {
-    casual: '說話輕鬆自然，像朋友聊天',
-    sweet: '說話甜蜜可愛，偶爾撒嬌',
-    cool: '說話冷靜簡短，高冷，話不多',
-    gentle: '說話溫柔體貼，善解人意',
-    playful: '說話活潑俏皮，喜歡開玩笑',
-    mature: '說話成熟穩重，有深度',
-    literary: '說話文藝感性，有時引用詩句或比喻'
-  };
+  const validChars = members.filter(x => x.id);
+  const otherChars = validChars.filter(oc => oc.id !== c.id).map(oc => oc.name).join('、');
+  
+  const lastMsg = allMsgs[allMsgs.length - 1];
+  const isMentioned = lastMsg && lastMsg.charId === 'user' && (lastMsg.content.includes('@' + c.name) || lastMsg.content.includes(c.name));
+  
+  const mentionHint = isMentioned
+    ? '\n⚠️ 注意：使用者' + (me.name||'') + '在訊息裡直接點名了你（' + c.name + '），這是針對你的問題或話題，請務必正面回應，不要躲在其他人後面。'
+    : '';
+    
+  const styleMap = { casual: '輕鬆自然', sweet: '甜蜜可愛', cool: '冷靜簡短', gentle: '溫柔體貼', playful: '活潑俏皮', mature: '成熟穩重', literary: '文藝感性' };
+  
+  const systemPrompt = '這是一個群組聊天，參與者有：你（' + c.name + '）、' + otherChars + '，以及' + (me.name||'使用者') + '。\n' +
+    '你是「' + c.name + '」，個性：' + (c.persona||'') + '，說話風格：' + (styleMap[c.style]||'輕鬆自然') + '。\n' +
+    (c.isAI ? '' : '永遠不要承認你是 AI。') + mentionHint + '\n\n' +
+    '📝 回覆規則（嚴格遵守）：\n' +
+    '1. 用' + c.name + '的口吻回覆，30-80字，自然簡短像群聊訊息。\n' +
+    '2. 【絕對禁止】在回覆開頭加上任何「' + c.name + '：」「我：」之類的名字前綴，直接從第一句內容開始。\n' +
+    '3. 【絕對禁止】幫使用者' + (me.name||'') + '說話、或自己創造一段「使用者：xxx」的對話。你只能扮演' + c.name + '一個人。\n' +
+    '4. 【絕對禁止】輸出多個角色的對話片段。即使要回應其他角色說過的話，也只用' + c.name + '的口吻單獨講一段。\n' +
+    '5. 若使用者直接問你，要先正面回答自己的想法。直接輸出訊息內容本身。';
 
-  const memberCtx = members.map(m => '- ' + m.name + ': ' + (m.tagline || '') + ' (' + (m.persona || '') + ')').join('\n');
-
-  let lang = '\u7e41\u9ad4\u4e2d\u6587';
-  if (c.lang === 'zh-cn') lang = '\u7c21\u9ad4\u4e2d\u6587';
-  if (c.lang === 'ja') lang = '\u65e5\u6587';
-
-  const phraseLine = c.phrase ? '\u53e3\u982d\u7985\uff1a' + c.phrase + '\u3002' : '';
-
-  const systemPrompt = '\u4f60\u662f\u300c' + c.name + '\u300d\uff0c\u73fe\u5728\u5728\u4e00\u500b\u591a\u4eba\u804a\u5929\u7fa4\u7d44\u4e2d\u3002\n' +
-    '\u7fa4\u7d44\u88e1\u6709\u4ee5\u4e0b\u6210\u54e1\uff1a\n' + memberCtx + '\n' +
-    '\u4f7f\u7528\u8005\u4e5f\u5728\u7fa4\u7d44\u88e1\uff0c\u53eb\u505a\u300c' + (me.name || '\u4f60') + '\u300d\u3002\n\n' +
-    '\u3010\u4f60\u7684\u500b\u6027\u3011' + (c.persona || '') + '\n' +
-    '\u3010\u8aaa\u8a71\u98a8\u683c\u3011' + (styleMap[c.style] || '\u8f15\u9b06\u81ea\u7136') + '\n' +
-    phraseLine + '\n\n' +
-    '\u3010\u56de\u8986\u54c1\u8cea\u8981\u6c42\u3011\n' +
-    '\u30fb\u9019\u662f\u7fa4\u7d44\u804a\u5929\uff0c\u8acb\u6ce8\u610f\u5c0d\u8a71\u4e0a\u4e0b\u6587\uff0c\u56de\u61c9\u5176\u4ed6\u4eba\u6216\u4f7f\u7528\u8005\u7684\u767c\u8a00\u3002\n' +
-    '\u30fb\u7528' + lang + '\u56de\u8986\u3002\n' +
-    '\u30fb\u4e00\u6b21\u56de1\u52302\u53e5\u8a71\u5373\u53ef\uff0c\u4e0d\u8981\u592a\u9577\uff0c\u7b26\u5408\u7fa4\u804a\u7684\u7bc0\u594f\u3002\n' +
-    '\u30fb\u7981\u6b62\u52a0\u524d\u7db4\uff08\u5982\u300c' + c.name + ':\u300d\uff09\uff0c\u76f4\u63a5\u8f38\u51fa\u4f60\u60f3\u8aaa\u7684\u8a71\u3002';
-
-  const rawHistory = allMsgs.slice(-15).map(m => {
-    let name = '\u4f60';
-    if (m.charId !== 'user') {
-      const ch = members.find(x => x.id === m.charId);
-      name = ch ? ch.name : 'Unknown';
-    }
-    return {
-      role: m.charId === c.id ? 'assistant' : 'user',
-      content: m.charId === c.id ? m.content : name + '\uff1a' + m.content
-    };
+  const rawHistory = allMsgs.slice(-12).map(m => {
+    if (m.charId === 'user') return { role: 'user', content: m.content };
+    if (m.charId === c.id) return { role: 'assistant', content: m.content };
+    
+    const mc = members.find(x => x.id === m.charId);
+    const speakerName = mc ? mc.name : '';
+    return { role: 'user', content: '（' + speakerName + '剛剛說：' + m.content + '）' };
   });
 
   const history = [];
   for (const m of rawHistory) {
     if (history.length > 0 && history[history.length - 1].role === m.role) {
-      history[history.length - 1].content += '\n' + m.content;
+      history[history.length - 1].content += '\n\n' + m.content;
     } else {
       history.push(m);
     }
   }
 
-  // Anthropic / Gemini APIs usually require messages array to start with 'user'
   while (history.length > 0 && history[0].role === 'assistant') {
     history.shift();
   }
@@ -341,7 +335,7 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
     const r = await fetchWithTimeout(base + '/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 300, system: systemPrompt, messages: history })
+      body: JSON.stringify({ model, max_tokens: 800, system: systemPrompt, messages: history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }] })
     }, 30000);
     const d = await r.json();
     if (d.error) throw new Error(d.error.message);
@@ -350,7 +344,7 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
     const r = await fetchWithTimeout(base + '/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-      body: JSON.stringify({ model, max_tokens: 300, temperature: 0.8, messages: [{ role: 'system', content: systemPrompt }, ...history] })
+      body: JSON.stringify({ model, max_tokens: 800, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: systemPrompt }, ...(history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }])] })
     }, 30000);
     const d = await r.json();
     if (d.error) throw new Error(d.error.message);
@@ -360,8 +354,17 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
   const escapedName = c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const namePrefix = new RegExp('^' + escapedName + '[：:]\\s*');
   aiText = aiText.replace(namePrefix, '');
+  
+  const otherNamesRegex = validChars.filter(oc => oc.id !== c.id).map(oc => oc.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  if (otherNamesRegex) {
+    const dialogSwitchRegex = new RegExp('\\n(?:' + otherNamesRegex + ')[：:]', 'i');
+    const match = aiText.match(dialogSwitchRegex);
+    if (match) {
+      aiText = aiText.substring(0, match.index);
+    }
+  }
 
-  if (aiText) {
+  if (aiText.trim()) {
     const msg = {
       id: 'gmsg_' + Date.now() + '_ai',
       groupId,
