@@ -7,8 +7,8 @@
     </div>
     
     <div class="moments-filter" v-if="globalStore.characters.length > 0">
-      <div class="mf-btn" :class="{ active: filterCharId === 'all' }" @click="filterCharId = 'all'">全部</div>
-      <div v-for="c in globalStore.characters" :key="c.id" class="mf-btn" :class="{ active: filterCharId === c.id }" @click="filterCharId = c.id">
+      <div class="moments-chip" :class="{ sel: filterCharId === 'all' }" @click="filterCharId = 'all'">全部</div>
+      <div v-for="c in globalStore.characters" :key="c.id" class="moments-chip" :class="{ sel: filterCharId === c.id }" @click="filterCharId = c.id">
         {{ c.name }}
       </div>
     </div>
