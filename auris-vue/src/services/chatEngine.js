@@ -337,14 +337,15 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
       const r = await fetchWithTimeout(base + '/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 800, system: systemPrompt, messages: history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }] })
+        body: JSON.stringify({ model, max_tokens: 4000, system: systemPrompt, messages: history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }] })
       }, 30000);
       const d = await r.json();
       rawResponse = d;
-      if (d.error) throw new Error(d.error.message);
+      const errObj = Array.isArray(d) ? d[0]?.error : d.error;
+      if (errObj) throw new Error(errObj.message || JSON.stringify(errObj));
       aiText = d.content?.[0]?.text || '';
     } else {
-      const payload = { model, max_tokens: 800, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: systemPrompt }, ...(history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }])] };
+      const payload = { model, max_tokens: 4000, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: systemPrompt }, ...(history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }])] };
       const r = await fetchWithTimeout(base + '/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
@@ -352,7 +353,8 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
       }, 30000);
       const d = await r.json();
       rawResponse = d;
-      if (d.error) throw new Error(d.error.message);
+      const errObj = Array.isArray(d) ? d[0]?.error : d.error;
+      if (errObj) throw new Error(errObj.message || JSON.stringify(errObj));
       aiText = d.choices?.[0]?.message?.content || '';
     }
   } catch (err) {
