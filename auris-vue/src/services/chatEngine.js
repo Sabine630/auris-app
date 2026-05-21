@@ -330,9 +330,9 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
   }
 
   let aiText = '';
+  let rawResponse = null;
 
   try {
-    if (window.toast_) window.toast_('Debug: 開始呼叫 API');
     if (provider === 'anthropic') {
       const r = await fetchWithTimeout(base + '/messages', {
         method: 'POST',
@@ -340,6 +340,7 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
         body: JSON.stringify({ model, max_tokens: 800, system: systemPrompt, messages: history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }] })
       }, 30000);
       const d = await r.json();
+      rawResponse = d;
       if (d.error) throw new Error(d.error.message);
       aiText = d.content?.[0]?.text || '';
     } else {
@@ -350,18 +351,17 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
         body: JSON.stringify(payload)
       }, 30000);
       const d = await r.json();
-      if (d.error) {
-        if (window.toast_) window.toast_('API 返回錯誤: ' + JSON.stringify(d.error));
-        throw new Error(d.error.message);
-      }
+      rawResponse = d;
+      if (d.error) throw new Error(d.error.message);
       aiText = d.choices?.[0]?.message?.content || '';
     }
   } catch (err) {
-    if (window.toast_) window.toast_('Debug fetch 異常: ' + err.message);
-    throw err;
+    const debugMsg = { id: 'debug_' + Date.now(), groupId, charId: 'user', content: '【系統偵錯】API 呼叫失敗：' + err.message, createdAt: Date.now() };
+    await dbPut('group_messages', debugMsg);
+    return debugMsg;
   }
 
-  if (window.toast_) window.toast_('Debug: API 成功，回傳字數=' + aiText.length);
+  const rawAiText = aiText;
 
   const escapedName = c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const namePrefix = new RegExp('^' + escapedName + '[：:]\\s*');
@@ -376,7 +376,17 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
     }
   }
 
-  if (window.toast_ && !aiText.trim()) window.toast_('Debug: 清洗後變成空白！');
+  if (!aiText.trim()) {
+    const debugMsg = {
+      id: 'debug_' + Date.now(),
+      groupId,
+      charId: 'user',
+      content: '【系統偵錯】AI 回傳了空字串，或被清洗歸零。\n原始回傳長度：' + rawAiText.length + '\n原始內容：' + rawAiText + '\nAPI Raw JSON：' + JSON.stringify(rawResponse),
+      createdAt: Date.now()
+    };
+    await dbPut('group_messages', debugMsg);
+    return debugMsg;
+  }
 
   if (aiText.trim()) {
     const msg = {
