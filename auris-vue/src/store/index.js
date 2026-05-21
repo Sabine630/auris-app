@@ -1,5 +1,5 @@
 import { reactive } from 'vue';
-import { dbAll, getSetting } from '../services/db.js';
+import { initDB, dbAll, getSetting } from '../services/db.js';
 
 export const globalStore = reactive({
   theme: 'cream',
@@ -9,6 +9,7 @@ export const globalStore = reactive({
   keyboardOffset: 0,
 
   async init() {
+    await initDB();
     this.theme = await getSetting('theme') || 'cream';
     this.characters = await dbAll('characters');
     
