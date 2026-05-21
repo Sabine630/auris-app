@@ -136,6 +136,7 @@ AI 內容與對話生成邏輯：
 
 - `contentEngine.js`：負責生成貼文 (`generatePost`)、日記 (`generateDiary`)、夢境 (`generateDream`) 以及留言回覆 (`generateCommentReply`)。
 - `chatEngine.js`：負責處理單人聊天 (`generateAIResponse`) 以及群組聊天 (`generateGroupAIResponse`)。
+  - **API Error Handling**：因為考量到使用者可能會使用第三方的 API 代理 (Proxy) 伺服器，部分 Proxy 可能會回傳 Array 格式的錯誤訊息（例如 `[{"error": ...}]`），或是對特定的 `max_tokens` (如 800) 給予異常的靜默截斷 (`finish_reason: length`)。引擎內已實作陣列錯誤捕捉，且針對群組聊天放寬 `max_tokens: 4000` 來增加相容性。當生成發生錯誤或長度為 0 時，會直接以「【系統偵錯】」的 `user` 身分寫入 db，藉此回饋在畫面上供排查。
 
 ---
 
