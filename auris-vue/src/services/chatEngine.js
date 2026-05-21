@@ -331,25 +331,37 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
 
   let aiText = '';
 
-  if (provider === 'anthropic') {
-    const r = await fetchWithTimeout(base + '/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 800, system: systemPrompt, messages: history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }] })
-    }, 30000);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    aiText = d.content?.[0]?.text || '';
-  } else {
-    const r = await fetchWithTimeout(base + '/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-      body: JSON.stringify({ model, max_tokens: 800, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: systemPrompt }, ...(history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }])] })
-    }, 30000);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    aiText = d.choices?.[0]?.message?.content || '';
+  try {
+    if (window.toast_) window.toast_('Debug: 開始呼叫 API');
+    if (provider === 'anthropic') {
+      const r = await fetchWithTimeout(base + '/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model, max_tokens: 800, system: systemPrompt, messages: history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }] })
+      }, 30000);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error.message);
+      aiText = d.content?.[0]?.text || '';
+    } else {
+      const payload = { model, max_tokens: 800, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: systemPrompt }, ...(history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }])] };
+      const r = await fetchWithTimeout(base + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+        body: JSON.stringify(payload)
+      }, 30000);
+      const d = await r.json();
+      if (d.error) {
+        if (window.toast_) window.toast_('API 返回錯誤: ' + JSON.stringify(d.error));
+        throw new Error(d.error.message);
+      }
+      aiText = d.choices?.[0]?.message?.content || '';
+    }
+  } catch (err) {
+    if (window.toast_) window.toast_('Debug fetch 異常: ' + err.message);
+    throw err;
   }
+
+  if (window.toast_) window.toast_('Debug: API 成功，回傳字數=' + aiText.length);
 
   const escapedName = c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const namePrefix = new RegExp('^' + escapedName + '[：:]\\s*');
@@ -363,6 +375,8 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
       aiText = aiText.substring(0, match.index);
     }
   }
+
+  if (window.toast_ && !aiText.trim()) window.toast_('Debug: 清洗後變成空白！');
 
   if (aiText.trim()) {
     const msg = {

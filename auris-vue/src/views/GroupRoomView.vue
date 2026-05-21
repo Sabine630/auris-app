@@ -331,6 +331,7 @@ async function sendMsg() {
           if (retries >= maxRetries) {
             // Silent fail — no message generated after retries
             console.warn('Group AI response was empty after retries');
+            window.toast_('Debug: AI重試兩次都回傳空白或被清洗掉');
           }
         }
       } catch (err) {
