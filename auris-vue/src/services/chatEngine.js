@@ -330,6 +330,11 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
     }
   }
 
+  // Anthropic / Gemini APIs usually require messages array to start with 'user'
+  while (history.length > 0 && history[0].role === 'assistant') {
+    history.shift();
+  }
+
   let aiText = '';
 
   if (provider === 'anthropic') {
