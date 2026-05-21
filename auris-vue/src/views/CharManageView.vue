@@ -104,7 +104,7 @@ async function confirmDelete() {
   } catch (err) {
     console.error('Failed to delete character:', err);
     // TODO(security): Use custom modal instead of alert in production
-    window.alert('刪除失敗，請稍後再試');
+    window.toast_('刪除失敗，請稍後再試');
   } finally {
     isDeleting.value = false;
   }

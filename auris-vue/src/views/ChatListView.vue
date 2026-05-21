@@ -293,7 +293,7 @@ async function markAllRead() {
 
 async function batchClear() {
   if (!selectedChats.value.length) {
-    alert('請先選擇角色');
+    window.toast_('請先選擇角色');
     return;
   }
   if (!confirm(`確定要清空 ${selectedChats.value.length} 個角色的對話記錄嗎？`)) return;
@@ -313,7 +313,7 @@ async function batchClear() {
 
 async function batchDelete() {
   if (!selectedChats.value.length) {
-    alert('請先選擇角色');
+    window.toast_('請先選擇角色');
     return;
   }
   if (!confirm(`確定要刪除 ${selectedChats.value.length} 個角色嗎？所有對話記錄也會一併刪除。`)) return;

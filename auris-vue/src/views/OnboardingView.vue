@@ -120,7 +120,7 @@ async function obNext() {
     obStep.value = 1;
   } else if (obStep.value === 1) {
     if (!apiKey.value.trim()) {
-      alert('請填入 API 金鑰');
+      window.toast_('請填入 API 金鑰');
       return;
     }
     await setSetting('api_provider', apiProvider.value);
@@ -135,7 +135,7 @@ async function obNext() {
     obStep.value = 2;
   } else if (obStep.value === 2) {
     if (!charName.value.trim()) {
-      alert('請輸入角色名字');
+      window.toast_('請輸入角色名字');
       return;
     }
     // Create character

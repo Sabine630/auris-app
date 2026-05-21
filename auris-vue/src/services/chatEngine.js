@@ -309,7 +309,7 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
     '\u30fb\u4e00\u6b21\u56de1\u52302\u53e5\u8a71\u5373\u53ef\uff0c\u4e0d\u8981\u592a\u9577\uff0c\u7b26\u5408\u7fa4\u804a\u7684\u7bc0\u594f\u3002\n' +
     '\u30fb\u7981\u6b62\u52a0\u524d\u7db4\uff08\u5982\u300c' + c.name + ':\u300d\uff09\uff0c\u76f4\u63a5\u8f38\u51fa\u4f60\u60f3\u8aaa\u7684\u8a71\u3002';
 
-  const history = allMsgs.slice(-15).map(m => {
+  const rawHistory = allMsgs.slice(-15).map(m => {
     let name = '\u4f60';
     if (m.charId !== 'user') {
       const ch = members.find(x => x.id === m.charId);
@@ -320,6 +320,15 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
       content: m.charId === c.id ? m.content : name + '\uff1a' + m.content
     };
   });
+
+  const history = [];
+  for (const m of rawHistory) {
+    if (history.length > 0 && history[history.length - 1].role === m.role) {
+      history[history.length - 1].content += '\n' + m.content;
+    } else {
+      history.push(m);
+    }
+  }
 
   let aiText = '';
 

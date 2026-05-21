@@ -103,10 +103,10 @@ async function doGenerate() {
     const res = await generateDream(selectedCharId.value);
     if (res && res.entry) {
       dreams.value.push(res.entry);
-      if (res.truncated) alert('⚠ 夢境可能被截斷');
+      if (res.truncated) window.toast_('⚠ 夢境可能被截斷');
     }
   } catch (err) {
-    alert('生成失敗：' + err.message);
+    window.toast_('生成失敗：' + err.message);
   } finally {
     isGenerating.value = false;
   }

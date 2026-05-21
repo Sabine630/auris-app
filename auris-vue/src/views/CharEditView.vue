@@ -487,7 +487,7 @@ function toggleTag(t) {
   } else if (char.value.tags.length < 5) {
     char.value.tags.push(t);
   } else {
-    alert('最多選 5 個標籤');
+    window.toast_('最多選 5 個標籤');
   }
 }
 
@@ -531,7 +531,7 @@ function onAvFileChange(e) {
 function doAddStory() {
   const val = newStoryTitle.value.trim();
   if (!val) {
-    alert('請輸入章節名稱');
+    window.toast_('請輸入章節名稱');
     return;
   }
   const nb = {
@@ -556,11 +556,11 @@ function removeStory(idx) {
 
 async function saveChar() {
   if (!char.value.name.trim()) {
-    alert('請輸入角色名字');
+    window.toast_('請輸入角色名字');
     return;
   }
   if (!char.value.persona.trim()) {
-    alert('請填寫個性描述');
+    window.toast_('請填寫個性描述');
     return;
   }
 

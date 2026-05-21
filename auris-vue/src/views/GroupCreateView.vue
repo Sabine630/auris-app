@@ -56,7 +56,7 @@ function toggleSelect(id) {
 
 async function createGroup() {
   if (selectedMembers.value.length < 2) {
-    alert('最少需要選擇 2 位角色');
+    window.toast_('最少需要選擇 2 位角色');
     return;
   }
   const name = groupName.value.trim() || '未命名群組';

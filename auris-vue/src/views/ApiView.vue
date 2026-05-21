@@ -113,12 +113,12 @@ async function saveApi() {
   await setSetting('api_key', apiKey.value);
   await setSetting('api_model', apiModel.value);
   await setSetting('api_base', apiBase.value);
-  alert('API 設定已儲存！');
+  window.toast_('API 設定已儲存！');
 }
 
 async function testApi() {
   if (!apiKey.value) {
-    alert('請先填寫金鑰');
+    window.toast_('請先填寫金鑰');
     return;
   }
   isTesting.value = true;
@@ -147,13 +147,13 @@ async function testApi() {
     }, 10000);
 
     if (res.ok) {
-      alert('連線成功！');
+      window.toast_('連線成功！');
     } else {
       const d = await res.json();
-      alert('連線失敗：' + (d.error?.message || `HTTP ${res.status}`));
+      window.toast_('連線失敗：' + (d.error?.message || `HTTP ${res.status}`));
     }
   } catch (err) {
-    alert('連線異常：' + err.message);
+    window.toast_('連線異常：' + err.message);
   } finally {
     isTesting.value = false;
   }

@@ -17,6 +17,8 @@
         </transition>
       </router-view>
     </div>
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
 
     <!-- Bottom Navigation -->
     <BottomNav v-if="showNav" />
@@ -45,6 +47,16 @@ function updateClock() {
   const m = n.getMinutes().toString().padStart(2, '0');
   time.value = `${h}:${m}`;
 }
+
+let toastTimer;
+window.toast_ = (msg, ms = 4500) => {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+};
 
 const THEME_BG = {
   cream: '#f7f5f2', warm: '#ede8e0', dark: '#0f0e0d',

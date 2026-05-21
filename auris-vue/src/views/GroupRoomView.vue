@@ -270,7 +270,7 @@ async function saveMembers() {
   if (editMemberIds.value.length < 2) {
     // Use a visible inline warning instead of alert for better UX
     // TODO(security): Consider using a custom modal component instead of alert
-    window.alert('群組至少需要 2 位成員');
+    window.toast_('群組至少需要 2 位成員');
     return;
   }
   group.value.members = [...editMemberIds.value];
@@ -338,7 +338,7 @@ async function sendMsg() {
         retries++;
         if (retries >= maxRetries) {
           // TODO(security): Use custom modal instead of alert in production
-          window.alert('回覆失敗：' + err.message);
+          window.toast_('回覆失敗：' + err.message);
         }
       }
     }

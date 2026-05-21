@@ -127,7 +127,7 @@ async function doGenerate() {
   const today = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })();
   const existing = await dbIdx('diary', 'charId', charId);
   if (existing.find(d => d.date === today)) {
-    alert('今天已經生成過日記了');
+    window.toast_('今天已經生成過日記了');
     return;
   }
 
@@ -136,10 +136,10 @@ async function doGenerate() {
     const res = await generateDiary(charId);
     if (res && res.entry) {
       diaryList.value.push(res.entry);
-      if (res.truncated) alert('⚠ 日記可能被截斷');
+      if (res.truncated) window.toast_('⚠ 日記可能被截斷');
     }
   } catch (err) {
-    alert('生成失敗：' + err.message);
+    window.toast_('生成失敗：' + err.message);
   } finally {
     isGenerating.value = false;
     showGenPanel.value = false;

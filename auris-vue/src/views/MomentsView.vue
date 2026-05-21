@@ -115,10 +115,10 @@ async function doGeneratePost() {
     const res = await generatePost(filterCharId.value);
     if (res && res.entry) {
       moments.value.push(res.entry);
-      if (res.truncated) alert('⚠ 貼文可能被截斷');
+      if (res.truncated) window.toast_('⚠ 貼文可能被截斷');
     }
   } catch (err) {
-    alert('生成失敗：' + err.message);
+    window.toast_('生成失敗：' + err.message);
   } finally {
     isGenerating.value = false;
     showGenPanel.value = false;

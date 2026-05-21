@@ -242,12 +242,12 @@ async function sendMsg() {
     }
     if (truncated) {
       // TODO(security): Use custom modal instead of alert in production
-      window.alert('⚠ 回覆可能被截斷，可長按訊息重新生成 (後續實作長按功能)');
+      window.toast_('⚠ 回覆可能被截斷，可長按訊息重新生成 (後續實作長按功能)');
     }
   } catch (err) {
     console.error('Chat error:', err);
     // TODO(security): Use custom modal instead of alert in production
-    window.alert('錯誤：' + err.message);
+    window.toast_('錯誤：' + err.message);
   } finally {
     isTyping.value = false;
   }
@@ -277,7 +277,7 @@ function exportChat() {
   showMenu.value = false;
   if (!messages.value.length) {
     // TODO(security): Use custom modal instead of alert in production
-    window.alert('目前沒有聊天記錄可以匯出');
+    window.toast_('目前沒有聊天記錄可以匯出');
     return;
   }
   
