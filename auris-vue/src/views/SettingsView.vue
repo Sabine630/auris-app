@@ -78,10 +78,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · v0.43
+        Auris · v0.44
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        v0.43 月亮位置修正、iOS 鍵盤空白根治、留言回覆修復
+        v0.44 API 模型更新至最新、支援自訂模型 ID
       </div>
     </div>
   </div>

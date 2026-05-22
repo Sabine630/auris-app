@@ -26,7 +26,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, onUnmounted } from 'vue';
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from './store/index.js';
 import { getSetting } from './services/db.js';
@@ -116,9 +116,16 @@ function generatePWAIcon() {
   }
 }
 
+// Sync html element background with current theme so iOS keyboard flash matches app color
+function syncRootBg(theme) {
+  document.documentElement.style.background = THEME_BG[theme] || THEME_BG.cream;
+}
+watch(() => globalStore.theme, syncRootBg);
+
 let timer;
 onMounted(async () => {
   await globalStore.init();
+  syncRootBg(globalStore.theme);
   updateClock();
   timer = setInterval(updateClock, 10000);
 
