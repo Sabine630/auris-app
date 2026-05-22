@@ -1,5 +1,5 @@
 <template>
-  <div id="phone-container" class="phone" :data-theme="globalStore.theme" :style="{ paddingBottom: globalStore.keyboardOffset + 'px' }">
+  <div id="phone-container" class="phone" :data-theme="globalStore.theme">
     <!-- Status Bar (Desktop Only Preview) -->
     <div class="sb">
       <div class="sb-time" id="clock">{{ time }}</div>
@@ -130,6 +130,16 @@ onMounted(async () => {
   if (!obDone && route.name !== 'onboarding') {
     router.push('/onboarding');
   }
+
+  // iOS PWA keyboard: scroll focused input into view after keyboard animates in
+  document.addEventListener('focusin', (e) => {
+    const t = e.target;
+    if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
+    if (t.id === 'lock-in') return;
+    setTimeout(() => {
+      try { t.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {}
+    }, 300);
+  });
 });
 
 onUnmounted(() => {
