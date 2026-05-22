@@ -1120,17 +1120,17 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
     background: var(--bg) !important;
     margin: 0 !important;
     padding: 0 !important;
-    min-height: 100vh !important;
-    min-height: 100dvh !important;
-    overflow-x: hidden !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
     display: block !important;
   }
   body::before { display: none !important; }
 
   .phone {
     width: 100% !important;
-    min-height: 100vh !important;
-    min-height: 100dvh !important;
+    height: 100vh !important;
+    height: 100dvh !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     display: flex !important;
@@ -1139,6 +1139,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
     padding-bottom: 0 !important;
     margin: 0 !important;
     overflow: hidden !important;
+    box-sizing: border-box !important;
     background: var(--bg) !important;
   }
   .phone::before, .phone::after, .di, .sb { display: none !important; }

@@ -142,9 +142,12 @@ export async function generateCommentReply(postId, charId, userComment) {
       const reply = { role: 'assistant', content: text.trim(), createdAt: Date.now() };
       p.comments.push(reply);
       await dbPut('moments', p);
+    } else {
+      window.toast_?.('角色暫時沒有回應');
     }
   } catch (e) {
     console.error('Failed to generate comment reply', e);
+    window.toast_?.('留言回覆失敗：' + e.message);
   }
 }
 

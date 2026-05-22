@@ -293,32 +293,38 @@ async function sendMsg() {
 
   const userMsg = await sendGroupMessage(groupId, 'user', content);
   messages.value.push(userMsg);
-  
+
   inputContent.value = '';
   autoResize();
   scrollToBottom();
 
   // Determine who should reply based on @mention
-  let targetChar = null;
+  let targetChars = [];
   for (const m of members.value) {
     if (content.includes(`@${m.name}`) || content.includes(m.name)) {
-      targetChar = m;
-      break;
+      targetChars.push(m);
     }
   }
-  
-  // If no mention, pick a random character
-  if (!targetChar) {
-    targetChar = members.value[Math.floor(Math.random() * members.value.length)];
+
+  // If no mention, all members reply in shuffled order
+  if (targetChars.length === 0) {
+    targetChars = [...members.value].sort(() => Math.random() - 0.5);
   }
 
-  if (targetChar) {
+  for (let i = 0; i < targetChars.length; i++) {
+    const targetChar = targetChars[i];
+
+    // Add a natural delay between each character's response
+    if (i > 0) {
+      await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
+    }
+
     typingCharId.value = targetChar.id;
     scrollToBottom();
-    
+
     let retries = 0;
     const maxRetries = 2;
-    
+
     while (retries < maxRetries) {
       try {
         const msg = await generateGroupAIResponse(groupId, targetChar.id, messages.value, members.value);
@@ -329,7 +335,6 @@ async function sendMsg() {
         } else {
           retries++;
           if (retries >= maxRetries) {
-            // Silent fail — no message generated after retries
             console.warn('Group AI response was empty after retries');
             window.toast_('Debug: AI重試兩次都回傳空白或被清洗掉');
           }
@@ -338,12 +343,11 @@ async function sendMsg() {
         console.error('Group chat error:', err);
         retries++;
         if (retries >= maxRetries) {
-          // TODO(security): Use custom modal instead of alert in production
           window.toast_('回覆失敗：' + err.message);
         }
       }
     }
-    
+
     typingCharId.value = null;
   }
 }

@@ -37,7 +37,6 @@
     <!-- 夢境列表 -->
     <div class="dream-list">
       <div v-if="dreams.length === 0 && globalStore.characters.length > 0" class="bb-empty" style="padding-top:24px">
-        <div class="bb-empty-ic"><svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div>
         <div class="bb-empty-ttl">還沒有夢境紀錄</div>
         <div class="bb-empty-sub">選擇角色，讓他告訴你<br>他今晚夢見了什麼</div>
       </div>
