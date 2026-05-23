@@ -1,5 +1,5 @@
 import { dbGet, dbPut, dbIdx, dbDel, getSetting } from './db.js';
-import { fetchWithTimeout } from './api.js';
+import { fetchWithTimeout, sendLLMRequest } from './api.js';
 
 function getDefModel(provider) {
   if (provider === 'anthropic') return 'claude-3-5-sonnet-20240620';
@@ -148,7 +148,7 @@ ${timeCtx}
     
     // Background generation for Heart Voice (don't await)
     if (c.heartVoice) {
-      generateHeartVoice(c, allMsgs, aiText, provider, model, base, apiKey).catch(() => {});
+      generateHeartVoice(c, allMsgs, aiText).catch(() => {});
     }
 
     return { msg: aiMsg, truncated };
@@ -159,65 +159,51 @@ ${timeCtx}
 // ──────────────────────────────────────────────
 // Heart Voice Logic
 // ──────────────────────────────────────────────
-const HV_INTERVAL = 5;
+const HV_INTERVAL = 15;
 const HV_EMOTION_WORDS = ['喜歡','愛','討厭','難過','高興','開心','害怕','緊張','生氣','委屈','想念','孤單','幸福','失落','期待','驚訝','感動','羨慕','嫉妒','後悔','抱歉','謝謝','陪','一起','永遠','離開','再見','思念','心跳','臉紅','沉默','默默','其實','說不出','不敢'];
 
 function shouldTriggerHV(allMsgs, aiText) {
   const aiCount = allMsgs.filter(m => m.role === 'assistant').length;
   if (aiCount > 0 && aiCount % HV_INTERVAL === 0) return true;
+  
   const combined = (allMsgs.slice(-3).map(m => m.content).join('') + aiText);
-  return HV_EMOTION_WORDS.some(w => combined.includes(w));
+  if (HV_EMOTION_WORDS.some(w => combined.includes(w))) {
+    // 30% chance to trigger if an emotion word is found
+    return Math.random() < 0.3;
+  }
+  return false;
 }
 
-async function generateHeartVoice(c, allMsgs, lastAiText, provider, model, base, apiKey) {
+async function generateHeartVoice(c, allMsgs, lastAiText) {
   if (!shouldTriggerHV(allMsgs, lastAiText)) return;
 
   const userMsgs = allMsgs.filter(m => m.role === 'user');
   const lastUserMsg = userMsgs[userMsgs.length - 1];
   const lastAiSnippet = (lastAiText || '').slice(0, 150);
-  const recentMsgs = [];
-  if (lastUserMsg) recentMsgs.push({ role: 'user', content: lastUserMsg.content.slice(0, 150) });
-  if (lastAiSnippet) recentMsgs.push({ role: 'assistant', content: lastAiSnippet });
+  
+  let recentText = '';
+  if (lastUserMsg) recentText += `用戶：${lastUserMsg.content.slice(0, 150)}\n`;
+  if (lastAiSnippet) recentText += `你：${lastAiSnippet}\n`;
 
   const hvPrompt = `你是「${c.name}」。
 
 任務：寫一句**極短的內心話**——就是「沒說出口的那一句感受」。
 
+【近期對話參考】
+${recentText}
 【鐵則】
-1. **總字數 30 字以內**，最多兩句話
-2. 只寫**「沒說出口的那一句」**，不要敘述、不要說明、不要鋪陳
+1. 總字數 30 字以內，最多兩句話
+2. 只寫「沒說出口的那一句」，不要敘述、不要說明、不要鋪陳
 3. 不要重複任何對話內容、不要延續任何故事
 4. 不要說「心想：xxx」這種旁白格式，直接寫內心話本身
 5. 不要加引號、不要加 emoji
-6. 繁體中文，符合角色個性
+6. 絕對不要輸出（對話結束，請開始執行任務）等任何解釋與系統文字，直接給出內心話即可。
+7. 繁體中文，符合角色個性
 
-範例（這就是長度標準，不要超過）：
-「其實有點開心，但才不要說出來。」
-「他剛剛那句話，讓我有點在意。」
-「假裝沒聽見好了。」
-「哼，誰要理你。」
-
-現在請只寫**一句**內心話：`;
+現在請直接輸出一句內心話：`;
 
   try {
-    let hvText = '';
-    if (provider === 'anthropic') {
-      const r = await fetchWithTimeout(`${base}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 80, system: hvPrompt, messages: recentMsgs })
-      });
-      const d = await r.json();
-      hvText = d.content?.[0]?.text || '';
-    } else {
-      const r = await fetchWithTimeout(`${base}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, max_tokens: 80, temperature: 0.9, messages: [{ role: "system", content: hvPrompt }, ...recentMsgs] })
-      });
-      const d = await r.json();
-      hvText = d.choices?.[0]?.message?.content || '';
-    }
+    let hvText = await sendLLMRequest([{ role: 'user', content: hvPrompt }], { max_tokens: 80, temperature: 0.9 });
     
     hvText = hvText.trim().replace(/\n{2,}/g, ' ').replace(/\s+/g, ' ');
     if (hvText.length > 50) {

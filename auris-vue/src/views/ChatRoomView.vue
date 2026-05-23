@@ -33,7 +33,7 @@
 
           <!-- User Message -->
           <div v-else-if="m.role === 'user'" class="msg me" :class="{'msg-cont': isCont(i)}">
-            <div class="msg-bubble" :data-msg-id="m.id" data-role="user" v-html="formatContent(m.content)"></div>
+            <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id }" :data-msg-id="m.id" data-role="user" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
             <div v-if="!isCont(i)" class="msg-time">{{ fmtT(m.createdAt) }}</div>
           </div>
 
@@ -45,12 +45,12 @@
                 <span v-else>{{ cAvatar || '🌸' }}</span>
               </div>
               <div class="msg them">
-                <div class="msg-bubble" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content)"></div>
+                <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
                 <div class="msg-time">{{ fmtT(m.createdAt) }}</div>
               </div>
             </div>
             <div v-else class="msg-cont them">
-              <div class="msg-bubble" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content)"></div>
+              <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
             </div>
           </template>
         </template>
@@ -65,6 +65,15 @@
         </div>
 
       </div>
+    </div>
+
+    <!-- Edit Mode Bar -->
+    <div v-if="editingMsgRef" style="background:var(--rose);color:#fff;font-size:12px;padding:8px 16px;display:flex;justify-content:space-between;align-items:center;animation:fade-in .2s ease">
+      <div style="display:flex;align-items:center;gap:6px">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        <span>正在編輯歷史訊息...</span>
+      </div>
+      <div @click="cancelEdit" style="font-weight:600;padding:4px 8px;border-radius:4px;background:rgba(255,255,255,0.2);cursor:pointer">取消</div>
     </div>
 
     <!-- Input Area -->
@@ -121,13 +130,31 @@
           style="flex:1;padding:12px;border-radius:12px;background:#e74c3c;color:#fff;border:none;font-size:14px;font-weight:500;cursor:pointer">確認清除</button>
       </div>
     </div>
+
+    <!-- Message Action Sheet -->
+    <div class="msg-sheet-mask show" v-if="activeMsg" @click="activeMsg = null"></div>
+    <div class="msg-sheet show" v-if="activeMsg">
+      <div class="msg-sheet-item" @click="doCopy(activeMsg)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>
+        <span>複製</span>
+      </div>
+      <div class="msg-sheet-item" v-if="isLatestUserMsg(activeMsg)" @click="doEditAndResend(activeMsg)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        <span>編輯並重傳</span>
+      </div>
+      <div class="msg-sheet-item" v-if="isLatestAiMsg(activeMsg)" @click="doRegenerate(activeMsg)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-9 9 9.75 9.75 0 01-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+        <span>重新生成回覆</span>
+      </div>
+      <div class="msg-sheet-cancel" @click="activeMsg = null">取消</div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbIdx, dbDel } from '../services/db.js';
+import { dbGet, dbIdx, dbDel, dbPut } from '../services/db.js';
 import { sendUserMessage, generateAIResponse } from '../services/chatEngine.js';
 
 const route = useRoute();
@@ -146,6 +173,13 @@ const chatInp = ref(null);
 
 const cName = ref('—');
 const cAvatar = ref('');
+
+// ── Long Press & Actions State ──
+const activeMsg = ref(null);
+const pressingMsgId = ref(null);
+let pressTimer = null;
+let pressStartXY = null;
+const editingMsgRef = ref(null);
 
 onMounted(async () => {
   const c = await dbGet('characters', charId);
@@ -223,6 +257,14 @@ async function sendMsg() {
   const content = inputContent.value.trim();
   if (!content || isTyping.value) return;
 
+  // Handle Edit & Resend deletion if in Edit Mode
+  if (editingMsgRef.value) {
+    const toDelete = messages.value.filter(x => x.createdAt >= editingMsgRef.value.createdAt);
+    for (const x of toDelete) await dbDel('messages', x.id);
+    messages.value = messages.value.filter(x => x.createdAt < editingMsgRef.value.createdAt);
+    editingMsgRef.value = null;
+  }
+
   // Insert user message locally
   const userMsg = await sendUserMessage(charId, content);
   messages.value.push(userMsg);
@@ -241,8 +283,7 @@ async function sendMsg() {
       scrollToBottom();
     }
     if (truncated) {
-      // TODO(security): Use custom modal instead of alert in production
-      window.toast_('⚠ 回覆可能被截斷，可長按訊息重新生成 (後續實作長按功能)');
+      window.toast_('⚠ 回覆可能被截斷，可長按訊息「重新生成回覆」');
     }
   } catch (err) {
     console.error('Chat error:', err);
@@ -297,6 +338,128 @@ function exportChat() {
   a.download = `chat_${cName.value}_${new Date().toISOString().slice(0,10)}.txt`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ── Long Press Handlers ──
+function startPress(e, m) {
+  if (m.isEditing) return;
+  const t = e.touches ? e.touches[0] : e;
+  pressStartXY = { x: t.clientX, y: t.clientY };
+  pressingMsgId.value = m.id;
+  
+  pressTimer = setTimeout(() => {
+    pressingMsgId.value = null;
+    if (navigator.vibrate) navigator.vibrate(20);
+    activeMsg.value = m;
+  }, 380);
+}
+
+function cancelPress(e) {
+  if (e && (e.type === 'touchmove' || e.type === 'mousemove') && pressStartXY) {
+    const t = e.touches ? e.touches[0] : e;
+    if (Math.abs(t.clientX - pressStartXY.x) < 8 && Math.abs(t.clientY - pressStartXY.y) < 8) return;
+  }
+  if (pressTimer) {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+  }
+  pressingMsgId.value = null;
+  pressStartXY = null;
+}
+
+// ── Action Sheet Checks ──
+function isLatestUserMsg(m) {
+  if (m.role !== 'user') return false;
+  const userMsgs = messages.value.filter(x => x.role === 'user');
+  if (!userMsgs.length) return false;
+  return userMsgs[userMsgs.length - 1].id === m.id;
+}
+
+function isLatestAiMsg(m) {
+  if (m.role !== 'assistant') return false;
+  const aiMsgs = messages.value.filter(x => x.role === 'assistant');
+  if (!aiMsgs.length) return false;
+  return aiMsgs[aiMsgs.length - 1].id === m.id;
+}
+
+// ── Action Implementations ──
+function copyTextSync(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:2em;height:2em;padding:0;border:none;outline:none;box-shadow:none;background:transparent;opacity:0;-webkit-user-select:text !important;user-select:text !important';
+    ta.setAttribute('readonly', '');
+    document.body.appendChild(ta);
+    ta.focus();
+    const range = document.createRange();
+    range.selectNodeContents(ta);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    sel.removeAllRanges();
+    ta.remove();
+    if (ok) return true;
+  } catch (e) {}
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => {});
+    return true;
+  }
+  return false;
+}
+
+function doCopy(m) {
+  const ok = copyTextSync(m.content);
+  activeMsg.value = null;
+  window.toast_(ok ? '已複製' : '複製失敗，請手動選取');
+}
+
+function doEditAndResend(m) {
+  activeMsg.value = null;
+  if (isTyping.value) {
+    window.toast_('請等對方回覆完成');
+    return;
+  }
+  editingMsgRef.value = m;
+  inputContent.value = m.content;
+  autoResize();
+  chatInp.value?.focus();
+}
+
+function cancelEdit() {
+  editingMsgRef.value = null;
+  inputContent.value = '';
+  autoResize();
+}
+
+async function doRegenerate(m) {
+  activeMsg.value = null;
+  if (isTyping.value) {
+    window.toast_('請等對方回覆完成');
+    return;
+  }
+  
+  const toDelete = messages.value.filter(x => x.createdAt >= m.createdAt);
+  for (const x of toDelete) await dbDel('messages', x.id);
+  
+  messages.value = messages.value.filter(x => x.createdAt < m.createdAt);
+  
+  isTyping.value = true;
+  try {
+    const rawMsgs = messages.value.filter(x => x.type !== 'hv');
+    const { msg, truncated } = await generateAIResponse(charId, rawMsgs);
+    if (msg) {
+      messages.value.push(msg);
+      scrollToBottom();
+    }
+    if (truncated) window.toast_('⚠ 回覆可能被截斷');
+  } catch (err) {
+    console.error('Chat error:', err);
+    window.toast_('錯誤：' + err.message);
+  } finally {
+    isTyping.value = false;
+  }
 }
 </script>
 
