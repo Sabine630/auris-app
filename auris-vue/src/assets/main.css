@@ -124,6 +124,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* ═══ 手機瀏覽器（max-width 500px）：全版面 ═══ */
 @media (max-width:500px){
   html,body{background:var(--bg) !important;align-items:flex-start;justify-content:flex-start;min-height:100dvh}
+  body{position:fixed;width:100%}
   body::before{display:none}
   .phone{
     width:100%;

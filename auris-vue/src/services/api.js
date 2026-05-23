@@ -61,12 +61,13 @@ export async function sendLLMRequest(messages, customConfig = {}) {
   });
 
   const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error?.message || `HTTP Error ${res.status}`);
+  const errObj = Array.isArray(data) ? data[0]?.error : data.error;
+  if (!res.ok || errObj) {
+    throw new Error(errObj?.message || JSON.stringify(errObj) || `HTTP Error ${res.status}`);
   }
 
   if (provider === 'anthropic') {
-    return data.content[0].text;
+    return data.content?.[0]?.text || '';
   }
-  return data.choices[0].message.content;
+  return data.choices?.[0]?.message?.content || '';
 }

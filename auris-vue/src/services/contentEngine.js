@@ -1,5 +1,5 @@
 import { dbGet, dbPut, getSetting } from './db.js';
-import { fetchWithTimeout } from './api.js';
+import { fetchWithTimeout, sendLLMRequest } from './api.js';
 
 function getDefModel(provider) {
   if (provider === 'anthropic') return 'claude-sonnet-4-6';
@@ -108,39 +108,18 @@ export async function generateCommentReply(postId, charId, userComment) {
   if (!c || !p) { console.warn('generateCommentReply: char or post not found', charId, postId); return; }
 
   const me = await getSetting('me_settings') || {};
-  const provider = await getSetting('api_provider') || 'openai';
-  const model = await getSetting('api_model') || getDefModel(provider);
-  const base = (await getSetting('api_base') || getDefBase(provider)).replace(/\/$/, '');
 
-  const sysPrompt = `你是「${c.name}」，個性：${c.persona || ''}。你剛發了一則貼文：「${(p.content || '').substring(0, 120)}」。
-請用角色口吻回覆留言，20~60字，自然簡短，像社群留言回覆的語氣。直接輸出回覆內容，不加引號。不要只回一個字或一個 emoji。`;
-
-  let text = '';
+  const prompt = `你是「${c.name}」，個性：${c.persona || ''}。你剛發了一則貼文：「${(p.content || '').substring(0, 120)}」。\n${me.name || '對方'}留言說：「${userComment}」\n請用角色口吻回覆留言，20~60字，自然簡短，像社群留言回覆的語氣。直接輸出回覆內容，不加引號。不要只回一個字或一個 emoji。`;
 
   try {
-    if (provider === 'anthropic') {
-      const r = await fetchWithTimeout(`${base}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 400, system: sysPrompt, messages: [{ role: 'user', content: `${me.name || '對方'}留言說：「${userComment}」` }] })
-      });
-      const d = await r.json();
-      if (d.error) throw new Error(d.error.message);
-      text = d.content?.[0]?.text || '';
-    } else {
-      const r = await fetchWithTimeout(`${base}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, max_tokens: 400, temperature: 0.85, messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: `${me.name || '對方'}留言說：「${userComment}」` }] })
-      });
-      const d = await r.json();
-      const errObj = Array.isArray(d) ? d[0]?.error : d.error;
-      if (errObj) throw new Error(errObj.message || JSON.stringify(errObj));
-      text = d.choices?.[0]?.message?.content || '';
-    }
+    const text = await sendLLMRequest(
+      [{ role: 'user', content: prompt }],
+      { max_tokens: 400, temperature: 0.85 }
+    );
 
-    if (text.trim()) {
+    if (text && text.trim()) {
       const reply = { role: 'assistant', content: text.trim(), createdAt: Date.now() };
+      if (!p.comments) p.comments = [];
       p.comments.push(reply);
       await dbPut('moments', p);
     } else {
