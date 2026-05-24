@@ -71,7 +71,7 @@ graph TD
 
 ## 3. IndexedDB 資料庫
 
-**資料庫名稱**：`auris`　**版本**：v4
+**資料庫名稱**：`auris`　**版本**：v5
 
 | 資料表 | keyPath | 索引 | 說明 |
 |--------|---------|------|------|
@@ -85,6 +85,7 @@ graph TD
 | `groups` | `id` | — | 群組設定 |
 | `group_messages` | `id` | `groupId`, `createdAt` | 群組訊息 |
 | `notifications` | `id` | `charId`, `createdAt` | 通知記錄 |
+| `chat_memories` | `id` | `charId` | 長期記憶條目（P48）|
 | `settings` | `key` | — | 系統設定（key-value） |
 
 ### Settings 常用 key
@@ -262,6 +263,17 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### v0.49 / P48（2026-05-24）
+
+**長期記憶與總結助手（記憶抽屜）：**
+
+- **IndexedDB v5**（`db.js`）：新增 `chat_memories` 資料表，keyPath `id`，索引 `charId`，schema：`{ id, charId, title, content, enabled, createdAt }`。加入 `ALL_STORES` 以支援 export/import。
+- **`summarizeToMemory(charId, messages, count)`**（`chatEngine.js`）：呼叫 LLM 將最近 N 則對話濃縮成 100～200 字第三人稱摘要，儲存為 `chat_memories` 條目，相容 OpenAI / Anthropic / Google。
+- **記憶注入 System Prompt**（`chatEngine.js` → `buildAIChatSetup`）：讀取已啟用（`enabled: true`）的 `chat_memories` 條目，以 `【長期記憶】` 區塊串入系統提示，讓 AI 跨對話保有關鍵記憶。
+- **記憶抽屜 UI**（`ChatRoomView.vue`）：標題列新增腦波圖示（已啟用時顯示紅點徽章），點擊展開滑入式抽屜：AI 總結按鈕（帶 loading 狀態）、記憶列表（toggle 開關、展開詳情、刪除）、token 消耗估算（已開啟筆數 & 約 X token）。
+
+---
 
 ### v0.48 / P47（2026-05-24）
 

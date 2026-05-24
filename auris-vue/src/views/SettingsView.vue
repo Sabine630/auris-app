@@ -78,10 +78,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P47
+        Auris · P48
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P47 聊天室 Streaming 串流輸出（一對一 + 群組）
+        P48 長期記憶與總結助手（記憶抽屜）
       </div>
     </div>
   </div>

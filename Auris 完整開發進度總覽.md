@@ -1230,6 +1230,24 @@ auris-vue/src/
 
 ---
 
+### P48: 長期記憶與總結助手（記憶抽屜）✅
+**日期**: 2026-05-24
+**核心改動**:
+1. **IndexedDB 升至 v5**：於 `db.js` 新增 `chat_memories` 資料表（索引 `charId`），並加入 export/import ALL_STORES。
+2. **AI 總結函式**：於 `chatEngine.js` 新增 `summarizeToMemory(charId, messages, count)`，呼叫 LLM 將近期對話濃縮成 100～200 字摘要，儲存為記憶條目，相容 OpenAI / Anthropic / Google 三種 provider。
+3. **記憶注入 System Prompt**：`buildAIChatSetup` 讀取該角色已啟用的記憶條目，以 `【長期記憶】` 區塊插入 system prompt，讓 AI 記住跨對話的重要資訊。
+4. **記憶抽屜 UI**：`ChatRoomView.vue` 標題列新增記憶腦波圖示（已啟用時顯示紅點徽章），點擊展開滑入式抽屜面板：AI 總結按鈕、記憶列表（含開關 toggle、展開詳情、刪除）、token 消耗估算。
+
+**受影響檔案**:
+| 檔案 | 說明 |
+|------|------|
+| `auris-vue/src/services/db.js` | DB 升 v5，新增 `chat_memories` store |
+| `auris-vue/src/services/chatEngine.js` | 新增 `summarizeToMemory`，`buildAIChatSetup` 注入記憶 |
+| `auris-vue/src/views/ChatRoomView.vue` | 記憶抽屜 UI、state、CRUD 函式 |
+| `auris-vue/src/views/SettingsView.vue` | 版號更新 P47 → P48 |
+
+---
+
 ### P46: 對話長按選單復刻與 UX 優化 ✅
 **日期**: 2026-05-23
 **核心改動**:

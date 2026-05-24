@@ -2,7 +2,7 @@ let db = null;
 
 export function initDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('auris', 4);
+    const r = indexedDB.open('auris', 5);
     r.onupgradeneeded = (e) => {
       const d = e.target.result;
       [
@@ -16,6 +16,7 @@ export function initDB() {
         ['groups', []],
         ['group_messages', [['groupId', 'groupId'], ['createdAt', 'createdAt']]],
         ['notifications', [['charId', 'charId'], ['createdAt', 'createdAt']]],
+        ['chat_memories', [['charId', 'charId']]],
       ].forEach(([name, idx]) => {
         if (!d.objectStoreNames.contains(name)) {
           const os = d.createObjectStore(name, { keyPath: 'id' });
@@ -45,7 +46,7 @@ export const dbClear = (s) => new Promise((r, j) => { const tx = db.transaction(
 export const getSetting = async (k) => { const r = await dbGet('settings', k); return r ? r.value : null; };
 export const setSetting = (k, v) => dbPut('settings', { key: k, value: v });
 
-const ALL_STORES = ['characters', 'messages', 'memories', 'moments', 'diary', 'dreams', 'worlds', 'groups', 'group_messages', 'notifications', 'settings'];
+const ALL_STORES = ['characters', 'messages', 'memories', 'moments', 'diary', 'dreams', 'worlds', 'groups', 'group_messages', 'notifications', 'chat_memories', 'settings'];
 
 export async function exportAllData() {
   const data = {};

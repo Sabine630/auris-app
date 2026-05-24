@@ -13,6 +13,14 @@
         <div class="chat-hd-name" id="chat-name">{{ cName }}</div>
         <div class="chat-hd-status" id="chat-status">在線</div>
       </div>
+      <div class="chat-hd-mem" @click="openMemDrawer" :title="enabledMemCount ? `${enabledMemCount} 筆記憶已開啟` : '記憶抽屜'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+          <path d="M8 12c0-2.21 1.79-4 4-4s4 1.79 4 4-1.79 4-4 4"/>
+          <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+        </svg>
+        <span v-if="enabledMemCount" class="mem-badge">{{ enabledMemCount }}</span>
+      </div>
       <div class="chat-hd-more" @click="showMenu = true">⋯</div>
     </div>
 
@@ -131,6 +139,49 @@
       </div>
     </div>
 
+    <!-- Memory Drawer -->
+    <div class="menu-overlay" v-if="showMemDrawer" @click="showMemDrawer = false"></div>
+    <div class="mem-drawer" :class="{ open: showMemDrawer }">
+      <div class="mem-drawer-hd">
+        <span>記憶抽屜</span>
+        <div class="mem-drawer-close" @click="showMemDrawer = false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </div>
+      </div>
+
+      <div style="padding:12px 16px 8px">
+        <button class="mem-sum-btn" @click="doSummarize" :disabled="isSummarizing">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:16px;height:16px;flex-shrink:0">
+            <path d="M12 2a10 10 0 110 20A10 10 0 0112 2z"/><path d="M12 8v4l3 3"/>
+          </svg>
+          <span>{{ isSummarizing ? 'AI 總結中…' : `AI 總結近期 ${sumCount} 則對話` }}</span>
+        </button>
+      </div>
+
+      <div class="mem-list" v-if="chatMems.length">
+        <div class="mem-item" v-for="mem in chatMems" :key="mem.id">
+          <label class="mem-toggle">
+            <input type="checkbox" :checked="mem.enabled" @change="toggleMem(mem)">
+            <span class="mem-toggle-track"></span>
+          </label>
+          <div class="mem-body" @click="expandedMemId = expandedMemId === mem.id ? null : mem.id">
+            <div class="mem-title">{{ mem.title }}</div>
+            <div class="mem-content" :class="{ expanded: expandedMemId === mem.id }">{{ mem.content }}</div>
+          </div>
+          <div class="mem-del" @click="deleteMem(mem.id)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+          </div>
+        </div>
+      </div>
+      <div v-else style="padding:24px 16px;text-align:center;font-size:12px;font-weight:300;color:var(--text-3)">
+        還沒有記憶。點上方按鈕讓 AI 自動總結對話吧
+      </div>
+
+      <div class="mem-footer">
+        <span>已開啟 {{ enabledMemCount }} 筆・約 {{ enabledTokenEstimate }} token</span>
+      </div>
+    </div>
+
     <!-- Message Action Sheet -->
     <div class="msg-sheet-mask show" v-if="activeMsg" @click="activeMsg = null"></div>
     <div class="msg-sheet show" v-if="activeMsg">
@@ -152,10 +203,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, onUnmounted } from 'vue';
+import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbIdx, dbDel } from '../services/db.js';
-import { sendUserMessage, generateAIResponseStream } from '../services/chatEngine.js';
+import { dbGet, dbIdx, dbDel, dbPut } from '../services/db.js';
+import { sendUserMessage, generateAIResponseStream, summarizeToMemory } from '../services/chatEngine.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -181,6 +232,19 @@ let pressTimer = null;
 let pressStartXY = null;
 const editingMsgRef = ref(null);
 
+// ── Memory Drawer State ──
+const showMemDrawer = ref(false);
+const chatMems = ref([]);
+const isSummarizing = ref(false);
+const expandedMemId = ref(null);
+const sumCount = 20;
+
+const enabledMemCount = computed(() => chatMems.value.filter(m => m.enabled).length);
+const enabledTokenEstimate = computed(() => {
+  const total = chatMems.value.filter(m => m.enabled).reduce((acc, m) => acc + m.content.length, 0);
+  return Math.ceil(total / 3);
+});
+
 onMounted(async () => {
   const c = await dbGet('characters', charId);
   if (!c) {
@@ -192,7 +256,8 @@ onMounted(async () => {
   cAvatar.value = c.avatar;
 
   await loadMessages();
-  
+  await loadChatMems();
+
   // Listen for background Heart Voices
   window.addEventListener('new-heart-voice', onHeartVoice);
 });
@@ -206,6 +271,46 @@ async function loadMessages() {
   msgs.sort((a, b) => a.createdAt - b.createdAt);
   messages.value = msgs;
   scrollToBottom();
+}
+
+async function loadChatMems() {
+  const mems = await dbIdx('chat_memories', 'charId', charId);
+  mems.sort((a, b) => b.createdAt - a.createdAt);
+  chatMems.value = mems;
+}
+
+async function openMemDrawer() {
+  await loadChatMems();
+  showMemDrawer.value = true;
+}
+
+async function toggleMem(mem) {
+  mem.enabled = !mem.enabled;
+  await dbPut('chat_memories', { ...mem });
+}
+
+async function deleteMem(id) {
+  await dbDel('chat_memories', id);
+  chatMems.value = chatMems.value.filter(m => m.id !== id);
+}
+
+async function doSummarize() {
+  if (isSummarizing.value) return;
+  const rawMsgs = messages.value.filter(m => m.type !== 'hv');
+  if (rawMsgs.length < 2) {
+    window.toast_('對話記錄太少，無法總結');
+    return;
+  }
+  isSummarizing.value = true;
+  try {
+    const mem = await summarizeToMemory(charId, rawMsgs, sumCount);
+    chatMems.value.unshift(mem);
+    window.toast_('已儲存 AI 總結記憶');
+  } catch (err) {
+    window.toast_('總結失敗：' + err.message);
+  } finally {
+    isSummarizing.value = false;
+  }
 }
 
 function onHeartVoice(e) {
@@ -506,4 +611,173 @@ async function doRegenerate(m) {
   vertical-align: baseline;
 }
 @keyframes blink-cursor { 50% { opacity: 0; } }
+
+/* Memory icon button in header */
+.chat-hd-mem {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  margin-right: 2px;
+  color: var(--text-3);
+}
+.chat-hd-mem svg { width: 20px; height: 20px; }
+.mem-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--rose);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  border-radius: 6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Memory Drawer */
+.mem-drawer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 72vh;
+  background: var(--bg);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -4px 32px rgba(0,0,0,.12);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform .3s cubic-bezier(.32,.72,0,1);
+}
+.mem-drawer.open { transform: translateY(0); }
+
+.mem-drawer-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  font-weight: 500;
+  font-size: 15px;
+  border-bottom: .5px solid var(--border);
+  flex-shrink: 0;
+}
+.mem-drawer-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-3);
+}
+.mem-drawer-close svg { width: 16px; height: 16px; }
+
+.mem-sum-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: .5px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.mem-sum-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.mem-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0 8px;
+}
+
+.mem-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: .5px solid var(--border);
+}
+
+.mem-toggle { flex-shrink: 0; margin-top: 2px; }
+.mem-toggle input { display: none; }
+.mem-toggle-track {
+  display: block;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--border);
+  position: relative;
+  cursor: pointer;
+  transition: background .2s;
+}
+.mem-toggle-track::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+.mem-toggle input:checked + .mem-toggle-track { background: var(--rose); }
+.mem-toggle input:checked + .mem-toggle-track::after { transform: translateX(16px); }
+
+.mem-body { flex: 1; min-width: 0; cursor: pointer; }
+.mem-title { font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 3px; }
+.mem-content {
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--text-3);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mem-content.expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+.mem-del {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-3);
+  margin-top: -2px;
+}
+.mem-del svg { width: 16px; height: 16px; }
+
+.mem-footer {
+  padding: 10px 16px 20px;
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--text-3);
+  text-align: center;
+  border-top: .5px solid var(--border);
+  flex-shrink: 0;
+}
 </style>

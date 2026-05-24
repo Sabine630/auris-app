@@ -1,4 +1,4 @@
-import { dbGet, dbPut, getSetting } from './db.js';
+import { dbGet, dbPut, dbIdx, getSetting } from './db.js';
 import { fetchWithTimeout, sendLLMRequest } from './api.js';
 
 function getDefModel(provider) {
@@ -92,6 +92,12 @@ async function buildAIChatSetup(charId, allMsgs) {
   const youRole = c.overrideMe && c.you_role ? c.you_role : me.job || '';
   const youPersona = c.overrideMe && c.you_persona ? c.you_persona : me.persona || '';
 
+  const allChatMems = await dbIdx('chat_memories', 'charId', charId);
+  const enabledMems = allChatMems.filter(m => m.enabled);
+  const memCtx = enabledMems.length
+    ? `\n【長期記憶】以下是過去對話的重要摘要，請在回覆時參考：\n${enabledMems.map((m, i) => `${i + 1}. ${m.content}`).join('\n')}`
+    : '';
+
   let timeCtx = '';
   if (c.timeAware) {
     const n = new Date();
@@ -126,7 +132,7 @@ ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}
 ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
-${timeCtx}
+${timeCtx}${memCtx}
 【回覆品質要求】
 ・每則訊息至少 50～150 字，要有具體內容，不能只是「嗯」「好啊」「哈哈」等空洞回應
 ・要回應對方說的具體內容，展現你真的在聽、在意
@@ -451,4 +457,57 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
   const msg = { id: 'gmsg_' + Date.now() + '_ai', groupId, charId: c.id, content: aiText.trim(), createdAt: Date.now() };
   await dbPut('group_messages', msg);
   return msg;
+}
+
+// ── Long-term Memory: Summarize Recent Messages ───────────────────────────
+export async function summarizeToMemory(charId, recentMsgs, count = 20) {
+  const apiKey = await getSetting('api_key');
+  if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
+
+  const provider = await getSetting('api_provider') || 'openai';
+  const model = await getSetting('api_model') || getDefModel(provider);
+  const base = (await getSetting('api_base') || getDefBase(provider)).replace(/\/$/, '');
+  const c = await dbGet('characters', charId);
+
+  const slice = recentMsgs.filter(m => m.type !== 'hv').slice(-count);
+  const transcript = slice.map(m => (m.role === 'user' ? '我：' : `${c?.name || 'AI'}：`) + m.content).join('\n');
+
+  const systemPrompt = '你是一個對話分析助手。請將以下聊天記錄濃縮成一段 100～200 字的重點摘要，保留：使用者透露的個人資訊、重要事件、雙方的情感狀態、以及任何未來可能有用的背景資訊。用第三人稱描述。只輸出摘要文字，不需要任何前綴說明。';
+
+  let summary = '';
+
+  if (provider === 'anthropic') {
+    const r = await fetchWithTimeout(`${base}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 800, system: systemPrompt, messages: [{ role: 'user', content: transcript }] })
+    }, 30000);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    summary = d.content?.[0]?.text?.trim() || '';
+  } else {
+    const r = await fetchWithTimeout(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, max_tokens: 800, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: transcript }] })
+    }, 30000);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    summary = d.choices?.[0]?.message?.content?.trim() || '';
+  }
+
+  if (!summary) throw new Error('AI 回傳空白，請稍後重試');
+
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const mem = {
+    id: 'cmem_' + Date.now(),
+    charId,
+    title: `${dateStr} 對話摘要`,
+    content: summary,
+    enabled: true,
+    createdAt: Date.now()
+  };
+  await dbPut('chat_memories', mem);
+  return mem;
 }
