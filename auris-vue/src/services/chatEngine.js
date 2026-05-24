@@ -1,4 +1,4 @@
-import { dbGet, dbPut, dbIdx, dbDel, getSetting } from './db.js';
+import { dbGet, dbPut, getSetting } from './db.js';
 import { fetchWithTimeout, sendLLMRequest } from './api.js';
 
 function getDefModel(provider) {
@@ -13,19 +13,60 @@ function getDefBase(provider) {
   return 'https://api.openai.com/v1';
 }
 
-export async function sendUserMessage(charId, content) {
-  const userMsg = {
-    id: 'msg_' + Date.now(),
-    charId,
-    role: 'user',
-    content,
-    createdAt: Date.now()
-  };
-  await dbPut('messages', userMsg);
-  return userMsg;
+const LONG_FORM_RE = /(\d{2,}\s*字|\d{2,}\s*words?|[一二三四五六七八九兩幾]百\s*字|[一二兩三]千\s*字|[一二三四五六七八九十兩]+\s*萬\s*字|(寫|說|講|來|編|想|聽|給我).{0,6}(故事|小說|文章|信|詩|散文|劇本|演講|報告|論文|介紹|長篇|短篇|童話|寓言|傳記|日記|劇情)|睡前故事|床邊故事|長一?點|詳細|完整|具體說明|長篇|大綱)/i;
+const CLEAN_END_RE = /[。！？！?.…」』）)」"’”]/;
+
+// ── Shared SSE stream parser ───────────────────────────────────────────────
+async function parseSSEStream(response, provider, onChunk) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let truncated = false;
+  let lastEvent = '';
+
+  try {
+    outer: while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t) continue;
+
+        if (provider === 'anthropic') {
+          if (t.startsWith('event:')) { lastEvent = t.slice(6).trim(); continue; }
+          if (!t.startsWith('data:')) continue;
+          try {
+            const obj = JSON.parse(t.slice(5).trim());
+            if (lastEvent === 'content_block_delta' && obj.delta?.type === 'text_delta') onChunk(obj.delta.text || '');
+            if (lastEvent === 'message_delta' && obj.delta?.stop_reason === 'max_tokens') truncated = true;
+          } catch { /* malformed chunk, skip */ }
+        } else {
+          if (!t.startsWith('data:')) continue;
+          const raw = t.slice(5).trim();
+          if (raw === '[DONE]') break outer;
+          try {
+            const obj = JSON.parse(raw);
+            const chunk = obj.choices?.[0]?.delta?.content;
+            if (chunk) onChunk(chunk);
+            const fr = obj.choices?.[0]?.finish_reason;
+            if (fr === 'length' || fr === 'max_tokens') truncated = true;
+          } catch { /* malformed chunk, skip */ }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return { truncated };
 }
 
-export async function generateAIResponse(charId, allMsgs) {
+// ── 1-on-1 Chat Setup ─────────────────────────────────────────────────────
+async function buildAIChatSetup(charId, allMsgs) {
   const apiKey = await getSetting('api_key');
   if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
 
@@ -33,15 +74,12 @@ export async function generateAIResponse(charId, allMsgs) {
   const me = await getSetting('me_settings') || {};
   const provider = await getSetting('api_provider') || 'openai';
   const model = await getSetting('api_model') || getDefModel(provider);
-  const base = await getSetting('api_base') || getDefBase(provider);
+  const base = (await getSetting('api_base') || getDefBase(provider)).replace(/\/$/, '');
 
   const styleMap = {
-    casual: '說話輕鬆自然，像朋友聊天',
-    sweet: '說話甜蜜可愛，偶爾撒嬌',
-    cool: '說話冷靜簡短，高冷，話不多',
-    gentle: '說話溫柔體貼，善解人意',
-    playful: '說話活潑俏皮，喜歡開玩笑',
-    mature: '說話成熟穩重，有深度',
+    casual: '說話輕鬆自然，像朋友聊天', sweet: '說話甜蜜可愛，偶爾撒嬌',
+    cool: '說話冷靜簡短，高冷，話不多', gentle: '說話溫柔體貼，善解人意',
+    playful: '說話活潑俏皮，喜歡開玩笑', mature: '說話成熟穩重，有深度',
     literary: '說話文藝感性，有時引用詩句或比喻'
   };
   const talkMap = {
@@ -99,78 +137,75 @@ ${timeCtx}
 【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 3}則訊息，每則之間用換行分隔。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。`;
 
   const history = allMsgs.slice(-(c.memory || 20)).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
-  let aiText = '';
-
-  if (c.delay > 0) await new Promise(r => setTimeout(r, c.delay * 1000));
 
   const lastUserMsg = history[history.length - 1]?.content || '';
-  const longFormTriggers = /(\d{2,}\s*字|\d{2,}\s*words?|[一二三四五六七八九兩幾]百\s*字|[一二兩三]千\s*字|[一二三四五六七八九十兩]+\s*萬\s*字|(寫|說|講|來|編|想|聽|給我).{0,6}(故事|小說|文章|信|詩|散文|劇本|演講|報告|論文|介紹|長篇|短篇|童話|寓言|傳記|日記|劇情)|睡前故事|床邊故事|長一?點|詳細|完整|具體說明|長篇|大綱)/i;
-  const isLongForm = longFormTriggers.test(lastUserMsg);
+  const isLongForm = LONG_FORM_RE.test(lastUserMsg);
   const dynamicMaxTokens = isLongForm ? 8000 : 4000;
   const finalSystemPrompt = isLongForm
     ? systemPrompt + `\n\n【特別提示】使用者要求較長內容，請完整寫完整段，不要中途收尾或省略。如果是故事，要有開頭、發展、結尾；如果是文章，要有段落結構。寫到結束為止，不要刻意縮短。`
     : systemPrompt;
 
+  return { c, provider, model, base, apiKey, history, finalSystemPrompt, dynamicMaxTokens };
+}
+
+// ── 1-on-1 User Message ───────────────────────────────────────────────────
+export async function sendUserMessage(charId, content) {
+  const userMsg = { id: 'msg_' + Date.now(), charId, role: 'user', content, createdAt: Date.now() };
+  await dbPut('messages', userMsg);
+  return userMsg;
+}
+
+// ── 1-on-1 Chat: Streaming ────────────────────────────────────────────────
+export async function generateAIResponseStream(charId, allMsgs, { onChunk }) {
+  const { c, provider, model, base, apiKey, history, finalSystemPrompt, dynamicMaxTokens } = await buildAIChatSetup(charId, allMsgs);
+
+  if (c.delay > 0) await new Promise(r => setTimeout(r, c.delay * 1000));
+
+  let fullText = '';
+  const accumulate = (text) => { fullText += text; onChunk(text); };
   let truncated = false;
+
   if (provider === 'anthropic') {
     const r = await fetchWithTimeout(`${base}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, system: finalSystemPrompt, messages: history })
+      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, system: finalSystemPrompt, messages: history, stream: true })
     }, 90000);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    aiText = d.content?.[0]?.text || '';
-    if (d.stop_reason === 'max_tokens') truncated = true;
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+    ({ truncated } = await parseSSEStream(r, 'anthropic', accumulate));
   } else {
     const r = await fetchWithTimeout(`${base}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: finalSystemPrompt }, ...history] })
+      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: finalSystemPrompt }, ...history], stream: true })
     }, 90000);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    aiText = d.choices?.[0]?.message?.content || '';
-    const fr = d.choices?.[0]?.finish_reason;
-    if (fr === 'length' || fr === 'max_tokens') truncated = true;
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+    ({ truncated } = await parseSSEStream(r, 'openai', accumulate));
   }
 
-  if (!truncated && aiText) {
-    const len = aiText.length;
-    const lastChar = aiText.trim().slice(-1);
-    const endsCleanly = /[。！？！?.…」』）)」"\u2019\u201d]/.test(lastChar);
-    if (len >= dynamicMaxTokens * 0.4 && !endsCleanly) truncated = true;
+  if (!truncated && fullText) {
+    const lastChar = fullText.trim().slice(-1);
+    if (fullText.length >= dynamicMaxTokens * 0.4 && !CLEAN_END_RE.test(lastChar)) truncated = true;
   }
 
-  if (aiText) {
-    const aiMsg = { id: 'msg_' + Date.now() + '_ai', charId, role: 'assistant', content: aiText, createdAt: Date.now() };
-    await dbPut('messages', aiMsg);
-    
-    // Background generation for Heart Voice (don't await)
-    if (c.heartVoice) {
-      generateHeartVoice(c, allMsgs, aiText).catch(() => {});
-    }
-
-    return { msg: aiMsg, truncated };
+  let msg = null;
+  if (fullText) {
+    msg = { id: 'msg_' + Date.now() + '_ai', charId, role: 'assistant', content: fullText, createdAt: Date.now() };
+    await dbPut('messages', msg);
+    if (c.heartVoice) generateHeartVoice(c, allMsgs, fullText).catch(() => {});
   }
-  return { msg: null, truncated: false };
+  return { msg, truncated };
 }
 
-// ──────────────────────────────────────────────
-// Heart Voice Logic
-// ──────────────────────────────────────────────
+// ── Heart Voice Logic ─────────────────────────────────────────────────────
 const HV_INTERVAL = 15;
 const HV_EMOTION_WORDS = ['喜歡','愛','討厭','難過','高興','開心','害怕','緊張','生氣','委屈','想念','孤單','幸福','失落','期待','驚訝','感動','羨慕','嫉妒','後悔','抱歉','謝謝','陪','一起','永遠','離開','再見','思念','心跳','臉紅','沉默','默默','其實','說不出','不敢'];
 
 function shouldTriggerHV(allMsgs, aiText) {
   const aiCount = allMsgs.filter(m => m.role === 'assistant').length;
   if (aiCount > 0 && aiCount % HV_INTERVAL === 0) return true;
-  
   const combined = (allMsgs.slice(-3).map(m => m.content).join('') + aiText);
-  if (HV_EMOTION_WORDS.some(w => combined.includes(w))) {
-    // 30% chance to trigger if an emotion word is found
-    return Math.random() < 0.3;
-  }
+  if (HV_EMOTION_WORDS.some(w => combined.includes(w))) return Math.random() < 0.3;
   return false;
 }
 
@@ -180,7 +215,7 @@ async function generateHeartVoice(c, allMsgs, lastAiText) {
   const userMsgs = allMsgs.filter(m => m.role === 'user');
   const lastUserMsg = userMsgs[userMsgs.length - 1];
   const lastAiSnippet = (lastAiText || '').slice(0, 150);
-  
+
   let recentText = '';
   if (lastUserMsg) recentText += `用戶：${lastUserMsg.content.slice(0, 150)}\n`;
   if (lastAiSnippet) recentText += `你：${lastAiSnippet}\n`;
@@ -204,7 +239,7 @@ ${recentText}
 
   try {
     let hvText = await sendLLMRequest([{ role: 'user', content: hvPrompt }], { max_tokens: 80, temperature: 0.9 });
-    
+
     hvText = hvText.trim().replace(/\n{2,}/g, ' ').replace(/\s+/g, ' ');
     if (hvText.length > 50) {
       const window = hvText.slice(0, 50);
@@ -228,8 +263,6 @@ ${recentText}
         createdAt: Date.now()
       };
       await dbPut('memories', entry);
-      
-      // Dispatch custom event to notify ChatRoomView if it's active
       window.dispatchEvent(new CustomEvent('new-heart-voice', { detail: entry }));
     }
   } catch (e) {
@@ -237,23 +270,8 @@ ${recentText}
   }
 }
 
-
-// ──────────────────────────────────────────────
-// Group Chat Logic
-// ──────────────────────────────────────────────
-export async function sendGroupMessage(groupId, charId, content) {
-  const msg = {
-    id: 'gmsg_' + Date.now(),
-    groupId,
-    charId,
-    content,
-    createdAt: Date.now()
-  };
-  await dbPut('group_messages', msg);
-  return msg;
-}
-
-export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs, members) {
+// ── Group Chat Setup ──────────────────────────────────────────────────────
+async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
   const c = await dbGet('characters', charIdToRespond);
   if (!c) return null;
 
@@ -263,7 +281,6 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
   const provider = await getSetting('api_provider') || 'openai';
   const model = await getSetting('api_model') || 'gpt-5.4-mini';
   let base = await getSetting('api_base');
-  // Need getDefBase from api.js if imported, but we can't easily. Wait, getDefBase is defined in chatEngine.js? No, let's just hardcode if missing.
   if (!base) {
     if (provider === 'anthropic') base = 'https://api.anthropic.com/v1';
     else if (provider === 'google') base = 'https://generativelanguage.googleapis.com/v1beta/openai';
@@ -273,30 +290,29 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
 
   const validChars = members.filter(x => x.id);
   const otherChars = validChars.filter(oc => oc.id !== c.id).map(oc => oc.name).join('、');
-  
+
   const lastMsg = allMsgs[allMsgs.length - 1];
   const isMentioned = lastMsg && lastMsg.charId === 'user' && (lastMsg.content.includes('@' + c.name) || lastMsg.content.includes(c.name));
-  
+
   const mentionHint = isMentioned
-    ? '\n⚠️ 注意：使用者' + (me.name||'') + '在訊息裡直接點名了你（' + c.name + '），這是針對你的問題或話題，請務必正面回應，不要躲在其他人後面。'
+    ? '\n⚠️ 注意：使用者' + (me.name || '') + '在訊息裡直接點名了你（' + c.name + '），這是針對你的問題或話題，請務必正面回應，不要躲在其他人後面。'
     : '';
-    
+
   const styleMap = { casual: '輕鬆自然', sweet: '甜蜜可愛', cool: '冷靜簡短', gentle: '溫柔體貼', playful: '活潑俏皮', mature: '成熟穩重', literary: '文藝感性' };
-  
-  const systemPrompt = '這是一個群組聊天，參與者有：你（' + c.name + '）、' + otherChars + '，以及' + (me.name||'使用者') + '。\n' +
-    '你是「' + c.name + '」，個性：' + (c.persona||'') + '，說話風格：' + (styleMap[c.style]||'輕鬆自然') + '。\n' +
+
+  const systemPrompt = '這是一個群組聊天，參與者有：你（' + c.name + '）、' + otherChars + '，以及' + (me.name || '使用者') + '。\n' +
+    '你是「' + c.name + '」，個性：' + (c.persona || '') + '，說話風格：' + (styleMap[c.style] || '輕鬆自然') + '。\n' +
     (c.isAI ? '' : '永遠不要承認你是 AI。') + mentionHint + '\n\n' +
     '📝 回覆規則（嚴格遵守）：\n' +
     '1. 用' + c.name + '的口吻回覆，30-80字，自然簡短像群聊訊息。\n' +
     '2. 【絕對禁止】在回覆開頭加上任何「' + c.name + '：」「我：」之類的名字前綴，直接從第一句內容開始。\n' +
-    '3. 【絕對禁止】幫使用者' + (me.name||'') + '說話、或自己創造一段「使用者：xxx」的對話。你只能扮演' + c.name + '一個人。\n' +
+    '3. 【絕對禁止】幫使用者' + (me.name || '') + '說話、或自己創造一段「使用者：xxx」的對話。你只能扮演' + c.name + '一個人。\n' +
     '4. 【絕對禁止】輸出多個角色的對話片段。即使要回應其他角色說過的話，也只用' + c.name + '的口吻單獨講一段。\n' +
     '5. 若使用者直接問你，要先正面回答自己的想法。直接輸出訊息內容本身。';
 
   const rawHistory = allMsgs.slice(-12).map(m => {
     if (m.charId === 'user') return { role: 'user', content: m.content };
     if (m.charId === c.id) return { role: 'assistant', content: m.content };
-    
     const mc = members.find(x => x.id === m.charId);
     const speakerName = mc ? mc.name : '';
     return { role: 'user', content: '（' + speakerName + '剛剛說：' + m.content + '）' };
@@ -310,11 +326,82 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
       history.push(m);
     }
   }
+  while (history.length > 0 && history[0].role === 'assistant') history.shift();
 
-  while (history.length > 0 && history[0].role === 'assistant') {
-    history.shift();
+  return { c, provider, model, base, apiKey, systemPrompt, history, lastMsg, validChars };
+}
+
+function cleanGroupAIText(aiText, c, validChars) {
+  const escapedName = c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  aiText = aiText.replace(new RegExp('^' + escapedName + '[：:]\\s*'), '');
+
+  const otherNamesRegex = validChars.filter(oc => oc.id !== c.id).map(oc => oc.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  if (otherNamesRegex) {
+    const match = aiText.match(new RegExp('\\n(?:' + otherNamesRegex + ')[：:]', 'i'));
+    if (match) aiText = aiText.substring(0, match.index);
+  }
+  return aiText;
+}
+
+// ── Group Chat Messages ───────────────────────────────────────────────────
+export async function sendGroupMessage(groupId, charId, content) {
+  const msg = { id: 'gmsg_' + Date.now(), groupId, charId, content, createdAt: Date.now() };
+  await dbPut('group_messages', msg);
+  return msg;
+}
+
+// ── Group Chat: Streaming ─────────────────────────────────────────────────
+export async function generateGroupAIResponseStream(groupId, charIdToRespond, allMsgs, members, { onChunk, onStart }) {
+  const setup = await buildGroupChatSetup(charIdToRespond, allMsgs, members);
+  if (!setup) return null;
+  const { c, provider, model, base, apiKey, systemPrompt, history, lastMsg, validChars } = setup;
+
+  const fallbackHistory = history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : 'こんにちは' }];
+
+  let fullText = '';
+
+  if (provider === 'anthropic') {
+    const r = await fetchWithTimeout(base + '/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 4000, system: systemPrompt, messages: fallbackHistory, stream: true })
+    }, 30000);
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+    onStart?.();
+    await parseSSEStream(r, 'anthropic', (text) => { fullText += text; onChunk(text); });
+  } else {
+    const r = await fetchWithTimeout(base + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({ model, max_tokens: 4000, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: systemPrompt }, ...fallbackHistory], stream: true })
+    }, 30000);
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+    onStart?.();
+    await parseSSEStream(r, 'openai', (text) => { fullText += text; onChunk(text); });
   }
 
+  const cleanedText = cleanGroupAIText(fullText.trim(), c, validChars);
+
+  if (!cleanedText) return null;
+
+  const msg = {
+    id: 'gmsg_' + Date.now() + '_ai',
+    groupId,
+    charId: c.id,
+    content: cleanedText,
+    createdAt: Date.now()
+  };
+  await dbPut('group_messages', msg);
+  return msg;
+}
+
+// ── Group Chat: Non-streaming (kept for retry fallback) ───────────────────
+export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs, members) {
+  const setup = await buildGroupChatSetup(charIdToRespond, allMsgs, members);
+  if (!setup) return null;
+  const { c, provider, model, base, apiKey, systemPrompt, history, lastMsg, validChars } = setup;
+
+  const fallbackHistory = history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : 'こんにちは' }];
   let aiText = '';
   let rawResponse = null;
 
@@ -323,7 +410,7 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
       const r = await fetchWithTimeout(base + '/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 4000, system: systemPrompt, messages: history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }] })
+        body: JSON.stringify({ model, max_tokens: 4000, system: systemPrompt, messages: fallbackHistory })
       }, 30000);
       const d = await r.json();
       rawResponse = d;
@@ -331,11 +418,10 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
       if (errObj) throw new Error(errObj.message || JSON.stringify(errObj));
       aiText = d.content?.[0]?.text || '';
     } else {
-      const payload = { model, max_tokens: 4000, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: systemPrompt }, ...(history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : '哈囉' }])] };
       const r = await fetchWithTimeout(base + '/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ model, max_tokens: 4000, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: systemPrompt }, ...fallbackHistory] })
       }, 30000);
       const d = await r.json();
       rawResponse = d;
@@ -350,25 +436,11 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
   }
 
   const rawAiText = aiText;
-
-  const escapedName = c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const namePrefix = new RegExp('^' + escapedName + '[：:]\\s*');
-  aiText = aiText.replace(namePrefix, '');
-  
-  const otherNamesRegex = validChars.filter(oc => oc.id !== c.id).map(oc => oc.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  if (otherNamesRegex) {
-    const dialogSwitchRegex = new RegExp('\\n(?:' + otherNamesRegex + ')[：:]', 'i');
-    const match = aiText.match(dialogSwitchRegex);
-    if (match) {
-      aiText = aiText.substring(0, match.index);
-    }
-  }
+  aiText = cleanGroupAIText(aiText, c, validChars);
 
   if (!aiText.trim()) {
     const debugMsg = {
-      id: 'debug_' + Date.now(),
-      groupId,
-      charId: 'user',
+      id: 'debug_' + Date.now(), groupId, charId: 'user',
       content: '【系統偵錯】AI 回傳了空字串，或被清洗歸零。\n原始回傳長度：' + rawAiText.length + '\n原始內容：' + rawAiText + '\nAPI Raw JSON：' + JSON.stringify(rawResponse),
       createdAt: Date.now()
     };
@@ -376,16 +448,7 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
     return debugMsg;
   }
 
-  if (aiText.trim()) {
-    const msg = {
-      id: 'gmsg_' + Date.now() + '_ai',
-      groupId,
-      charId: c.id,
-      content: aiText.trim(),
-      createdAt: Date.now()
-    };
-    await dbPut('group_messages', msg);
-    return msg;
-  }
-  return null;
+  const msg = { id: 'gmsg_' + Date.now() + '_ai', groupId, charId: c.id, content: aiText.trim(), createdAt: Date.now() };
+  await dbPut('group_messages', msg);
+  return msg;
 }

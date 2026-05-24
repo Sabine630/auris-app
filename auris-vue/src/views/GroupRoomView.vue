@@ -33,12 +33,12 @@
               </div>
               <div class="msg them">
                 <div style="font-size:11px;color:var(--text-3);margin-bottom:2px;margin-left:4px">{{ getName(m.charId) }}</div>
-                <div class="msg-bubble" v-html="formatContent(m.content)"></div>
+                <div class="msg-bubble" :class="{ streaming: m.isStreaming }" v-html="formatContent(m.content)"></div>
                 <div class="msg-time">{{ fmtT(m.createdAt) }}</div>
               </div>
             </div>
             <div v-else class="msg-cont them">
-              <div class="msg-bubble" v-html="formatContent(m.content)"></div>
+              <div class="msg-bubble" :class="{ streaming: m.isStreaming }" v-html="formatContent(m.content)"></div>
             </div>
           </template>
         </template>
@@ -143,7 +143,7 @@
 import { ref, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbPut, dbAll } from '../services/db.js';
-import { sendGroupMessage, generateGroupAIResponse } from '../services/chatEngine.js';
+import { sendGroupMessage, generateGroupAIResponseStream } from '../services/chatEngine.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -233,6 +233,12 @@ function scrollToBottom() {
   });
 }
 
+function isNearBottom() {
+  const el = scrollArea.value;
+  if (!el) return true;
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+}
+
 function startChat(id) {
   router.push('/chat/' + id);
 }
@@ -314,7 +320,6 @@ async function sendMsg() {
   for (let i = 0; i < targetChars.length; i++) {
     const targetChar = targetChars[i];
 
-    // Add a natural delay between each character's response
     if (i > 0) {
       await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
     }
@@ -322,32 +327,34 @@ async function sendMsg() {
     typingCharId.value = targetChar.id;
     scrollToBottom();
 
-    let retries = 0;
-    const maxRetries = 2;
-
-    while (retries < maxRetries) {
-      try {
-        const msg = await generateGroupAIResponse(groupId, targetChar.id, messages.value, members.value);
-        if (msg) {
-          messages.value.push(msg);
+    let streamIdx = -1;
+    try {
+      const msg = await generateGroupAIResponseStream(groupId, targetChar.id, messages.value, members.value, {
+        onStart() {
+          messages.value.push({ id: 'streaming_' + Date.now(), groupId, charId: targetChar.id, content: '', createdAt: Date.now(), isStreaming: true });
+          streamIdx = messages.value.length - 1;
+          typingCharId.value = null;
           scrollToBottom();
-          break;
-        } else {
-          retries++;
-          if (retries >= maxRetries) {
-            console.warn('Group AI response was empty after retries');
-            window.toast_('Debug: AI重試兩次都回傳空白或被清洗掉');
+        },
+        onChunk(text) {
+          if (streamIdx !== -1) {
+            messages.value[streamIdx].content += text;
+            if (isNearBottom()) scrollToBottom();
           }
         }
-      } catch (err) {
-        console.error('Group chat error:', err);
-        retries++;
-        if (retries >= maxRetries) {
-          window.toast_('回覆失敗：' + err.message);
-        }
+      });
+      if (streamIdx !== -1) {
+        if (msg) messages.value.splice(streamIdx, 1, msg);
+        else messages.value.splice(streamIdx, 1);
+      } else if (msg) {
+        messages.value.push(msg);
+        scrollToBottom();
       }
+    } catch (err) {
+      console.error('Group chat error:', err);
+      if (streamIdx !== -1) messages.value.splice(streamIdx, 1);
+      window.toast_('回覆失敗：' + err.message);
     }
-
     typingCharId.value = null;
   }
 }
@@ -355,4 +362,15 @@ async function sendMsg() {
 
 <style scoped>
 .page { height: 100%; }
+
+.msg-bubble.streaming::after {
+  content: '▍';
+  display: inline-block;
+  margin-left: 1px;
+  animation: blink-cursor .8s step-end infinite;
+  color: var(--text-3);
+  font-size: .85em;
+  vertical-align: baseline;
+}
+@keyframes blink-cursor { 50% { opacity: 0; } }
 </style>

@@ -45,12 +45,12 @@
                 <span v-else>{{ cAvatar || '🌸' }}</span>
               </div>
               <div class="msg them">
-                <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
+                <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id, streaming: m.isStreaming }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
                 <div class="msg-time">{{ fmtT(m.createdAt) }}</div>
               </div>
             </div>
             <div v-else class="msg-cont them">
-              <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
+              <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id, streaming: m.isStreaming }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
             </div>
           </template>
         </template>
@@ -154,8 +154,8 @@
 <script setup>
 import { ref, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbIdx, dbDel, dbPut } from '../services/db.js';
-import { sendUserMessage, generateAIResponse } from '../services/chatEngine.js';
+import { dbGet, dbIdx, dbDel } from '../services/db.js';
+import { sendUserMessage, generateAIResponseStream } from '../services/chatEngine.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -253,11 +253,16 @@ function scrollToBottom() {
   });
 }
 
+function isNearBottom() {
+  const el = scrollArea.value;
+  if (!el) return true;
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+}
+
 async function sendMsg() {
   const content = inputContent.value.trim();
   if (!content || isTyping.value) return;
 
-  // Handle Edit & Resend deletion if in Edit Mode
   if (editingMsgRef.value) {
     const toDelete = messages.value.filter(x => x.createdAt >= editingMsgRef.value.createdAt);
     for (const x of toDelete) await dbDel('messages', x.id);
@@ -265,29 +270,39 @@ async function sendMsg() {
     editingMsgRef.value = null;
   }
 
-  // Insert user message locally
   const userMsg = await sendUserMessage(charId, content);
   messages.value.push(userMsg);
-  
   inputContent.value = '';
   autoResize();
   scrollToBottom();
 
   isTyping.value = true;
-  
+  const rawMsgs = messages.value.filter(m => m.type !== 'hv');
+
+  let streamIdx = -1;
   try {
-    const rawMsgs = messages.value.filter(m => m.type !== 'hv');
-    const { msg, truncated } = await generateAIResponse(charId, rawMsgs);
-    if (msg) {
+    const { msg, truncated } = await generateAIResponseStream(charId, rawMsgs, {
+      onChunk(text) {
+        if (streamIdx === -1) {
+          messages.value.push({ id: 'streaming_' + Date.now(), charId, role: 'assistant', content: '', createdAt: Date.now(), isStreaming: true });
+          streamIdx = messages.value.length - 1;
+          isTyping.value = false;
+        }
+        messages.value[streamIdx].content += text;
+        if (isNearBottom()) scrollToBottom();
+      }
+    });
+    if (streamIdx !== -1) {
+      messages.value.splice(streamIdx, 1, msg || null);
+      if (!msg) messages.value.splice(streamIdx, 1);
+    } else if (msg) {
       messages.value.push(msg);
       scrollToBottom();
     }
-    if (truncated) {
-      window.toast_('⚠ 回覆可能被截斷，可長按訊息「重新生成回覆」');
-    }
+    if (truncated) window.toast_('⚠ 回覆可能被截斷，可長按訊息「重新生成回覆」');
   } catch (err) {
     console.error('Chat error:', err);
-    // TODO(security): Use custom modal instead of alert in production
+    if (streamIdx !== -1) messages.value.splice(streamIdx, 1);
     window.toast_('錯誤：' + err.message);
   } finally {
     isTyping.value = false;
@@ -439,23 +454,38 @@ async function doRegenerate(m) {
     window.toast_('請等對方回覆完成');
     return;
   }
-  
+
   const toDelete = messages.value.filter(x => x.createdAt >= m.createdAt);
   for (const x of toDelete) await dbDel('messages', x.id);
-  
   messages.value = messages.value.filter(x => x.createdAt < m.createdAt);
-  
+
   isTyping.value = true;
+  const rawMsgs = messages.value.filter(x => x.type !== 'hv');
+
+  let streamIdx = -1;
   try {
-    const rawMsgs = messages.value.filter(x => x.type !== 'hv');
-    const { msg, truncated } = await generateAIResponse(charId, rawMsgs);
-    if (msg) {
+    const { msg, truncated } = await generateAIResponseStream(charId, rawMsgs, {
+      onChunk(text) {
+        if (streamIdx === -1) {
+          messages.value.push({ id: 'streaming_' + Date.now(), charId, role: 'assistant', content: '', createdAt: Date.now(), isStreaming: true });
+          streamIdx = messages.value.length - 1;
+          isTyping.value = false;
+        }
+        messages.value[streamIdx].content += text;
+        if (isNearBottom()) scrollToBottom();
+      }
+    });
+    if (streamIdx !== -1) {
+      messages.value.splice(streamIdx, 1, msg || null);
+      if (!msg) messages.value.splice(streamIdx, 1);
+    } else if (msg) {
       messages.value.push(msg);
       scrollToBottom();
     }
     if (truncated) window.toast_('⚠ 回覆可能被截斷');
   } catch (err) {
     console.error('Chat error:', err);
+    if (streamIdx !== -1) messages.value.splice(streamIdx, 1);
     window.toast_('錯誤：' + err.message);
   } finally {
     isTyping.value = false;
@@ -465,4 +495,15 @@ async function doRegenerate(m) {
 
 <style scoped>
 .page { height: 100%; }
+
+.msg-bubble.streaming::after {
+  content: '▍';
+  display: inline-block;
+  margin-left: 1px;
+  animation: blink-cursor .8s step-end infinite;
+  color: var(--text-3);
+  font-size: .85em;
+  vertical-align: baseline;
+}
+@keyframes blink-cursor { 50% { opacity: 0; } }
 </style>

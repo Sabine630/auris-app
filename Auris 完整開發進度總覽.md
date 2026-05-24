@@ -24,19 +24,44 @@
 
 ---
 
-## 📊 開發階段總覽
+---
 
-```
-Phase 1: 核心功能開發 (P1-P9)       ✅ 完成
-Phase 2: Bug 修復與優化 (P10-P36)   ✅ 完成（HTML 單檔版本終態）
-Phase 3: Vue 3 架構重構 (P37-P46)   ✅ 完成（包含多項 Bug 修復、架構統一、體驗優化）
-Phase 4: 進階功能                   ⏸️ 計劃中
-Phase 5: 多世界系統                 📝 設計階段
-```
+## 🚀 下一步計劃 (產品藍圖)
 
-**當前進度**: 約 92% 完成（核心功能全部遷移至 Vue 3，正式進入元件化開發模式）
+### 🟢 階段 A：核心體驗與沈浸感補完 (短期目標)
+1. 🟡 **聊天室 Streaming 串流輸出**
+   - 體感大幅提升，文字逐字流出 (SSE)
+   - 支援 Anthropic、OpenAI 與 Google 串流格式
+2. 🟡 **長期記憶與總結助手 (記憶抽屜)**
+   - 聊天室專屬「回憶剪貼簿」介面
+   - 手動觸發的 AI 總結，Token 消耗透明視覺化
+3. 🟡 **動態回覆模式實作**
+   - 實作「手動 / 自動 / 可打斷」的背景計時與打斷邏輯
+4. 🟡 **自動生成觸發引擎**
+   - 每日首次開啟 App 時背景自動產生「日記」與「動態貼文」
+
+### 🔵 階段 B：世界觀與玩法擴展 (中期目標 - Phase 4)
+5. 🟢 **世界觀設定書 (World Book) 📖**
+   - 與角色設定脫鉤的專屬詞條庫，提供客觀設定給 AI
+6. 🟢 **定位系統 📍 & 任務系統 ✓**
+   - 增加每日登入與互動的遊戲化機制
+7. 🟢 **劇本 / 小說體驗 🎭**
+   - AVG 選項分支與長篇協作創作模組
+
+### 🟣 階段 C：系統底層重構與打磨 (長期目標 - Phase 5)
+8. 🔵 **多世界系統 (平行世界切換) 🌍**
+   - IndexedDB 架構翻新，全域加入 `worldId` 隔離資料
+9. 🔵 **完整的 PWA 離線體驗與推播**
+   - 實作 Service Worker 快取與系統級推播
+   - 評估 App Store / Google Play 上架
 
 ---
+
+---
+
+## ⏳ 開發階段總覽 (Phase History)
+
+> 💡 **提示**：為了保持文件整潔，部分超過百行的詳細除錯日誌（如 P14-P18 鍵盤排錯）已被折疊隱藏，您可以點擊展開查看原始除錯細節。
 
 ## ✅ Phase 1: 核心功能開發 (P1-P9)
 
@@ -420,6 +445,9 @@ document.body.dataset.page = pageId;
 
 ---
 
+<details>
+<summary><b>🔧 展開查看 P12 幾十項 Bug 詳細修復清單</b></summary>
+
 ### P12-bugfix: 全面 Bug 修復 + Heart Voice 重設計 + Prompt 升級 ✅
 **日期**: 2026-05-10  
 **檔案**: `auris-p12-bugfix.html`
@@ -567,6 +595,9 @@ function insertHVInline(text){
 
 ---
 
+</details>
+
+
 ### P13: UI 細節修復 ✅
 **日期**: 2026-05-02  
 **檔案**: `auris-p13-ui-fixes.html`
@@ -620,6 +651,9 @@ https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
 **效果**: 減少 12px，讓底部更緊湊
 
 ---
+
+<details>
+<summary><b>🔧 展開查看 P14-P18 PWA 底部白邊除錯完整日誌</b></summary>
 
 ### P14-P18: PWA 底部空隙問題 ⚠️ → ✅ P28 已解決
 **日期**: 2026-05-03 ~ 2026-05-06  
@@ -852,6 +886,9 @@ if (window.matchMedia('(display-mode: standalone)').matches) {
 - 先開發其他功能，之後再回來修復
 
 ---
+
+</details>
+
 
 ### P19-P27: 中間版本 📝
 **日期**: 2026-05-07 ~ 2026-05-14（推估）
@@ -1173,6 +1210,25 @@ auris-vue/src/
 
 ### P41: UI Bug 修復 — 夢境雙月亮、鍵盤空白、群組多人回覆 ✅
 
+### P47: 聊天室 Streaming 串流輸出（一對一 + 群組）✅
+**日期**: 2026-05-24
+**核心改動**:
+1. **SSE 串流解析器**：於 `chatEngine.js` 新增 `parseSSEStream(response, provider, onChunk)` 共用工具，相容 Anthropic（`content_block_delta` 事件）與 OpenAI/Gemini（`data: [DONE]` 終止符）兩種 SSE 格式，支援截斷偵測。
+2. **一對一串流 API**：新增 `generateAIResponseStream(charId, allMsgs, { onChunk })`，擷取共用設定邏輯至 `buildAIChatSetup()`，支援角色 delay、長文偵測、Heart Voice 觸發，並正確將 `stream: true` 傳入各 provider。
+3. **群組串流 API**：新增 `generateGroupAIResponseStream(groupId, charId, allMsgs, members, { onChunk, onStart })`，`onStart` 在 HTTP 回應到達後立即回調（保留三點動畫至第一個 token），`onChunk` 逐字更新，完成後仍執行 `cleanGroupAIText` 清洗。
+4. **ChatRoomView UI**：`sendMsg` 與 `doRegenerate` 改用串流，首個 token 到達前顯示三點動畫，到達後立即切換為逐字成長的訊息 bubble，含 `▍` 閃爍游標動畫；僅在使用者靠近底部時自動捲動。
+5. **GroupRoomView UI**：同步改為串流，`onStart` 時將三點動畫切換為角色 bubble，多角色輪替順序與延遲邏輯不變。
+
+**受影響檔案**:
+| 檔案 | 說明 |
+|------|------|
+| `auris-vue/src/services/chatEngine.js` | 新增 `parseSSEStream`、`buildAIChatSetup`、`buildGroupChatSetup`、`generateAIResponseStream`、`generateGroupAIResponseStream` |
+| `auris-vue/src/views/ChatRoomView.vue` | sendMsg、doRegenerate 改串流，加游標 CSS |
+| `auris-vue/src/views/GroupRoomView.vue` | sendMsg 改串流，加游標 CSS |
+| `auris-vue/src/views/SettingsView.vue` | 版號更新 P46 → P47 |
+
+---
+
 ### P46: 對話長按選單復刻與 UX 優化 ✅
 **日期**: 2026-05-23
 **核心改動**:
@@ -1355,8 +1411,6 @@ https://github.com/Sabine630/auris-app/
 | ~~群組聊天只有單一角色回覆~~ | ✅ P41 已解決 | 全員依序回覆機制 |
 
 ---
-
-## 🎯 Phase 4 & 5 規劃
 
 ### Phase 4: 進階功能 (計劃中)
 
@@ -1773,51 +1827,6 @@ auris-p12-bugfix.html (單一 HTML 檔案)
 
 ---
 
-## 🚀 下一步計劃
-
-### 立即處理 (高優先級)
-1. 🟡 **Vue 版功能驗收測試**
-   - 逐頁比對 HTML 版與 Vue 版行為是否一致
-   - 著重聊天室 AI 回覆、群組功能、Heart Voice 觸發
-   - 確認 contentEngine.js 的日記/夢境/貼文生成正確
-
-2. 🟡 **群組聊天 P34-P36 補丁移植到 Vue**
-   - P34：點名偵測 + 強制回應（目前 Vue 版 GroupRoomView 未移植）
-   - P35/P36：保守版清洗邏輯 + 保險絲（確認 contentEngine.js 已包含）
-
-### 短期目標 (1-2 週)
-3. 🟡 **聊天室 Streaming 串流輸出**
-   - 文字逐字流出，體感大幅提升，token 成本不變
-   - 重寫 `sendMsg()` 為 SSE 讀取
-   - 支援 Anthropic 和 OpenAI 兩種串流格式
-
-4. 🟡 **Vue PWA 設定完善**
-   - Vite PWA 插件（vite-plugin-pwa）
-   - Service Worker 快取策略
-   - Manifest.json + 圖示
-
-### 中期目標 (1 個月)
-5. 🟢 **Phase 4 啟動**
-   - 定位系統原型
-   - 劇本體驗設計文件
-   - 技術選型評估
-
-6. 🟢 **使用者回饋收集**
-   - 測試版本釋出
-   - 收集使用體驗
-   - 優先級排序
-
-### 長期目標 (2-3 個月)
-7. 🔵 **Phase 5 多世界系統**
-   - 架構設計評估
-   - 資料遷移方案
-   - 向下相容性
-
-8. 🔵 **完整 PWA 體驗**
-   - 推送通知
-   - 離線優先設計
-   - App Store 發布考量
-
 ---
 
 ## 💾 備份與版本管理
@@ -1848,6 +1857,7 @@ auris-p12-bugfix.html (單一 HTML 檔案)
 重要里程碑:
   - P11: Phase 1 完整版 (基準線)
   - P12-bugfix: Bug 全面修復版 (當前)
+```
 ```
 
 ### Git 提交訊息格式

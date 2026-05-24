@@ -78,10 +78,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P46
+        Auris · P47
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P46 對話長按功能復刻與 UX 優化
+        P47 聊天室 Streaming 串流輸出（一對一 + 群組）
       </div>
     </div>
   </div>
@@ -90,7 +90,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { globalStore } from '../store/index.js';
-import { getSetting, setSetting } from '../services/db.js';
+import { getSetting, setSetting, exportAllData, importAllData } from '../services/db.js';
 
 const themes = [
   {id:'cream', name:'奶白', bg:'#f7f5f2', surface:'#fff',    rose:'#c9887a', text:'#2a2420'},
@@ -117,11 +117,60 @@ async function applyTheme(id) {
   }
 }
 
-function exportData() {
-  window.toast_('匯出功能即將支援');
+async function exportData() {
+  try {
+    window.toast_('正在準備備份檔...');
+    const data = await exportAllData();
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    // YYYYMMDD-HHMM format
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    
+    a.download = `auris_backup_${y}${m}${day}-${h}${min}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    window.toast_('匯出完成');
+  } catch (err) {
+    window.toast_('匯出失敗：' + err.message);
+  }
 }
 
 function importData() {
-  window.toast_('匯入功能即將支援');
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const confirmMsg = '【嚴重警告】\n\n這將會清除您目前所有的聊天紀錄與角色，並完全替換為備份檔的內容。\n\n這個動作無法復原，確定要繼續嗎？';
+    if (!window.confirm(confirmMsg)) {
+      input.value = '';
+      return;
+    }
+
+    window.toast_('正在匯入資料...');
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const json = JSON.parse(ev.target.result);
+        await importAllData(json);
+        window.toast_('匯入成功，即將重新載入...');
+        setTimeout(() => window.location.reload(), 1500);
+      } catch (err) {
+        window.toast_('匯入失敗：檔案格式錯誤或損毀。');
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
 }
 </script>
