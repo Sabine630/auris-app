@@ -1230,6 +1230,36 @@ auris-vue/src/
 
 ---
 
+### P50: 自動生成觸發引擎 ✅
+**日期**: 2026-05-25
+**核心改動**:
+1. **每日首次開啟自動生成**（`App.vue`）：`onMounted` 後在背景呼叫 `runDailyAutoGen()`，讀取 `last_auto_gen_date` 設定值；若與今日不同，遍歷所有角色，對 `autoDiary: true` 的角色呼叫 `generateDiary`（先確認當日日記不存在以防重複），對 `autoPost: true` 的角色呼叫 `generatePost`；生成後 toast 告知使用者。
+2. **完全靜默背景執行**：不 `await`，不阻塞 UI；API 失敗只 console.warn，不影響 App 啟動。
+
+**受影響檔案**:
+| 檔案 | 說明 |
+|------|------|
+| `auris-vue/src/App.vue` | 加入 `runDailyAutoGen()` + import contentEngine |
+| `auris-vue/src/views/SettingsView.vue` | 版號更新 P48 → P50 |
+
+---
+
+### P49: 動態回覆模式實作 ✅
+**日期**: 2026-05-25
+**核心改動**:
+1. **主動訊息串流函式**（`chatEngine.js`）：新增 `generateProactiveMessageStream(charId, allMsgs, { onChunk, signal })`，在 system prompt 後附加【主動訊息】上下文，確保 history 末尾為 user role（若末尾為 assistant 則補 `（沉默中）` 訊息），使用外部傳入的 `AbortSignal` 支援打斷，儲存訊息時 id 加 `_pro` 後綴區分。
+2. **背景計時器**（`ChatRoomView.vue`）：`scheduleProactive()` 根據角色 `care` 設定（`rarely` 12-25 分鐘、`sometimes` 4-10 分鐘、`often` 1-4 分鐘）計算隨機間隔；扣除上則訊息的已過時間，最短 3 秒觸發；mount 時啟動，unmount 時清除。
+3. **自動可打斷**（`ChatRoomView.vue`）：`handleInput()` 取代原本的 `autoResize()`，在 `auto-interrupt` 模式下偵測使用者打字時呼叫 `proactiveController.abort()`，中止進行中的主動訊息生成。
+4. **計時器重設**：`sendMsg` 的 finally 及 `triggerProactive` 的 finally 均呼叫 `scheduleProactive()` 確保每次對話後都重新計算下次主動訊息時機。
+
+**受影響檔案**:
+| 檔案 | 說明 |
+|------|------|
+| `auris-vue/src/services/chatEngine.js` | 新增 `generateProactiveMessageStream` |
+| `auris-vue/src/views/ChatRoomView.vue` | proactive timer、triggerProactive、handleInput、CARE_INTERVALS |
+
+---
+
 ### P48: 長期記憶與總結助手（記憶抽屜）✅
 **日期**: 2026-05-24
 **核心改動**:

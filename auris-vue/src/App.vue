@@ -29,7 +29,8 @@
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from './store/index.js';
-import { getSetting } from './services/db.js';
+import { getSetting, setSetting, dbAll, dbIdx } from './services/db.js';
+import { generateDiary, generatePost } from './services/contentEngine.js';
 import BottomNav from './components/BottomNav.vue';
 
 const route = useRoute();
@@ -122,6 +123,30 @@ function syncRootBg(theme) {
 }
 watch(() => globalStore.theme, syncRootBg);
 
+async function runDailyAutoGen() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const lastDate = await getSetting('last_auto_gen_date');
+    if (lastDate === today) return;
+    await setSetting('last_auto_gen_date', today);
+
+    const chars = await dbAll('characters');
+    let count = 0;
+    for (const c of chars) {
+      if (c.autoDiary) {
+        const diaries = await dbIdx('diary', 'charId', c.id);
+        if (!diaries.some(d => d.date === today)) {
+          try { const r = await generateDiary(c.id); if (r) count++; } catch (_) {}
+        }
+      }
+      if (c.autoPost) {
+        try { const r = await generatePost(c.id); if (r) count++; } catch (_) {}
+      }
+    }
+    if (count > 0) window.toast_?.(`已自動生成今日內容（${count} 則）`);
+  } catch (_) {}
+}
+
 let timer;
 onMounted(async () => {
   await globalStore.init();
@@ -137,6 +162,9 @@ onMounted(async () => {
   if (!obDone && route.name !== 'onboarding') {
     router.push('/onboarding');
   }
+
+  // Daily auto-generation (runs silently in background, P50)
+  runDailyAutoGen();
 
   // iOS PWA keyboard: scroll focused input into view after keyboard animates in
   document.addEventListener('focusin', (e) => {

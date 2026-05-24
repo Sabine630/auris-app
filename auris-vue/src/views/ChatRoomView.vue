@@ -87,7 +87,7 @@
     <!-- Input Area -->
     <div class="chat-ia">
       <textarea class="chat-in" ref="chatInp" v-model="inputContent" placeholder="說點什麼…" rows="1"
-        @keydown.enter.exact.prevent="sendMsg" @input="autoResize"></textarea>
+        @keydown.enter.exact.prevent="sendMsg" @input="handleInput"></textarea>
       <button class="chat-send" @click="sendMsg" :disabled="isTyping">
         <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
@@ -206,7 +206,7 @@
 import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbDel, dbPut } from '../services/db.js';
-import { sendUserMessage, generateAIResponseStream, summarizeToMemory } from '../services/chatEngine.js';
+import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, summarizeToMemory } from '../services/chatEngine.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -245,6 +245,12 @@ const enabledTokenEstimate = computed(() => {
   return Math.ceil(total / 3);
 });
 
+// ── Proactive Timer State (P49) ──
+let proactiveTimer = null;
+let proactiveController = null;
+const isProactiveGenerating = ref(false);
+const CARE_INTERVALS = { rarely: [12, 25], sometimes: [4, 10], often: [1, 4] };
+
 onMounted(async () => {
   const c = await dbGet('characters', charId);
   if (!c) {
@@ -257,12 +263,15 @@ onMounted(async () => {
 
   await loadMessages();
   await loadChatMems();
+  scheduleProactive();
 
   // Listen for background Heart Voices
   window.addEventListener('new-heart-voice', onHeartVoice);
 });
 
 onUnmounted(() => {
+  clearTimeout(proactiveTimer);
+  proactiveController?.abort();
   window.removeEventListener('new-heart-voice', onHeartVoice);
 });
 
@@ -292,6 +301,70 @@ async function toggleMem(mem) {
 async function deleteMem(id) {
   await dbDel('chat_memories', id);
   chatMems.value = chatMems.value.filter(m => m.id !== id);
+}
+
+// ── Proactive Timer Functions ──
+function scheduleProactive() {
+  clearTimeout(proactiveTimer);
+  const mode = character.value?.replyMode;
+  if (!mode || mode === 'manual') return;
+
+  const care = character.value?.care || 'sometimes';
+  const [min, max] = CARE_INTERVALS[care] || CARE_INTERVALS.sometimes;
+  const intervalMs = (min + Math.random() * (max - min)) * 60 * 1000;
+
+  const lastMsg = messages.value.length ? messages.value[messages.value.length - 1] : null;
+  const elapsed = lastMsg ? Date.now() - lastMsg.createdAt : intervalMs + 1;
+  const delay = Math.max(3000, intervalMs - elapsed);
+
+  proactiveTimer = setTimeout(triggerProactive, delay);
+}
+
+async function triggerProactive() {
+  if (isTyping.value || isProactiveGenerating.value) { scheduleProactive(); return; }
+
+  const rawMsgs = messages.value.filter(m => m.type !== 'hv');
+  proactiveController = new AbortController();
+  isProactiveGenerating.value = true;
+
+  let streamIdx = -1;
+  try {
+    isTyping.value = true;
+    const { msg } = await generateProactiveMessageStream(charId, rawMsgs, {
+      onChunk(text) {
+        if (streamIdx === -1) {
+          messages.value.push({ id: 'streaming_' + Date.now(), charId, role: 'assistant', content: '', createdAt: Date.now(), isStreaming: true });
+          streamIdx = messages.value.length - 1;
+          isTyping.value = false;
+        }
+        messages.value[streamIdx].content += text;
+        if (isNearBottom()) scrollToBottom();
+      },
+      signal: proactiveController.signal
+    });
+    if (streamIdx !== -1) {
+      messages.value.splice(streamIdx, 1, msg || null);
+      if (!msg) messages.value.splice(streamIdx, 1);
+    } else if (msg) {
+      messages.value.push(msg);
+      scrollToBottom();
+    }
+  } catch (err) {
+    if (streamIdx !== -1) messages.value.splice(streamIdx, 1);
+    if (err.name !== 'AbortError') console.error('Proactive error:', err);
+  } finally {
+    isTyping.value = false;
+    isProactiveGenerating.value = false;
+    proactiveController = null;
+    scheduleProactive();
+  }
+}
+
+function handleInput() {
+  autoResize();
+  if (character.value?.replyMode === 'auto-interrupt' && isProactiveGenerating.value) {
+    proactiveController?.abort();
+  }
 }
 
 async function doSummarize() {
@@ -411,6 +484,7 @@ async function sendMsg() {
     window.toast_('錯誤：' + err.message);
   } finally {
     isTyping.value = false;
+    scheduleProactive();
   }
 }
 

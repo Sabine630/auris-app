@@ -203,6 +203,51 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }) {
   return { msg, truncated };
 }
 
+// ── 1-on-1 Proactive Message: Streaming ──────────────────────────────────
+export async function generateProactiveMessageStream(charId, allMsgs, { onChunk, signal }) {
+  const { c, provider, model, base, apiKey, history, finalSystemPrompt } = await buildAIChatSetup(charId, allMsgs);
+
+  const proactivePrompt = finalSystemPrompt + '\n\n【主動訊息】你突然想起對方，主動傳個訊息。不是回覆任何問題，是你自己有什麼想說——可能是分享一件事、想問問近況、或只是想到他/她了。語氣自然，像真人突然想說話一樣，直接說你想說的。';
+
+  const proactiveHistory = history.length
+    ? (history[history.length - 1].role === 'user'
+        ? history
+        : [...history, { role: 'user', content: '（沉默中）' }])
+    : [{ role: 'user', content: '（對方沒說話，你突然有什麼想說）' }];
+
+  const fetchOpts = signal ? { signal } : {};
+  let fullText = '';
+  const accumulate = (text) => { fullText += text; onChunk(text); };
+  let truncated = false;
+
+  if (provider === 'anthropic') {
+    const r = await fetch(`${base}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 2000, system: proactivePrompt, messages: proactiveHistory, stream: true }),
+      ...fetchOpts
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+    ({ truncated } = await parseSSEStream(r, 'anthropic', accumulate));
+  } else {
+    const r = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, max_tokens: 2000, temperature: c.temperature ?? 0.85, messages: [{ role: 'system', content: proactivePrompt }, ...proactiveHistory], stream: true }),
+      ...fetchOpts
+    });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.error?.message || `HTTP ${r.status}`); }
+    ({ truncated } = await parseSSEStream(r, provider, accumulate));
+  }
+
+  let msg = null;
+  if (fullText.trim()) {
+    msg = { id: 'msg_' + Date.now() + '_pro', charId, role: 'assistant', content: fullText.trim(), createdAt: Date.now() };
+    await dbPut('messages', msg);
+  }
+  return { msg, truncated };
+}
+
 // ── Heart Voice Logic ─────────────────────────────────────────────────────
 const HV_INTERVAL = 15;
 const HV_EMOTION_WORDS = ['喜歡','愛','討厭','難過','高興','開心','害怕','緊張','生氣','委屈','想念','孤單','幸福','失落','期待','驚訝','感動','羨慕','嫉妒','後悔','抱歉','謝謝','陪','一起','永遠','離開','再見','思念','心跳','臉紅','沉默','默默','其實','說不出','不敢'];
