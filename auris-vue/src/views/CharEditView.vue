@@ -257,7 +257,9 @@
             <div class="opt-group">
               <div v-for="o in REPLY_MODES" :key="o.v" class="opt-btn" :class="{ sel: char.replyMode === o.v }" @click="char.replyMode = o.v">{{ o.l }}</div>
             </div>
-            <div class="form-hint">手動：你送出才回覆。自動：角色也會主動傳訊息。自動可打斷：你說話時角色停止輸入</div>
+            <div class="form-hint" v-if="char.replyMode === 'manual'">手動：你送出訊息後角色才回覆，不會主動打擾。</div>
+            <div class="form-hint" v-if="char.replyMode === 'auto'">自動：角色會像真人一樣，偶爾主動傳訊息給你。</div>
+            <div class="form-hint" v-if="char.replyMode === 'auto-interrupt'">自動可打斷：角色主動傳訊息時，若你開始打字，角色會停止輸入等你說完。</div>
           </div>
         </div>
         <div class="form-group">
