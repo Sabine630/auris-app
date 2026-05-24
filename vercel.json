@@ -1,4 +1,5 @@
 {
+  "installCommand": "cd auris-vue && npm install",
   "buildCommand": "cd auris-vue && npm run build",
   "outputDirectory": "auris-vue/dist",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
