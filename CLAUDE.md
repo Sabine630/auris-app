@@ -11,7 +11,7 @@
 - 更新下方一行的修復摘要（簡短描述這次改了什麼）
 
 ### 2. 更新進度總覽文件
-**檔案**：`Auris 完整開發進度總覽.ini`
+**檔案**：`Auris 完整開發進度總覽.md`
 - 在最後一個 P 節（`### P4x: ...`）後面新增本次進度節
 - 格式參考現有節的結構：標題、日期、版本、功能描述、受影響檔案表格
 
@@ -22,8 +22,22 @@
 
 ---
 
+## Branch 策略
+
+- **`dev` 分支**：所有開發與修復一律先推到這裡，Vercel 自動部署測試版
+- **`main` 分支**：只有使用者**明確確認**後才能推，推上去會更新對外公開的 GitHub Pages 正式版
+- **絕對不可在未經確認的情況下推送到 `main`**
+
 ## Build & Deploy 流程
 
+### 日常開發（推測試版）
+```bash
+git add <files>
+git commit -m "Fix PXX: 摘要"
+git push origin dev   # Vercel 自動部署到測試版
+```
+
+### 發布正式版（使用者確認後才執行）
 ```bash
 # 1. Build
 cd auris-vue && npm run build
@@ -34,12 +48,13 @@ cp -r dist/* ..
 # 3. Clean old assets
 git rm assets/index-{舊hash}.{css,js}
 
-# 4. Stage & commit
+# 4. Stage & commit & push main
 git add -A
-git commit -m "Fix vX.XX: 摘要"
+git commit -m "Fix PXX: 摘要"
+git push origin main   # 更新 GitHub Pages 正式版
 ```
 
-**推上 Git 前必須先問使用者是否確認推送。**
+**推上任何分支前必須先問使用者是否確認推送。**
 
 ---
 
@@ -47,7 +62,8 @@ git commit -m "Fix vX.XX: 摘要"
 
 - **Vue 源碼**：`auris-vue/src/`
 - **Build 輸出**：直接 copy 到專案根目錄（`assets/`, `index.html`）
-- **部署**：GitHub Pages (`sabine630.github.io/auris-app`)
+- **測試版部署**：Vercel，監聽 `dev` 分支自動部署（`auris-app-git-dev-sabine630-6243s-projects.vercel.app`）
+- **正式版部署**：GitHub Pages，`main` 分支（`sabine630.github.io/auris-app`）
 - **Archive（舊版 HTML 單檔）**：`archive/` — 唯讀參考，不修改
 
 ## 重要檔案對照
@@ -55,7 +71,7 @@ git commit -m "Fix vX.XX: 摘要"
 | 目的 | 檔案 |
 |------|------|
 | 版號顯示 | `auris-vue/src/views/SettingsView.vue` |
-| 進度紀錄 | `Auris 完整開發進度總覽.ini` |
+| 進度紀錄 | `Auris 完整開發進度總覽.md` |
 | 架構文件 | `auris-vue/ARCHITECTURE.md` |
 | 全域樣式 | `auris-vue/src/assets/main.css` |
 | 全域狀態 | `auris-vue/src/store/index.js` |

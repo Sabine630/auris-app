@@ -11,15 +11,15 @@
 - **專案名稱**: Auris（你說，他在聽）
 - **類型**: AI 角色聊天 PWA 應用
 - **技術棧**: Vue 3 + Vite + Vue Router + IndexedDB + CSS Variables（P37 起）
-- **部署平台**: GitHub Pages
+- **部署平台**: GitHub Pages（正式）/ Vercel（測試）
 
 ### 🔗 重要連結
 
 | 項目 | 網址 | 說明 |
 |------|------|------|
-| 線上網址 | https://sabine630.github.io/auris-app/ | 正式版本（不拆版本，直接覆蓋部署） |
+| 正式版網址 | https://sabine630.github.io/auris-app/ | Production，`main` 分支，對外公開 |
+| 測試版網址 | https://auris-app-git-dev-sabine630-6243s-projects.vercel.app | Staging，`dev` 分支，自動部署 |
 | GitHub Repo | https://github.com/sabine630/auris-app | 原始碼 |
-| 檔案檢視 | https://github.com/sabine630/auris-app/blob/main/index.html | 線上查看 HTML |
 | 登入密碼 | `auris2025` | 密碼鎖 |
 
 ---
@@ -1686,14 +1686,17 @@ sessionStorage:
   - Branch: main
 
 部署平台:
-  - GitHub Pages
-  - CDN: GitHub's CDN
-  - 自動部署: 推送後 1-2 分鐘生效
-  
+  - GitHub Pages（Production）：main 分支，手動 build + push
+  - Vercel（Staging）：dev 分支，推送後自動部署
+
+開發流程:
+  - 新功能開發 → 推 dev → Vercel 自動部署測試版
+  - 測試通過 → build → 推 main → GitHub Pages 更新正式版
+
 線上網址:
-  - https://sabine630.github.io/auris-app/
-  - 支援 HTTPS
-  - 支援 PWA 安裝
+  - 正式版: https://sabine630.github.io/auris-app/
+  - 測試版: https://auris-app-git-dev-sabine630-6243s-projects.vercel.app
+  - 均支援 HTTPS 與 PWA 安裝
 ```
 
 ---
