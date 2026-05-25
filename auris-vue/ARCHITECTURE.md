@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-05-22
+> 最後更新：2026-05-25
 
 ---
 
@@ -39,7 +39,7 @@ graph TD
         Chat[chatEngine.js<br/>聊天 AI 生成]
     end
     
-    DB --> IndexedDB[(IndexedDB: auris<br/>v4)]
+    DB --> IndexedDB[(IndexedDB: auris<br/>v5)]
 ```
 
 ---
@@ -99,6 +99,7 @@ graph TD
 | `theme` | 主題名稱（`cream` / `warm` / `dark` / `gray` / `ocean` / `matcha`） |
 | `me_settings` | 使用者自身設定物件（名字、年齡、個性等） |
 | `onboarding_done` | `true` = 已完成新手引導 |
+| `last_auto_gen_date` | 最後一次自動生成日期（`YYYY-MM-DD`），防重複觸發 |
 
 > [!WARNING]
 > **升版注意**：升版（`version` 數字 +1）只能「新增」資料表或索引，不能修改已有結構。修改已有 store 的結構必須刪掉重建，**會清空該 store 的資料**。
@@ -135,9 +136,14 @@ API 請求的底層工具。
 ### `services/contentEngine.js` 與 `chatEngine.js`
 AI 內容與對話生成邏輯：
 
-- `contentEngine.js`：負責生成貼文 (`generatePost`)、日記 (`generateDiary`)、夢境 (`generateDream`) 以及留言回覆 (`generateCommentReply`)。
-- `chatEngine.js`：負責處理單人聊天 (`generateAIResponse`) 以及群組聊天 (`generateGroupAIResponse`)。
-  - **API Error Handling**：因為考量到使用者可能會使用第三方的 API 代理 (Proxy) 伺服器，部分 Proxy 可能會回傳 Array 格式的錯誤訊息（例如 `[{"error": ...}]`），或是對特定的 `max_tokens` (如 800) 給予異常的靜默截斷 (`finish_reason: length`)。引擎內已實作陣列錯誤捕捉，且針對群組聊天放寬 `max_tokens: 4000` 來增加相容性。當生成發生錯誤或長度為 0 時，會直接以「【系統偵錯】」的 `user` 身分寫入 db，藉此回饋在畫面上供排查。
+- `contentEngine.js`：負責生成貼文 (`generatePost`)、日記 (`generateDiary`)、夢境 (`generateDream`) 以及留言回覆 (`generateCommentReply`)。每次生成成功後會同步寫入 `notifications` store，讓通知頁顯示新動態。
+- `chatEngine.js`：核心對話引擎，主要函式：
+  - `generateAIResponseStream` — 一對一串流回覆，完成後觸發 Heart Voice
+  - `generateGroupAIResponseStream` — 群組串流回覆，支援 `onStart`（切換動畫）與 `onChunk`（逐字更新）
+  - `generateProactiveMessageStream` — 主動訊息串流，配合背景計時器使用
+  - `summarizeToMemory` — 將近期對話濃縮為 `chat_memories` 條目
+  - `generateHeartVoice` — 機率性生成說不出口的心聲，寫入 `memories` 並發出 `new-heart-voice` 事件與通知
+  - **API Error Handling**：支援 Array 格式 Proxy 錯誤捕捉；群組放寬 `max_tokens: 4000`；生成錯誤時以「【系統偵錯】」訊息顯示於畫面。
 
 ---
 
@@ -169,14 +175,24 @@ globalStore = {
 | `/` | `home` | ✅ |
 | `/chat-list` | `chat-list` | ✅ (對話 tab) |
 | `/chat/:id?` | `chat` | ❌ 隱藏 |
-| `/moments` | `moments` | ✅ |
+| `/moments` | `moments` | ✅ (貼文 tab) |
 | `/post/:id` | `post-detail` | ❌ 隱藏 |
 | `/diary` | `diary` | ✅ |
+| `/diary/:id` | `diary-detail` | ❌ 隱藏 |
+| `/dream` | `dream` | ✅ |
+| `/dream/:id` | `dream-detail` | ❌ 隱藏 |
 | `/group-list` | `group-list` | ✅ (對話 tab) |
 | `/group-room/:id?` | `group-room` | ❌ 隱藏 |
+| `/group-create` | `group-create` | ❌ 隱藏 |
+| `/blackbox` | `blackbox` | ✅ |
+| `/notifications` | `notifications` | ✅ |
+| `/me` | `me` | ✅ (我的 tab) |
 | `/settings` | `settings` | ✅ (我的 tab) |
-
-*(省略部分細節路由，請直接參考 router/index.js)*
+| `/api` | `api` | ❌ 隱藏 |
+| `/lock` | `lock` | ❌ 隱藏 |
+| `/onboarding` | `onboarding` | ❌ 隱藏 |
+| `/char-manage` | `char-manage` | ❌ 隱藏 |
+| `/char-edit/:id?` | `char-edit` | ❌ 隱藏 |
 
 ---
 
@@ -202,10 +218,15 @@ globalStore = {
 
 ### 關鍵 View 說明
 
-- **ChatRoomView (單人聊天)**：處理一般對話與 Heart Voice 機制。
-- **GroupRoomView (群組聊天)**：處理多角色在同一個房間的對話。
-  - *更新狀態 (v1.0.40)*：群組回覆邏輯已完全整合 P36 的歷史資料清洗（精準點名偵測、角色前綴去重）與系統提示詞規則，確保 AI 角色不會互相混淆發言。
-- **CharEditView (角色編輯)**：採用 5 個 Tab 切換，必須確保 modal CSS 存在以正常顯示彈窗。
+- **ChatRoomView (單人聊天)**：串流逐字輸出（`generateAIResponseStream`）、長按訊息選單（複製／編輯重傳／重新生成）、記憶抽屜（AI 總結、手動新增、編輯、toggle、刪除）、背景主動訊息計時器（`scheduleProactive`）、auto-interrupt 打斷模式。
+- **GroupRoomView (群組聊天)**：多角色串流輪替回覆，`@點名` 強制指定角色，角色前綴清洗防止 AI 混淆發言。
+- **CharEditView (角色編輯)**：5 個 Tab 切換，包含基本資訊、個性背景、說話方式、關係規範、AI 參數，必須確保 modal CSS 存在以正常顯示彈窗。
+- **HomeView**：快速入口磚牆（對話、貼文、夢境、黑盒子、通知等），角色橫向捲動快選。
+- **MomentsView / PostDetailView**：貼文列表與留言回覆。
+- **DiaryView / DiaryDetailView**：日記列表與全文展示。
+- **DreamView / DreamDetailView**：夢境列表與全文展示。
+- **BlackboxView**：Heart Voice 心聲記錄。
+- **NotificationsView**：顯示貼文／日記／夢境／心聲生成後寫入的通知，點擊跳轉對應頁面。
 
 ---
 
@@ -215,11 +236,11 @@ globalStore = {
 - 使用 `useRoute()` 判斷當前路由。
 - `.kb-hidden`：鍵盤拉起時隱藏整個導覽列，優化手機打字體驗。
 
-### Toast 系統 (`$toast`)
+### Toast 系統
 - 取代原生 `window.alert()` 的全域通知系統。
-- 在 `App.vue` 實作了 `<div class="global-toast">`。
-- 在任何 View 元件中可直接呼叫：`this.$toast('通知訊息')` 或是 `<div @click="$toast('...')">`。
-- 外部 JS 檔（如 `chatEngine.js`）可透過 `window.toast_('通知訊息')` 呼叫。
+- 在 `App.vue` 實作，掛載於 `<div id="toast" class="toast">`。
+- 任何地方（View 或 Service）統一用 `window.toast_('訊息')` 呼叫。
+- 可選第二參數毫秒數控制顯示時間（預設 4500ms）。
 
 ---
 
@@ -247,7 +268,7 @@ globalStore = {
 
 ## 10. 維護注意事項
 
-1. **刪除關聯資料**：在刪除角色時，必須同步清除 `messages`, `memories`, `diary`, `dreams`, `moments` 內帶有該 `charId` 的所有資料。
+1. **刪除關聯資料**：在刪除角色時，必須同步清除所有帶有該 `charId` 的資料表：`messages`, `memories`, `chat_memories`, `moments`, `diary`, `dreams`, `notifications`。
 2. **新增設定項目**：直接透過 `setSetting('new_key', value)` 新增即可，不需修改資料庫結構。
 3. **空狀態原則**：遇到尚未開發或空列表時，按鈕一律使用 `.empty-cta` 而非 `.btn-primary`，且未完成的功能應掛上 `@click="$toast('尚在開發，敬請期待')"`。
 
