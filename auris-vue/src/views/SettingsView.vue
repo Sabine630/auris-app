@@ -78,10 +78,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P52
+        Auris · P53
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P52 通知修復・onboarding 防重複・記憶抽屜手動新增
+        P53 更新公告 modal・主頁公告入口・首次開啟自動顯示
       </div>
     </div>
   </div>

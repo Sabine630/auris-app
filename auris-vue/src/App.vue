@@ -22,6 +22,9 @@
 
     <!-- Bottom Navigation -->
     <BottomNav v-if="showNav" />
+
+    <!-- Announcement Modal -->
+    <AnnouncementModal v-if="showAnnouncement" @close="closeAnnouncement" />
   </div>
 </template>
 
@@ -32,6 +35,17 @@ import { globalStore } from './store/index.js';
 import { getSetting, setSetting, dbAll, dbIdx, dbGet } from './services/db.js';
 import { generateDiary, generatePost } from './services/contentEngine.js';
 import BottomNav from './components/BottomNav.vue';
+import AnnouncementModal from './components/AnnouncementModal.vue';
+
+const ANNOUNCEMENT_VERSION = 'P52';
+const showAnnouncement = ref(false);
+
+async function closeAnnouncement() {
+  showAnnouncement.value = false;
+  await setSetting('last_seen_announcement', ANNOUNCEMENT_VERSION);
+}
+
+window.openAnnouncement_ = () => { showAnnouncement.value = true; };
 
 const route = useRoute();
 const router = useRouter();
@@ -166,6 +180,12 @@ onMounted(async () => {
     } else {
       router.push('/onboarding');
     }
+  }
+
+  // Show announcement modal if user hasn't seen this version yet
+  const lastSeen = await getSetting('last_seen_announcement');
+  if (lastSeen !== ANNOUNCEMENT_VERSION) {
+    setTimeout(() => { showAnnouncement.value = true; }, 600);
   }
 
   // Daily auto-generation (runs silently in background, P50)

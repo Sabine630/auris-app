@@ -285,6 +285,13 @@ globalStore = {
 
 ## 12. 版本更新紀錄
 
+### v0.54 / P53（2026-05-25）
+
+**更新公告系統：**
+- **新增 `components/AnnouncementModal.vue`**：三頁式分頁 modal（新功能／介面修復／更新指引），含分頁指示點、上下頁按鈕、關閉按鈕。`window.openAnnouncement_()` 全域呼叫入口。
+- **`App.vue`**：掛載時讀取 `last_seen_announcement` setting；若不等於 `ANNOUNCEMENT_VERSION`（'P52'），600ms 延遲後顯示 modal。關閉時寫入版本號。
+- **`HomeView.vue`**：h-top 區塊新增 `.h-ann-btn` 小按鈕，隨時可重新開啟公告。
+
 ### v0.53 / P52（2026-05-25）
 
 **通知系統修復：**
