@@ -125,10 +125,10 @@ function timeAgo(ts) {
   const diff = Date.now() - ts;
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return '剛剛';
-  if (mins < 60) return `${mins}分`;
+  if (mins < 60) return `${mins}分鐘前`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}時`;
-  return `${Math.floor(hrs / 24)}天`;
+  if (hrs < 24) return `${hrs}小時前`;
+  return `${Math.floor(hrs / 24)}天前`;
 }
 
 function formatContent(str) {

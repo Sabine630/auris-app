@@ -144,8 +144,23 @@
     <div class="mem-drawer" :class="{ open: showMemDrawer }">
       <div class="mem-drawer-hd">
         <span>記憶抽屜</span>
-        <div class="mem-drawer-close" @click="showMemDrawer = false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="mem-add-btn" @click="startAddMem" title="手動新增記憶">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </div>
+          <div class="mem-drawer-close" @click="showMemDrawer = false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- 手動新增記憶表單 -->
+      <div class="mem-new-form" v-if="showNewMemForm">
+        <input class="mem-edit-title" v-model="newMemTitle" placeholder="標題（選填）" />
+        <textarea class="mem-edit-content" v-model="newMemContent" rows="4" placeholder="輸入記憶內容..."></textarea>
+        <div class="mem-edit-actions">
+          <button class="mem-edit-cancel" @click="cancelAddMem">取消</button>
+          <button class="mem-edit-save" @click="saveNewMem" :disabled="!newMemContent.trim()">新增</button>
         </div>
       </div>
 
@@ -160,17 +175,34 @@
 
       <div class="mem-list" v-if="chatMems.length">
         <div class="mem-item" v-for="mem in chatMems" :key="mem.id">
-          <label class="mem-toggle">
-            <input type="checkbox" :checked="mem.enabled" @change="toggleMem(mem)">
-            <span class="mem-toggle-track"></span>
-          </label>
-          <div class="mem-body" @click="expandedMemId = expandedMemId === mem.id ? null : mem.id">
-            <div class="mem-title">{{ mem.title }}</div>
-            <div class="mem-content" :class="{ expanded: expandedMemId === mem.id }">{{ mem.content }}</div>
-          </div>
-          <div class="mem-del" @click="deleteMem(mem.id)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-          </div>
+          <!-- 編輯模式 -->
+          <template v-if="editingMemId === mem.id">
+            <div class="mem-edit-body">
+              <input class="mem-edit-title" v-model="editTitle" placeholder="標題" />
+              <textarea class="mem-edit-content" v-model="editContent" rows="4" placeholder="記憶內容"></textarea>
+              <div class="mem-edit-actions">
+                <button class="mem-edit-cancel" @click="cancelEditMem">取消</button>
+                <button class="mem-edit-save" @click="saveEditMem(mem)">儲存</button>
+              </div>
+            </div>
+          </template>
+          <!-- 一般模式 -->
+          <template v-else>
+            <label class="mem-toggle">
+              <input type="checkbox" :checked="mem.enabled" @change="toggleMem(mem)">
+              <span class="mem-toggle-track"></span>
+            </label>
+            <div class="mem-body" @click="expandedMemId = expandedMemId === mem.id ? null : mem.id">
+              <div class="mem-title">{{ mem.title }}</div>
+              <div class="mem-content" :class="{ expanded: expandedMemId === mem.id }">{{ mem.content }}</div>
+            </div>
+            <div class="mem-edit-btn" @click="startEditMem(mem)" title="編輯">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </div>
+            <div class="mem-del" @click="deleteMem(mem.id)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+            </div>
+          </template>
         </div>
       </div>
       <div v-else style="padding:24px 16px;text-align:center;font-size:12px;font-weight:300;color:var(--text-3)">
@@ -237,6 +269,12 @@ const showMemDrawer = ref(false);
 const chatMems = ref([]);
 const isSummarizing = ref(false);
 const expandedMemId = ref(null);
+const editingMemId = ref(null);
+const editTitle = ref('');
+const editContent = ref('');
+const showNewMemForm = ref(false);
+const newMemTitle = ref('');
+const newMemContent = ref('');
 const sumCount = 20;
 
 const enabledMemCount = computed(() => chatMems.value.filter(m => m.enabled).length);
@@ -301,6 +339,49 @@ async function toggleMem(mem) {
 async function deleteMem(id) {
   await dbDel('chat_memories', id);
   chatMems.value = chatMems.value.filter(m => m.id !== id);
+  if (editingMemId.value === id) editingMemId.value = null;
+}
+
+function startAddMem() {
+  showNewMemForm.value = true;
+  newMemTitle.value = '';
+  newMemContent.value = '';
+  editingMemId.value = null;
+}
+
+function cancelAddMem() {
+  showNewMemForm.value = false;
+}
+
+async function saveNewMem() {
+  const content = newMemContent.value.trim();
+  if (!content) return;
+  const title = newMemTitle.value.trim() || content.slice(0, 20) + (content.length > 20 ? '…' : '');
+  const entry = { id: 'cmem_' + Date.now(), charId, title, content, enabled: true, createdAt: Date.now() };
+  await dbPut('chat_memories', entry);
+  chatMems.value.unshift(entry);
+  showNewMemForm.value = false;
+}
+
+function startEditMem(mem) {
+  editingMemId.value = mem.id;
+  editTitle.value = mem.title;
+  editContent.value = mem.content;
+  expandedMemId.value = null;
+}
+
+function cancelEditMem() {
+  editingMemId.value = null;
+}
+
+async function saveEditMem(mem) {
+  const t = editTitle.value.trim();
+  const c = editContent.value.trim();
+  if (!t && !c) return;
+  mem.title = t || mem.title;
+  mem.content = c || mem.content;
+  await dbPut('chat_memories', { ...mem });
+  editingMemId.value = null;
 }
 
 // ── Proactive Timer Functions ──
@@ -832,6 +913,41 @@ async function doRegenerate(m) {
   overflow: visible;
 }
 
+.mem-add-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-3);
+  border-radius: 6px;
+  transition: color .15s;
+}
+.mem-add-btn:active { color: var(--rose); }
+.mem-add-btn svg { width: 18px; height: 18px; }
+
+.mem-new-form {
+  padding: 8px 16px 12px;
+  border-bottom: .5px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mem-edit-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-3);
+  margin-top: -2px;
+}
+.mem-edit-btn svg { width: 15px; height: 15px; }
+
 .mem-del {
   flex-shrink: 0;
   width: 28px;
@@ -844,6 +960,59 @@ async function doRegenerate(m) {
   margin-top: -2px;
 }
 .mem-del svg { width: 16px; height: 16px; }
+
+.mem-edit-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0;
+}
+.mem-edit-title {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface);
+  border: .5px solid var(--border-2);
+  border-radius: 8px;
+  padding: 7px 10px;
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.mem-edit-content {
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--text);
+  background: var(--surface);
+  border: .5px solid var(--border-2);
+  border-radius: 8px;
+  padding: 7px 10px;
+  outline: none;
+  resize: none;
+  line-height: 1.5;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.mem-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.mem-edit-cancel, .mem-edit-save {
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 400;
+  padding: 5px 14px;
+  border-radius: 8px;
+  border: .5px solid var(--border);
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.mem-edit-cancel { background: transparent; color: var(--text-3); }
+.mem-edit-save { background: var(--rose); color: #fff; border-color: var(--rose); }
 
 .mem-footer {
   padding: 10px 16px 20px;

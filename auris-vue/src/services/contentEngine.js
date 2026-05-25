@@ -94,6 +94,7 @@ ${c.hobby ? `【喜好】${c.hobby}` : ''}
     content = dedupeRepeats(content);
     const entry = { id: 'post_' + Date.now(), charId, content, tags, likes: 0, likedByMe: false, comments: [], createdAt: Date.now() };
     await dbPut('moments', entry);
+    await dbPut('notifications', { id: 'notif_' + Date.now(), charId, type: 'post', targetId: entry.id, text: '發了一則新貼文', read: false, createdAt: Date.now() });
     return { entry, truncated };
   }
   return null;
@@ -215,6 +216,7 @@ ${recentChat ? `今天和對方的對話內容：\n${recentChat}\n` : ''}
     }
     const entry = { id: 'diary_' + Date.now(), charId, date: today, content: lines.join('\n').trim(), mood, createdAt: Date.now() };
     await dbPut('diary', entry);
+    await dbPut('notifications', { id: 'notif_' + Date.now(), charId, type: 'diary', targetId: entry.id, text: '寫了今天的日記', read: false, createdAt: Date.now() });
     return { entry, truncated };
   }
   return null;
@@ -285,6 +287,7 @@ ${recentTopics ? `最近聊過的話題：${recentTopics}。` : ''}
     text = dedupeRepeats(text);
     const entry = { id: 'dream_' + Date.now(), charId, content: text.trim(), createdAt: Date.now() };
     await dbPut('dreams', entry);
+    await dbPut('notifications', { id: 'notif_' + Date.now(), charId, type: 'dream', targetId: entry.id, text: '告訴你他昨晚的夢境', read: false, createdAt: Date.now() });
     return { entry, truncated };
   }
   return null;

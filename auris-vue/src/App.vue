@@ -29,7 +29,7 @@
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from './store/index.js';
-import { getSetting, setSetting, dbAll, dbIdx } from './services/db.js';
+import { getSetting, setSetting, dbAll, dbIdx, dbGet } from './services/db.js';
 import { generateDiary, generatePost } from './services/contentEngine.js';
 import BottomNav from './components/BottomNav.vue';
 
@@ -157,14 +157,25 @@ onMounted(async () => {
   // Generate PWA icon and manifest
   generatePWAIcon();
 
-  // Check onboarding
+  // Check onboarding — also skip if user already has characters (e.g. after backup restore)
   const obDone = await getSetting('onboarding_done');
   if (!obDone && route.name !== 'onboarding') {
-    router.push('/onboarding');
+    const chars = await dbAll('characters');
+    if (chars && chars.length > 0) {
+      await setSetting('onboarding_done', true);
+    } else {
+      router.push('/onboarding');
+    }
   }
 
   // Daily auto-generation (runs silently in background, P50)
   runDailyAutoGen();
+
+  // Prevent iOS Safari swipe-back gesture (left/right edge swipe)
+  document.addEventListener('touchstart', (e) => {
+    const x = e.touches[0].clientX;
+    if (x < 20 || x > window.innerWidth - 20) e.preventDefault();
+  }, { passive: false });
 
   // iOS PWA keyboard: scroll focused input into view after keyboard animates in
   document.addEventListener('focusin', (e) => {

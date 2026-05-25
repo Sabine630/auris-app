@@ -78,10 +78,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P50
+        Auris · P52
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P49 動態回覆模式・P50 自動生成觸發引擎
+        P52 通知修復・onboarding 防重複・記憶抽屜手動新增
       </div>
     </div>
   </div>

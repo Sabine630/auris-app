@@ -314,6 +314,7 @@ ${recentText}
         createdAt: Date.now()
       };
       await dbPut('memories', entry);
+      await dbPut('notifications', { id: 'notif_hv_' + Date.now(), charId: c.id, type: 'hv', targetId: entry.id, text: '有一句說不出口的話…', read: false, createdAt: Date.now() });
       window.dispatchEvent(new CustomEvent('new-heart-voice', { detail: entry }));
     }
   } catch (e) {
