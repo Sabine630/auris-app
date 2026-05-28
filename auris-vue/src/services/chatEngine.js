@@ -1,5 +1,5 @@
 import { dbGet, dbPut, dbIdx, getSetting } from './db.js';
-import { fetchWithTimeout, sendLLMRequest } from './api.js';
+import { fetchWithTimeout, sendLLMRequest, getVertexToken } from './api.js';
 
 function getDefModel(provider) {
   if (provider === 'anthropic') return 'claude-3-5-sonnet-20240620';
@@ -171,7 +171,22 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }) {
   const accumulate = (text) => { fullText += text; onChunk(text); };
   let truncated = false;
 
-  if (provider === 'anthropic') {
+  if (provider === 'vertex') {
+    const sa = JSON.parse(apiKey);
+    const token = await getVertexToken(sa);
+    const region = 'us-central1';
+    const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
+    const body = {
+      contents: history.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+      systemInstruction: { parts: [{ text: finalSystemPrompt }] },
+      generationConfig: { maxOutputTokens: dynamicMaxTokens, temperature: c.temperature ?? 0.8 }
+    };
+    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 90000);
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+    const data = await r.json();
+    fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    onChunk(fullText);
+  } else if (provider === 'anthropic') {
     const r = await fetchWithTimeout(`${base}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
@@ -220,7 +235,22 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
   const accumulate = (text) => { fullText += text; onChunk(text); };
   let truncated = false;
 
-  if (provider === 'anthropic') {
+  if (provider === 'vertex') {
+    const sa = JSON.parse(apiKey);
+    const token = await getVertexToken(sa);
+    const region = 'us-central1';
+    const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
+    const body = {
+      contents: proactiveHistory.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+      systemInstruction: { parts: [{ text: proactivePrompt }] },
+      generationConfig: { maxOutputTokens: 2000, temperature: c.temperature ?? 0.85 }
+    };
+    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 90000);
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+    const data = await r.json();
+    fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    onChunk(fullText);
+  } else if (provider === 'anthropic') {
     const r = await fetch(`${base}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
@@ -412,7 +442,23 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
 
   let fullText = '';
 
-  if (provider === 'anthropic') {
+  if (provider === 'vertex') {
+    const sa = JSON.parse(apiKey);
+    const token = await getVertexToken(sa);
+    const region = 'us-central1';
+    const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
+    const body = {
+      contents: fallbackHistory.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      generationConfig: { maxOutputTokens: 4000, temperature: c.temperature ?? 0.8 }
+    };
+    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 30000);
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+    onStart?.();
+    const data = await r.json();
+    fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    onChunk(fullText);
+  } else if (provider === 'anthropic') {
     const r = await fetchWithTimeout(base + '/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
@@ -458,7 +504,22 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
   let rawResponse = null;
 
   try {
-    if (provider === 'anthropic') {
+    if (provider === 'vertex') {
+      const sa = JSON.parse(apiKey);
+      const token = await getVertexToken(sa);
+      const region = 'us-central1';
+      const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
+      const body = {
+        contents: fallbackHistory.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: { maxOutputTokens: 4000, temperature: c.temperature ?? 0.8 }
+      };
+      const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 30000);
+      const d = await r.json();
+      rawResponse = d;
+      if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
+      aiText = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else if (provider === 'anthropic') {
       const r = await fetchWithTimeout(base + '/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
@@ -520,27 +581,10 @@ export async function summarizeToMemory(charId, recentMsgs, count = 20) {
 
   const systemPrompt = '你是一個對話分析助手。請將以下聊天記錄濃縮成一段 100～200 字的重點摘要，保留：使用者透露的個人資訊、重要事件、雙方的情感狀態、以及任何未來可能有用的背景資訊。用第三人稱描述。只輸出摘要文字，不需要任何前綴說明。';
 
-  let summary = '';
-
-  if (provider === 'anthropic') {
-    const r = await fetchWithTimeout(`${base}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 800, system: systemPrompt, messages: [{ role: 'user', content: transcript }] })
-    }, 30000);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    summary = d.content?.[0]?.text?.trim() || '';
-  } else {
-    const r = await fetchWithTimeout(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, max_tokens: 800, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: transcript }] })
-    }, 30000);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    summary = d.choices?.[0]?.message?.content?.trim() || '';
-  }
+  const summary = await sendLLMRequest(
+    [{ role: 'system', content: systemPrompt }, { role: 'user', content: transcript }],
+    { max_tokens: 800 }
+  ).then(t => t.trim());
 
   if (!summary) throw new Error('AI 回傳空白，請稍後重試');
 

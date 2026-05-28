@@ -1,17 +1,5 @@
 import { dbGet, dbPut, getSetting } from './db.js';
-import { fetchWithTimeout, sendLLMRequest } from './api.js';
-
-function getDefModel(provider) {
-  if (provider === 'anthropic') return 'claude-sonnet-4-6';
-  if (provider === 'google') return 'gemini-2.5-flash';
-  return 'gpt-4o-mini';
-}
-
-function getDefBase(provider) {
-  if (provider === 'anthropic') return 'https://api.anthropic.com/v1';
-  if (provider === 'google') return 'https://generativelanguage.googleapis.com/v1beta/openai';
-  return 'https://api.openai.com/v1';
-}
+import { sendLLMRequest } from './api.js';
 
 function dedupeRepeats(text) {
   const sentences = text.match(/[^。！？.!?]+[。！？.!?]?/g);
@@ -30,10 +18,6 @@ export async function generatePost(charId) {
 
   const c = await dbGet('characters', charId);
   if (!c) throw new Error('找不到角色');
-
-  const provider = await getSetting('api_provider') || 'openai';
-  const model = await getSetting('api_model') || getDefModel(provider);
-  const base = await getSetting('api_base') || getDefBase(provider);
 
   const styleMap = {
     casual: '輕鬆日常', sweet: '甜蜜撒嬌', cool: '冷靜高冷',
@@ -54,32 +38,10 @@ ${c.hobby ? `【喜好】${c.hobby}` : ''}
 2. 可以在最後加上幾個相關 hashtag（在同一行或新行）。
 3. 如果角色個性適合，可以使用少量 emoji。`;
 
-  let text = '';
-  let truncated = false;
-
-  if (provider === 'anthropic') {
-    const r = await fetchWithTimeout(`${base}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 2500, system: prompt, messages: [{ role: 'user', content: '請開始生成。' }] })
-    });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    text = d.content?.[0]?.text || '';
-    if (d.stop_reason === 'max_tokens') truncated = true;
-  } else {
-    const postPayload = { model, max_tokens: 2500, temperature: 0.75, messages: [{ role: 'system', content: prompt }, { role: 'user', content: '請開始生成。' }] };
-    if (provider === 'openai') { postPayload.frequency_penalty = 0.6; postPayload.presence_penalty = 0.3; }
-    const r = await fetchWithTimeout(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify(postPayload)
-    });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    text = d.choices?.[0]?.message?.content || '';
-    if (d.choices?.[0]?.finish_reason === 'length') truncated = true;
-  }
+  const text = await sendLLMRequest(
+    [{ role: 'system', content: prompt }, { role: 'user', content: '請開始生成。' }],
+    { max_tokens: 2500, temperature: 0.75, frequency_penalty: 0.6, presence_penalty: 0.3 }
+  );
 
   if (text.trim()) {
     let content = text.trim();
@@ -87,15 +49,13 @@ ${c.hobby ? `【喜好】${c.hobby}` : ''}
     const tagMatch = content.match(/(?:^|\n)\s*#\w+/g);
     if (tagMatch) {
       tags = tagMatch.map(t => t.trim().substring(1));
-      // Try to clean tags from content if they are isolated at the end
       content = content.replace(/(?:\n\s*#\w+\s*)+$/, '').trim();
     }
-
     content = dedupeRepeats(content);
     const entry = { id: 'post_' + Date.now(), charId, content, tags, likes: 0, likedByMe: false, comments: [], createdAt: Date.now() };
     await dbPut('moments', entry);
     await dbPut('notifications', { id: 'notif_' + Date.now(), charId, type: 'post', targetId: entry.id, text: '發了一則新貼文', read: false, createdAt: Date.now() });
-    return { entry, truncated };
+    return { entry, truncated: false };
   }
   return null;
 }
@@ -132,9 +92,6 @@ export async function generateCommentReply(postId, charId, userComment) {
   }
 }
 
-// ──────────────────────────────────────────────
-// 日記生成
-// ──────────────────────────────────────────────
 export async function generateDiary(charId) {
   const apiKey = await getSetting('api_key');
   if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
@@ -143,11 +100,7 @@ export async function generateDiary(charId) {
   if (!c) throw new Error('找不到角色');
 
   const me = await getSetting('me_settings') || {};
-  const provider = await getSetting('api_provider') || 'openai';
-  const model = await getSetting('api_model') || getDefModel(provider);
-  const base = await getSetting('api_base') || getDefBase(provider);
 
-  // 取最近對話
   const { dbIdx } = await import('./db.js');
   const msgs = await dbIdx('messages', 'charId', charId);
   msgs.sort((a, b) => b.createdAt - a.createdAt);
@@ -178,36 +131,14 @@ ${recentChat ? `今天和對方的對話內容：\n${recentChat}\n` : ''}
 （空行）
 最後一行：單一心情 emoji`;
 
-  let text = '';
-  let truncated = false;
-
-  if (provider === 'anthropic') {
-    const r = await fetchWithTimeout(`${base}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 2500, system: sysPrompt, messages: [{ role: 'user', content: '請開始寫日記。' }] })
-    });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    text = d.content?.[0]?.text || '';
-    if (d.stop_reason === 'max_tokens') truncated = true;
-  } else {
-    const payload = { model, max_tokens: 2500, temperature: 0.78, messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: '請開始寫日記。' }] };
-    if (provider === 'openai') { payload.frequency_penalty = 0.5; payload.presence_penalty = 0.2; }
-    const r = await fetchWithTimeout(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify(payload)
-    });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    text = d.choices?.[0]?.message?.content || '';
-    if (d.choices?.[0]?.finish_reason === 'length') truncated = true;
-  }
+  const text = await sendLLMRequest(
+    [{ role: 'system', content: sysPrompt }, { role: 'user', content: '請開始寫日記。' }],
+    { max_tokens: 2500, temperature: 0.78, frequency_penalty: 0.5, presence_penalty: 0.2 }
+  );
 
   if (text.trim()) {
-    text = dedupeRepeats(text);
-    const lines = text.trim().split('\n');
+    const cleaned = dedupeRepeats(text.trim());
+    const lines = cleaned.split('\n');
     let mood = '📔';
     const lastLine = lines[lines.length - 1].trim();
     if ([...lastLine].length <= 2 && /\p{Emoji}/u.test(lastLine)) {
@@ -217,24 +148,17 @@ ${recentChat ? `今天和對方的對話內容：\n${recentChat}\n` : ''}
     const entry = { id: 'diary_' + Date.now(), charId, date: today, content: lines.join('\n').trim(), mood, createdAt: Date.now() };
     await dbPut('diary', entry);
     await dbPut('notifications', { id: 'notif_' + Date.now(), charId, type: 'diary', targetId: entry.id, text: '寫了今天的日記', read: false, createdAt: Date.now() });
-    return { entry, truncated };
+    return { entry, truncated: false };
   }
   return null;
 }
 
-// ──────────────────────────────────────────────
-// 夢境生成
-// ──────────────────────────────────────────────
 export async function generateDream(charId) {
   const apiKey = await getSetting('api_key');
   if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
 
   const c = await dbGet('characters', charId);
   if (!c) throw new Error('找不到角色');
-
-  const provider = await getSetting('api_provider') || 'openai';
-  const model = await getSetting('api_model') || getDefModel(provider);
-  const base = await getSetting('api_base') || getDefBase(provider);
 
   const { dbIdx } = await import('./db.js');
   const msgs = await dbIdx('messages', 'charId', charId);
@@ -256,40 +180,17 @@ ${recentTopics ? `最近聊過的話題：${recentTopics}。` : ''}
 
 直接輸出夢境文字，不要加標題或說明。`;
 
-  let text = '';
-  let truncated = false;
-
-  if (provider === 'anthropic') {
-    const r = await fetchWithTimeout(`${base}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 2500, system: prompt, messages: [{ role: 'user', content: '請開始描述夢境。' }] })
-    });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    text = d.content?.[0]?.text || '';
-    if (d.stop_reason === 'max_tokens') truncated = true;
-  } else {
-    const payload = { model, max_tokens: 2500, temperature: 0.88, messages: [{ role: 'system', content: prompt }, { role: 'user', content: '請開始描述夢境。' }] };
-    if (provider === 'openai') { payload.frequency_penalty = 0.5; payload.presence_penalty = 0.2; }
-    const r = await fetchWithTimeout(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify(payload)
-    });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    text = d.choices?.[0]?.message?.content || '';
-    if (d.choices?.[0]?.finish_reason === 'length') truncated = true;
-  }
+  const text = await sendLLMRequest(
+    [{ role: 'system', content: prompt }, { role: 'user', content: '請開始描述夢境。' }],
+    { max_tokens: 2500, temperature: 0.88, frequency_penalty: 0.5, presence_penalty: 0.2 }
+  );
 
   if (text.trim()) {
-    text = dedupeRepeats(text);
-    const entry = { id: 'dream_' + Date.now(), charId, content: text.trim(), createdAt: Date.now() };
+    const cleaned = dedupeRepeats(text.trim());
+    const entry = { id: 'dream_' + Date.now(), charId, content: cleaned, createdAt: Date.now() };
     await dbPut('dreams', entry);
     await dbPut('notifications', { id: 'notif_' + Date.now(), charId, type: 'dream', targetId: entry.id, text: '告訴你他昨晚的夢境', read: false, createdAt: Date.now() });
-    return { entry, truncated };
+    return { entry, truncated: false };
   }
   return null;
 }
-
