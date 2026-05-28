@@ -54,8 +54,11 @@
    - 新增 `AnnouncementModal.vue`：三頁式分頁 modal，涵蓋新功能、修復、更新指引
    - `App.vue` 掛載時自動檢查版本，首次開啟顯示公告（`last_seen_announcement` 存 IndexedDB）
    - `HomeView.vue` 頂部新增固定入口按鈕，隨時可重新開啟公告
-
-> ⚠️ **待辦**：確認測試版公告正常顯示後推 `main` 正式版。
+8. ✅ **Google Vertex AI 支援** — P54（2026-05-28）
+   - API 設定新增「Google（Vertex AI）」服務商選項
+   - 使用 service account JSON 認證，透過 Web Crypto API 在瀏覽器端產生 OAuth2 token
+   - 走 Vertex AI 原生格式（contents/parts），費用透過 Google Cloud billing 抵免額支付
+   - Vertex AI 模型清單獨立（只顯示 2.x 系列，排除僅 AI Studio 支援的 3.x 模型）
 
 ### 🔵 階段 B：世界觀與玩法擴展（中期目標）← 下一階段
 5. 🟢 **世界觀設定書 (World Book) 📖**

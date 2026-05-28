@@ -5,12 +5,12 @@
       <div class="ph-title">API 設定</div>
       <div class="ph-act" @click="saveApi">儲存</div>
     </div>
-    
-    <div id="api-status-bar" class="api-bar" :class="apiKey ? 'ok' : 'err'" style="margin-top:16px">
+
+    <div id="api-status-bar" class="api-bar" :class="hasValidKey ? 'ok' : 'err'" style="margin-top:16px">
       <div class="api-dot"></div>
-      <div class="api-bar-text" id="api-bar-msg">{{ apiKey ? 'API 金鑰已設定' : '尚未設定 API 金鑰' }}</div>
+      <div class="api-bar-text" id="api-bar-msg">{{ hasValidKey ? 'API 金鑰已設定' : '尚未設定 API 金鑰' }}</div>
     </div>
-    
+
     <div class="form-group" style="margin-top:8px">
       <div class="form-row">
         <div class="form-label">服務商</div>
@@ -18,20 +18,28 @@
           <option value="openai">OpenAI（ChatGPT）</option>
           <option value="anthropic">Anthropic（Claude）</option>
           <option value="google">Google（Gemini）</option>
+          <option value="vertex">Google（Vertex AI）</option>
         </select>
       </div>
-      <div class="form-row">
+
+      <div class="form-row" v-if="apiProvider !== 'vertex'">
         <div class="form-label">API 金鑰</div>
         <input class="form-input" type="password" v-model="apiKey" placeholder="貼上你的 API 金鑰">
         <div class="form-hint">{{ providerHint }}</div>
       </div>
-      <div class="form-row">
+      <div class="form-row" v-else>
+        <div class="form-label">Service Account JSON</div>
+        <textarea class="form-input" v-model="apiKey" rows="5" placeholder='貼上 service_account.json 的完整內容…' style="font-size:11px;font-family:monospace;resize:vertical;line-height:1.4"></textarea>
+        <div class="form-hint">Google Cloud Console → IAM → 服務帳戶 → 金鑰 → 建立新金鑰 → JSON</div>
+      </div>
+
+      <div class="form-row" v-if="apiProvider !== 'vertex'">
         <div class="form-label">自訂 API 位址 <span style="font-size:11px;color:var(--text-3);font-weight:300">選填</span></div>
         <input class="form-input" type="text" v-model="apiBase" :placeholder="defaultBase">
         <div class="form-hint">使用代理或自架服務才需要填</div>
       </div>
     </div>
-    
+
     <div class="sg-label">選擇模型</div>
     <div class="sg" style="margin-bottom:8px">
       <div id="model-list">
@@ -52,7 +60,7 @@
         </div>
       </div>
     </div>
-    
+
     <button class="btn-primary" @click="testApi" :disabled="isTesting" style="margin-top:8px">{{ isTesting ? '測試中...' : '測試連線' }}</button>
     <button class="btn-secondary" @click="saveApi">儲存設定</button>
     <div style="height:32px"></div>
@@ -71,6 +79,21 @@ const isTesting = ref(false);
 const customModel = ref('');
 
 // Model IDs verified from official docs (2026-05-22)
+const GOOGLE_MODELS = [
+  { id: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash',      desc: '最新穩定旗艦，頂尖性能' },
+  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', desc: '新一代省費穩定版' },
+  { id: 'gemini-2.5-pro',        name: 'Gemini 2.5 Pro',        desc: '複雜任務推薦' },
+  { id: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash',      desc: '速度快，價格平衡' },
+  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', desc: '最省費用' },
+];
+
+const VERTEX_MODELS = [
+  { id: 'gemini-2.5-pro',        name: 'Gemini 2.5 Pro',        desc: '推薦：最強推理，Vertex AI 支援' },
+  { id: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash',      desc: '速度快，價格平衡' },
+  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', desc: '最省費用' },
+  { id: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash',      desc: '穩定版，廣泛相容' },
+];
+
 const MODELS = {
   openai: [
     { id: 'gpt-5.5',      name: 'GPT-5.5',       desc: '最新旗艦，最強（$5/$30/MTok，1M context）' },
@@ -85,17 +108,19 @@ const MODELS = {
     { id: 'claude-sonnet-4-6',        name: 'Claude Sonnet 4.6', desc: '推薦：速度與智能兼顧' },
     { id: 'claude-haiku-4-5-20251001',name: 'Claude Haiku 4.5',  desc: '最快最省' },
   ],
-  google: [
-    { id: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash',      desc: '最新穩定旗艦，頂尖性能' },
-    { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', desc: '新一代省費穩定版' },
-    { id: 'gemini-2.5-pro',        name: 'Gemini 2.5 Pro',        desc: '複雜任務推薦' },
-    { id: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash',      desc: '速度快，價格平衡' },
-    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', desc: '最省費用' },
-  ],
+  google: GOOGLE_MODELS,
+  vertex: VERTEX_MODELS,
 };
 
 const availableModels = computed(() => MODELS[apiProvider.value] || MODELS.openai);
-const isCustomModel = computed(() => !availableModels.value.find(m => m.id === apiModel.value));
+
+const hasValidKey = computed(() => {
+  if (apiProvider.value === 'vertex') {
+    try { const p = JSON.parse(apiKey.value); return !!(p.project_id && p.private_key); }
+    catch { return false; }
+  }
+  return !!apiKey.value;
+});
 
 const providerHint = computed(() => {
   if (apiProvider.value === 'anthropic') return '前往 console.anthropic.com 申請，格式：sk-ant-…';
@@ -139,6 +164,10 @@ async function saveApi() {
     window.toast_('請填寫自訂模型 ID');
     return;
   }
+  if (apiProvider.value === 'vertex') {
+    try { JSON.parse(apiKey.value); }
+    catch { window.toast_('JSON 格式有誤，請重新貼上'); return; }
+  }
   await setSetting('api_provider', apiProvider.value);
   await setSetting('api_key', apiKey.value);
   await setSetting('api_model', modelToSave);
@@ -153,34 +182,57 @@ async function testApi() {
   }
   isTesting.value = true;
   try {
-    const { fetchWithTimeout } = await import('../services/api.js');
-    const base = apiBase.value || defaultBase.value;
-    const isAnt = apiProvider.value === 'anthropic';
-    const url = isAnt ? `${base}/messages` : `${base}/chat/completions`;
+    const { fetchWithTimeout, getVertexToken } = await import('../services/api.js');
     const headers = { 'Content-Type': 'application/json' };
-    
-    if (isAnt) {
+    let url;
+
+    if (apiProvider.value === 'vertex') {
+      const sa = JSON.parse(apiKey.value);
+      const token = await getVertexToken(sa);
+      const region = 'us-central1';
+      const modelId = apiModel.value === '__custom__' ? customModel.value.trim() : apiModel.value;
+      url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${modelId}:generateContent`;
+      headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetchWithTimeout(url, {
+        method: 'POST', headers,
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }], generationConfig: { maxOutputTokens: 10 } })
+      }, 15000);
+      if (res.ok) { window.toast_('連線成功！'); }
+      else {
+        const text = await res.text().catch(() => '');
+        let msg = `HTTP ${res.status}`;
+        try { const d = JSON.parse(text); msg = d.error?.message || d.error?.status || msg; } catch { msg = text.slice(0, 120) || msg; }
+        window.toast_('連線失敗：' + msg);
+      }
+      return;
+    } else if (apiProvider.value === 'anthropic') {
+      const base = apiBase.value || defaultBase.value;
+      url = `${base}/messages`;
       headers['x-api-key'] = apiKey.value;
       headers['anthropic-version'] = '2023-06-01';
     } else {
+      const base = apiBase.value || defaultBase.value;
+      url = `${base}/chat/completions`;
       headers['Authorization'] = `Bearer ${apiKey.value}`;
     }
 
     const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        model: apiModel.value,
-        max_tokens: 10,
-        messages: [{role: 'user', content: 'hi'}]
-      })
-    }, 10000);
+      body: JSON.stringify({ model: apiModel.value, max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] })
+    }, 15000);
 
     if (res.ok) {
       window.toast_('連線成功！');
     } else {
-      const d = await res.json();
-      window.toast_('連線失敗：' + (d.error?.message || `HTTP ${res.status}`));
+      const text = await res.text().catch(() => '');
+      let msg = `HTTP ${res.status}`;
+      try {
+        const d = JSON.parse(text);
+        msg = d.error?.message || d.error?.status || JSON.stringify(d.error) || msg;
+      } catch { msg = text.slice(0, 120) || msg; }
+      window.toast_('連線失敗：' + msg);
     }
   } catch (err) {
     window.toast_('連線異常：' + err.message);
