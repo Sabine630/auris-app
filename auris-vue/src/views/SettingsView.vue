@@ -78,10 +78,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P54
+        Auris · P54b
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P54 新增 Google Vertex AI 服務商・支援 service account JSON 認證
+        P54b 新增 Google Vertex AI・修復全站 Vertex AI API 呼叫
       </div>
     </div>
   </div>

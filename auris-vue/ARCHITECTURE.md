@@ -305,6 +305,15 @@ globalStore = {
 - Header 新增「+」按鈕（`mem-add-btn`）；點擊展開 `showNewMemForm` 表單（`mem-new-form`），含標題 input（選填）與內容 textarea。
 - `saveNewMem()`：若標題為空則自動截取內容前 20 字作為標題，寫入 `chat_memories` 並 unshift 到列表頂端，`enabled: true`。
 
+### v0.54 / P54+P54b（2026-05-29）
+
+**新增 Google Vertex AI 服務商：**
+
+- `ApiView.vue`：新增「Google（Vertex AI）」provider 選項；key 輸入框改為 textarea 接受 service account JSON；Vertex AI 專屬模型清單（2.x 系列）；儲存時驗證 JSON 格式。
+- `api.js`：新增 `getVertexToken(sa)` — 使用 Web Crypto API（RSASSA-PKCS1-v1_5 / SHA-256）在瀏覽器端從 service account JSON 產生 JWT，再換取 OAuth2 access token（快取 55 分鐘）。`sendLLMRequest` 新增 vertex 分支，走 `https://us-central1-aiplatform.googleapis.com/v1/projects/{id}/locations/us-central1/publishers/google/models/{model}:generateContent` 原生格式（contents/parts/systemInstruction）。
+- `contentEngine.js`：generatePost / generateDiary / generateDream 全部改用 `sendLLMRequest`，自動支援所有 provider 包含 Vertex AI。
+- `chatEngine.js`：五個 API 呼叫函式加入 vertex 分支（streaming 函式用非串流 fallback，一次推送全文給 onChunk）。
+
 ### v0.52 / P51（2026-05-25）
 
 **Bug 修復與 UX 優化：**

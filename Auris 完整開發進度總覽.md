@@ -59,6 +59,10 @@
    - 使用 service account JSON 認證，透過 Web Crypto API 在瀏覽器端產生 OAuth2 token
    - 走 Vertex AI 原生格式（contents/parts），費用透過 Google Cloud billing 抵免額支付
    - Vertex AI 模型清單獨立（只顯示 2.x 系列，排除僅 AI Studio 支援的 3.x 模型）
+9. ✅ **Vertex AI 全站修復** — P54b（2026-05-29）
+   - 修復 contentEngine（generatePost / generateDiary / generateDream）直接用 api_key 當 Bearer token 的問題
+   - 修復 chatEngine（generateAIResponseStream / generateProactiveMessageStream / generateGroupAIResponseStream / generateGroupAIResponse / summarizeToMemory）同樣問題
+   - 所有函式統一透過 sendLLMRequest 或 getVertexToken 處理認證，御三家行為完全不受影響
 
 ### 🔵 階段 B：世界觀與玩法擴展（中期目標）← 下一階段
 5. 🟢 **世界觀設定書 (World Book) 📖**
