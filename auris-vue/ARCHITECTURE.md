@@ -285,6 +285,17 @@ globalStore = {
 
 ## 12. 版本更新紀錄
 
+### v0.54 / P55（2026-05-29）
+
+**資安強化（防禦縱深）：**
+
+- **新增 `services/format.js`**：抽出共用 `formatContent(str)`（escape `&`/`<`/`>` 後將 `\n` 轉 `<br>`）。全站六個 v-html 渲染點（`ChatRoomView` / `GroupRoomView` / `PostDetailView` / `BlackboxView` 的 `formatContent`，`DiaryDetailView` / `DreamDetailView` 的 `bodyHtml`）統一引用，消除四份重複手刻的 escape，避免日後某處漏 escape 形成 stored XSS。這是 v-html 內容（AI 回應／使用者輸入／匯入備份）的唯一 XSS 防線。
+- **備份不含 API 金鑰**（`db.js`）：`exportAllData` 過濾掉 `settings` 內的 `api_key`。Vertex AI 的金鑰是整包含 RSA 私鑰（cloud-platform 權限）的 service account JSON，隨備份外流等同交出 GCP 專案憑證。`importAllData` 在還原後沿用本機原有金鑰（備份無金鑰時），使用者不需每次重貼。
+- **匯入先驗證後清空**（`db.js`）：`importAllData` 由「先清空全部 store 再逐筆還原」改為「驗證整份備份（store 須為陣列、每筆須為帶 keyPath 的物件）→ 通過才清空 → 還原」三段式，避免壞檔在清空後才失敗造成原資料全毀。
+- **ApiView 安全警告**（`ApiView.vue`）：Vertex service account 輸入區下方新增紅字提示（金鑰明文存本機、只授予 Vertex AI User 角色、勿在他人裝置輸入、遺失立即刪金鑰）。
+- **Content-Security-Policy**（`index.html` 來源檔與 root 產物）：加入 CSP meta，限制 `script-src 'self' 'unsafe-inline'`、`style-src` 含 Google Fonts、`img-src 'self' data: blob: https:`（支援 data URI 頭像）、`connect-src 'self' https:`（支援自訂 API proxy）、`manifest-src 'self' blob:`（blob manifest）、`object-src 'none'`、`base-uri 'self'`、`form-action 'self'`。
+  - **限制**：因 index.html 仍含主題 bootstrap 與 GitHub Pages SPA redirect 兩段 inline script，`script-src` 必須保留 `'unsafe-inline'`，故 CSP 無法阻擋 inline event handler 型 XSS——該層仍由 `formatContent` escape 把關。`frame-ancestors` 僅 HTTP header 生效，未放入 meta。未來若要收緊 `script-src`，須將兩段 inline script 外移為獨立檔案。
+
 ### v0.54 / P53（2026-05-25）
 
 **更新公告系統：**

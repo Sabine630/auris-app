@@ -239,6 +239,7 @@ import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbDel, dbPut } from '../services/db.js';
 import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, summarizeToMemory } from '../services/chatEngine.js';
+import { formatContent } from '../services/format.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -486,10 +487,6 @@ function isCont(i) {
   if (!prev) return false;
   if (m.type === 'hv' || prev.type === 'hv') return false;
   return prev.role === m.role && (m.createdAt - prev.createdAt) < 120000;
-}
-
-function formatContent(str) {
-  return (str || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
 }
 
 function fmtT(ts) {

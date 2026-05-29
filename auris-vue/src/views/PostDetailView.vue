@@ -82,6 +82,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from '../store/index.js';
 import { dbGet, dbPut, getSetting } from '../services/db.js';
 import { generateCommentReply } from '../services/contentEngine.js';
+import { formatContent } from '../services/format.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -129,10 +130,6 @@ function timeAgo(ts) {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}小時前`;
   return `${Math.floor(hrs / 24)}天前`;
-}
-
-function formatContent(str) {
-  return (str || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
 }
 
 async function toggleLike() {

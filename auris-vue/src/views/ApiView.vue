@@ -31,6 +31,12 @@
         <div class="form-label">Service Account JSON</div>
         <textarea class="form-input" v-model="apiKey" rows="5" placeholder='貼上 service_account.json 的完整內容…' style="font-size:11px;font-family:monospace;resize:vertical;line-height:1.4"></textarea>
         <div class="form-hint">Google Cloud Console → IAM → 服務帳戶 → 金鑰 → 建立新金鑰 → JSON</div>
+        <div class="form-hint" style="color:var(--red);line-height:1.6;margin-top:6px">
+          ⚠️ 此 JSON 含一把私鑰，會以明文存在本機瀏覽器。請務必：<br>
+          ・該服務帳戶只授予「Vertex AI User」角色，切勿給 Editor／Owner<br>
+          ・不要在公用或他人裝置上輸入<br>
+          ・若裝置遺失，立即到 GCP Console 刪除這把金鑰
+        </div>
       </div>
 
       <div class="form-row" v-if="apiProvider !== 'vertex'">

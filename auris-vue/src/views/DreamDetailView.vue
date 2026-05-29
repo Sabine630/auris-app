@@ -27,6 +27,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet } from '../services/db.js';
+import { formatContent } from '../services/format.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -52,6 +53,6 @@ const timeStr = computed(() => {
 
 const bodyHtml = computed(() => {
   if (!dream.value) return '';
-  return dream.value.content.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+  return formatContent(dream.value.content);
 });
 </script>

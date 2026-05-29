@@ -1,7 +1,7 @@
 # 🎨 Auris 完整開發進度總覽
 
-**最後更新**: 2026-05-23
-**當前版本**: P46（對話長按選單復刻與 UX 優化、貼文按鈕優化、Heart Voice 頻率優化）
+**最後更新**: 2026-05-29
+**當前版本**: P55（資安強化：備份不含金鑰、匯入先驗證後清空、共用 escape、CSP）
 **狀態**: 持續優化中
 
 ---
@@ -63,6 +63,12 @@
    - 修復 contentEngine（generatePost / generateDiary / generateDream）直接用 api_key 當 Bearer token 的問題
    - 修復 chatEngine（generateAIResponseStream / generateProactiveMessageStream / generateGroupAIResponseStream / generateGroupAIResponse / summarizeToMemory）同樣問題
    - 所有函式統一透過 sendLLMRequest 或 getVertexToken 處理認證，御三家行為完全不受影響
+10. ✅ **資安強化** — P55（2026-05-29）
+   - **備份不含金鑰**：`exportAllData` 不再把 `api_key`（含 Vertex service account 私鑰）寫進可下載／分享的備份檔；`importAllData` 沿用本機原有金鑰，使用者不需重貼
+   - **匯入先驗證後清空**：`importAllData` 改為「驗證整份備份 → 通過才清空 → 還原」，避免壞檔在清空後才失敗導致資料全毀
+   - **共用 escape**：抽出 `services/format.js` 的 `formatContent`，六個 v-html 渲染點統一引用，消除四份重複手刻
+   - **ApiView 安全警告**：Vertex service account 輸入區加紅字提示（明文儲存、只授予 Vertex AI User 角色、遺失立即刪金鑰）
+   - **CSP**：index.html 加入 Content-Security-Policy（限制 script/style/img/connect/object/base-uri 等來源）作為防禦縱深
 
 ### 🔵 階段 B：世界觀與玩法擴展（中期目標）← 下一階段
 5. 🟢 **世界觀設定書 (World Book) 📖**

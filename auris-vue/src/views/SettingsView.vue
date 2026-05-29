@@ -78,10 +78,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P54b
+        Auris · P55
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P54b 新增 Google Vertex AI・修復全站 Vertex AI API 呼叫
+        P55 資安強化：備份不含金鑰・匯入先驗證後清空・共用 escape・CSP
       </div>
     </div>
   </div>
@@ -137,7 +137,7 @@ async function exportData() {
     a.download = `auris_backup_${y}${m}${day}-${h}${min}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    window.toast_('匯出完成');
+    window.toast_('匯出完成（基於安全，備份不含 API 金鑰）');
   } catch (err) {
     window.toast_('匯出失敗：' + err.message);
   }

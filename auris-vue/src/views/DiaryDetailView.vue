@@ -29,6 +29,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet } from '../services/db.js';
+import { formatContent } from '../services/format.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -56,7 +57,7 @@ const bodyHtml = computed(() => {
   if (!diary.value) return '';
   const lines = diary.value.content.split('\n').filter(l => l.trim());
   const body = lines.slice(1).join('\n').trim();
-  return body.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+  return formatContent(body);
 });
 
 function fmtDate(dateStr) {

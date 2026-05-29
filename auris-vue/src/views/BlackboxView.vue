@@ -45,6 +45,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { globalStore } from '../store/index.js';
 import { dbAll } from '../services/db.js';
+import { formatContent } from '../services/format.js';
 
 const allMemories = ref([]);
 const filterCharId = ref('all');
@@ -83,8 +84,5 @@ function timeAgo(ts) {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}小時前`;
   return `${Math.floor(hrs / 24)}天前`;
-}
-function formatContent(str) {
-  return (str || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
 }
 </script>

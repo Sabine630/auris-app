@@ -144,6 +144,7 @@ import { ref, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbPut, dbAll } from '../services/db.js';
 import { sendGroupMessage, generateGroupAIResponseStream } from '../services/chatEngine.js';
+import { formatContent } from '../services/format.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -207,10 +208,6 @@ function isCont(i) {
   const prev = messages.value[i - 1];
   if (!prev) return false;
   return prev.charId === m.charId && (m.createdAt - prev.createdAt) < 120000;
-}
-
-function formatContent(str) {
-  return (str || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
 }
 
 function fmtT(ts) {

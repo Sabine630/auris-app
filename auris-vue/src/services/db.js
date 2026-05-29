@@ -53,6 +53,10 @@ export async function exportAllData() {
   for (const s of ALL_STORES) {
     data[s] = await dbAll(s);
   }
+  // 安全：絕不把 API 金鑰寫進可下載／分享的備份檔。
+  // Vertex AI 的金鑰是整包 service account JSON（含 RSA 私鑰，cloud-platform 權限），
+  // 一旦隨備份外流等同把 GCP 專案憑證交出去。OpenAI/Anthropic 等字串金鑰同理。
+  data.settings = (data.settings || []).filter(r => r.key !== 'api_key');
   return {
     aurisExportVersion: 1,
     exportDate: Date.now(),
@@ -64,16 +68,42 @@ export async function importAllData(jsonData) {
   if (!jsonData || jsonData.aurisExportVersion !== 1 || !jsonData.data) {
     throw new Error('無效的備份檔案格式');
   }
-  // Wipe all existing data
+
+  // 先完整驗證整份備份，全部通過才動資料庫。
+  // 舊版實作是「先清空全部 store 再逐筆還原」，若備份檔某段壞掉會在清空後才失敗，
+  // 導致原本的資料全毀且無法復原。改為「驗證 → 清空 → 還原」三段式。
+  const plan = [];
+  for (const s of ALL_STORES) {
+    const rows = jsonData.data[s];
+    if (rows == null) continue;              // 該 store 不在備份內，略過（不視為錯誤）
+    if (!Array.isArray(rows)) throw new Error(`備份檔「${s}」格式錯誤`);
+    const keyPath = s === 'settings' ? 'key' : 'id';
+    for (const rec of rows) {
+      if (!rec || typeof rec !== 'object' || rec[keyPath] === undefined) {
+        throw new Error(`備份檔「${s}」內含無效資料`);
+      }
+    }
+    plan.push([s, rows]);
+  }
+
+  // 備份檔基於安全考量不含 api_key，還原後沿用本機原本的金鑰設定，
+  // 使用者不需在每次還原後重新貼上金鑰。
+  const preservedKey = await getSetting('api_key');
+
+  // 驗證通過才清空現有資料
   for (const s of ALL_STORES) {
     await dbClear(s);
   }
-  // Restore all data from backup
-  for (const s of ALL_STORES) {
-    if (jsonData.data[s] && Array.isArray(jsonData.data[s])) {
-      for (const record of jsonData.data[s]) {
-        await dbPut(s, record);
-      }
+  // 還原備份內容
+  for (const [s, rows] of plan) {
+    for (const record of rows) {
+      await dbPut(s, record);
     }
+  }
+
+  // 若備份不含金鑰（新版備份必然如此），補回原本的金鑰
+  const backupHasKey = (jsonData.data.settings || []).some(r => r && r.key === 'api_key');
+  if (!backupHasKey && preservedKey != null) {
+    await setSetting('api_key', preservedKey);
   }
 }
