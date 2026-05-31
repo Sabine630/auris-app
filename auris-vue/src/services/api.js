@@ -111,6 +111,7 @@ export async function sendLLMRequest(messages, customConfig = {}) {
     if (!base) base = 'https://api.anthropic.com/v1';
     headers['x-api-key'] = key;
     headers['anthropic-version'] = '2023-06-01';
+    headers['anthropic-dangerous-direct-browser-access'] = 'true';
     url = `${base}/messages`;
     payload.system = messages.find(m => m.role === 'system')?.content || '';
     payload.messages = messages.filter(m => m.role !== 'system');

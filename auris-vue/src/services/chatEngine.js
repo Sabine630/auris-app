@@ -190,7 +190,7 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }) {
   } else if (provider === 'anthropic') {
     const r = await fetchWithTimeout(`${base}/messages`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, system: finalSystemPrompt, messages: history, stream: true })
     }, 90000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
@@ -254,7 +254,7 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
   } else if (provider === 'anthropic') {
     const r = await fetch(`${base}/messages`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({ model, max_tokens: 2000, system: proactivePrompt, messages: proactiveHistory, stream: true }),
       ...fetchOpts
     });
@@ -462,7 +462,7 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
   } else if (provider === 'anthropic') {
     const r = await fetchWithTimeout(base + '/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({ model, max_tokens: 4000, system: systemPrompt, messages: fallbackHistory, stream: true })
     }, 30000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
@@ -523,7 +523,7 @@ export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs,
     } else if (provider === 'anthropic') {
       const r = await fetchWithTimeout(base + '/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
         body: JSON.stringify({ model, max_tokens: 4000, system: systemPrompt, messages: fallbackHistory })
       }, 30000);
       const d = await r.json();
