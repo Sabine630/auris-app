@@ -1,4 +1,4 @@
-import { dbGet, dbPut, getSetting } from './db.js';
+import { dbGet, dbPut, dbIdx, getSetting } from './db.js';
 import { sendLLMRequest } from './api.js';
 
 function dedupeRepeats(text) {
@@ -168,7 +168,6 @@ export async function generateDream(charId) {
   const c = await dbGet('characters', charId);
   if (!c) throw new Error('找不到角色');
 
-  const { dbIdx } = await import('./db.js');
   const me = await getSetting('me_settings') || {};
   const msgs = await dbIdx('messages', 'charId', charId);
   msgs.sort((a, b) => b.createdAt - a.createdAt);
