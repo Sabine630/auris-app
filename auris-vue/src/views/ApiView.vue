@@ -19,6 +19,7 @@
           <option value="anthropic">Anthropic（Claude）</option>
           <option value="google">Google（Gemini）</option>
           <option value="vertex">Google（Vertex AI）</option>
+          <option value="openrouter">OpenRouter（多模型）</option>
         </select>
       </div>
 
@@ -100,6 +101,14 @@ const VERTEX_MODELS = [
   { id: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash',      desc: '穩定版，廣泛相容' },
 ];
 
+const OPENROUTER_MODELS = [
+  { id: 'mistralai/mistral-nemo',               name: 'Mistral Nemo',            desc: '輕量開源，回覆自然' },
+  { id: 'nousresearch/hermes-3-llama-3.1-405b', name: 'Hermes 3 (405B)',         desc: '推薦：RP 能力強' },
+  { id: 'gryphe/mythomax-l2-13b',               name: 'MythoMax L2 13B',         desc: '創作向，老牌 RP 模型' },
+  { id: 'anthropic/claude-sonnet-4-6',          name: 'Claude Sonnet 4.6',       desc: '透過 OpenRouter 走 Claude' },
+  { id: 'openai/gpt-4o-mini',                   name: 'GPT-4o mini',             desc: '透過 OpenRouter 走 OpenAI' },
+];
+
 const MODELS = {
   openai: [
     { id: 'gpt-5.5',      name: 'GPT-5.5',       desc: '最新旗艦，最強（$5/$30/MTok，1M context）' },
@@ -116,6 +125,7 @@ const MODELS = {
   ],
   google: GOOGLE_MODELS,
   vertex: VERTEX_MODELS,
+  openrouter: OPENROUTER_MODELS,
 };
 
 const availableModels = computed(() => MODELS[apiProvider.value] || MODELS.openai);
@@ -131,12 +141,14 @@ const hasValidKey = computed(() => {
 const providerHint = computed(() => {
   if (apiProvider.value === 'anthropic') return '前往 console.anthropic.com 申請，格式：sk-ant-…';
   if (apiProvider.value === 'google') return '前往 aistudio.google.com 申請';
+  if (apiProvider.value === 'openrouter') return '前往 openrouter.ai 申請，格式：sk-or-…';
   return '前往 platform.openai.com 申請，格式：sk-…';
 });
 
 const defaultBase = computed(() => {
   if (apiProvider.value === 'anthropic') return 'https://api.anthropic.com/v1';
   if (apiProvider.value === 'google') return 'https://generativelanguage.googleapis.com/v1beta/openai';
+  if (apiProvider.value === 'openrouter') return 'https://openrouter.ai/api/v1';
   return 'https://api.openai.com/v1';
 });
 

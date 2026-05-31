@@ -26,12 +26,20 @@ export async function generatePost(charId) {
 
   const storyCtx = c.stories?.filter(s => s.content).map(s => `【${s.title}】${s.content}`).join('\n') || '';
 
+  const me = await getSetting('me_settings') || {};
+  const msgs = await dbIdx('messages', 'charId', charId);
+  msgs.sort((a, b) => b.createdAt - a.createdAt);
+  const recentChat = msgs.slice(0, 6).reverse().map(m =>
+    `${m.role === 'user' ? (me.name || '對方') : c.name}：${m.content.substring(0, 50)}`
+  ).join('\n');
+
   const prompt = `你是「${c.name}」。請根據以下設定，寫一則短篇社群貼文（類似 IG 或 Twitter），分享你此刻的想法或生活片段。
 【個性】${c.persona || ''}
 ${storyCtx ? `【背景】${storyCtx}` : ''}
 ${c.status ? `【近況】${c.status}` : ''}
 ${c.hobby ? `【喜好】${c.hobby}` : ''}
 【說話風格】${styleMap[c.style] || '輕鬆自然'}
+${recentChat ? `【最近與對方的對話】\n${recentChat}\n貼文可以若有似無地反映這段互動，或完全無關也行。` : ''}
 
 【格式要求】
 1. 直接輸出貼文內容，不要加引號，長度約 60~200 字，要有具體的事件、感受或想法，不要只寫一句話。
@@ -161,12 +169,15 @@ export async function generateDream(charId) {
   if (!c) throw new Error('找不到角色');
 
   const { dbIdx } = await import('./db.js');
+  const me = await getSetting('me_settings') || {};
   const msgs = await dbIdx('messages', 'charId', charId);
   msgs.sort((a, b) => b.createdAt - a.createdAt);
-  const recentTopics = msgs.slice(0, 6).map(m => m.content.substring(0, 40)).join('、');
+  const recentChat = msgs.slice(0, 8).reverse().map(m =>
+    `${m.role === 'user' ? (me.name || '對方') : c.name}：${m.content.substring(0, 50)}`
+  ).join('\n');
 
   const prompt = `你是「${c.name}」，個性：${c.persona || ''}。
-${recentTopics ? `最近聊過的話題：${recentTopics}。` : ''}
+${recentChat ? `最近和對方的對話：\n${recentChat}\n夢境可以若有似無地折射這段互動，也可以完全無關。` : ''}
 
 請用第一人稱，寫一段完整、飄渺、詩意的夢境敘述。夢境可以與最近的話題有若有似無的關聯，也可以完全陌生的意象。
 

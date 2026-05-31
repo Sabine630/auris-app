@@ -7,7 +7,12 @@
 //
 // 注意順序：& 必須最先處理，否則會把後面產生的 &lt; 再次轉義成 &amp;lt;。
 export function formatContent(str) {
-  return (str || '')
+  const cleaned = (str || '')
+    // 移除夾在中文字、標點、英數之間的孤立換行（非段落換行）
+    .replace(/([一-鿿　-〿＀-￯\w，。！？、：；「」『』…—])\n([一-鿿　-〿＀-￯\w，。！？、：；「」『』…—])/g, '$1$2')
+    // 合併三個以上連續換行為兩個
+    .replace(/\n{3,}/g, '\n\n');
+  return cleaned
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

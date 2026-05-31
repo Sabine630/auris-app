@@ -10,6 +10,7 @@ function getDefModel(provider) {
 function getDefBase(provider) {
   if (provider === 'anthropic') return 'https://api.anthropic.com/v1';
   if (provider === 'google') return 'https://generativelanguage.googleapis.com/v1beta/openai';
+  if (provider === 'openrouter') return 'https://openrouter.ai/api/v1';
   return 'https://api.openai.com/v1';
 }
 
@@ -357,7 +358,7 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
   const c = await dbGet('characters', charIdToRespond);
   if (!c) return null;
 
-  const me = await dbGet('settings', 'my_profile') || {};
+  const me = await getSetting('me_settings') || {};
   const apiKey = await getSetting('api_key');
   if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
   const provider = await getSetting('api_provider') || 'openai';

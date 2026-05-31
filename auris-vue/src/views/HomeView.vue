@@ -59,9 +59,11 @@
         <div class="t-ic"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
         <div class="t-name">黑盒子</div><div class="t-sub">內心活動</div>
       </div>
-      <div class="tile anim" style="animation-delay:.10s" @click="$router.push('/notifications')">
+      <div class="tile anim" style="animation-delay:.10s;position:relative" @click="$router.push('/notifications')">
         <div class="t-ic"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></div>
-        <div class="t-name">通知</div><div class="t-sub">無新通知</div>
+        <div class="t-name">通知</div>
+        <div class="t-sub">{{ unreadNotifCount > 0 ? `${unreadNotifCount} 則未讀` : '無新通知' }}</div>
+        <div v-if="unreadNotifCount > 0" class="h-notif-badge">{{ unreadNotifCount > 99 ? '99+' : unreadNotifCount }}</div>
       </div>
       <div class="tile anim" style="animation-delay:.13s" @click="$router.push('/group-list')">
         <div class="t-ic"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></div>
@@ -109,7 +111,16 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue';
 import { globalStore } from '../store/index.js';
+import { dbAll } from '../services/db.js';
+
+const unreadNotifCount = ref(0);
+
+onMounted(async () => {
+  const all = await dbAll('notifications');
+  unreadNotifCount.value = all.filter(n => !n.read).length;
+});
 
 function openAnnouncement() {
   window.openAnnouncement_?.();
@@ -134,4 +145,20 @@ function openAnnouncement() {
   letter-spacing: .03em;
 }
 .h-ann-btn:active { opacity: .6; }
+.h-notif-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--rose);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
 </style>

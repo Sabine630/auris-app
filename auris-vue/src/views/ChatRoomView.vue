@@ -431,6 +431,9 @@ async function triggerProactive() {
       messages.value.push(msg);
       scrollToBottom();
     }
+    if (msg) {
+      await dbPut('notifications', { id: 'notif_chat_' + Date.now(), charId, type: 'chat', targetId: charId, text: '主動傳了訊息給你', read: false, createdAt: Date.now() });
+    }
   } catch (err) {
     if (streamIdx !== -1) messages.value.splice(streamIdx, 1);
     if (err.name !== 'AbortError') console.error('Proactive error:', err);

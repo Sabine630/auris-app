@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-05-25
+> 最後更新：2026-05-31
 
 ---
 
@@ -93,7 +93,7 @@ graph TD
 | key | 說明 |
 |-----|------|
 | `api_key` | API 金鑰 |
-| `api_provider` | `'openai'` / `'anthropic'` / `'google'` |
+| `api_provider` | `'openai'` / `'anthropic'` / `'google'` / `'vertex'` / `'openrouter'` |
 | `api_model` | 模型名稱字串 |
 | `api_base` | 自訂 API 位址（空 = 用預設） |
 | `theme` | 主題名稱（`cream` / `warm` / `dark` / `gray` / `ocean` / `matcha`） |
@@ -136,14 +136,15 @@ API 請求的底層工具。
 ### `services/contentEngine.js` 與 `chatEngine.js`
 AI 內容與對話生成邏輯：
 
-- `contentEngine.js`：負責生成貼文 (`generatePost`)、日記 (`generateDiary`)、夢境 (`generateDream`) 以及留言回覆 (`generateCommentReply`)。每次生成成功後會同步寫入 `notifications` store，讓通知頁顯示新動態。
+- `contentEngine.js`：負責生成貼文 (`generatePost`)、日記 (`generateDiary`)、夢境 (`generateDream`) 以及留言回覆 (`generateCommentReply`)。每次生成成功後會同步寫入 `notifications` store，讓通知頁顯示新動態。**P55 起**：`generatePost` 與 `generateDream` 在 prompt 中加入最近 6–8 則聊天紀錄 context，讓內容更貼近角色與玩家的實際互動。
 - `chatEngine.js`：核心對話引擎，主要函式：
   - `generateAIResponseStream` — 一對一串流回覆，完成後觸發 Heart Voice
   - `generateGroupAIResponseStream` — 群組串流回覆，支援 `onStart`（切換動畫）與 `onChunk`（逐字更新）
-  - `generateProactiveMessageStream` — 主動訊息串流，配合背景計時器使用
+  - `generateProactiveMessageStream` — 主動訊息串流，配合背景計時器使用；**P55 起**：主動訊息落地後會寫入 `notifications`（`type: 'chat'`），通知中心可查
   - `summarizeToMemory` — 將近期對話濃縮為 `chat_memories` 條目
   - `generateHeartVoice` — 機率性生成說不出口的心聲，寫入 `memories` 並發出 `new-heart-voice` 事件與通知
   - **API Error Handling**：支援 Array 格式 Proxy 錯誤捕捉；群組放寬 `max_tokens: 4000`；生成錯誤時以「【系統偵錯】」訊息顯示於畫面。
+  - **群組玩家名字**：`buildGroupChatSetup` 使用 `getSetting('me_settings')` 讀取玩家資料（P55 修正 key 錯誤）。
 
 ---
 
@@ -221,12 +222,12 @@ globalStore = {
 - **ChatRoomView (單人聊天)**：串流逐字輸出（`generateAIResponseStream`）、長按訊息選單（複製／編輯重傳／重新生成）、記憶抽屜（AI 總結、手動新增、編輯、toggle、刪除）、背景主動訊息計時器（`scheduleProactive`）、auto-interrupt 打斷模式。
 - **GroupRoomView (群組聊天)**：多角色串流輪替回覆，`@點名` 強制指定角色，角色前綴清洗防止 AI 混淆發言。
 - **CharEditView (角色編輯)**：5 個 Tab 切換，包含基本資訊、個性背景、說話方式、關係規範、AI 參數，必須確保 modal CSS 存在以正常顯示彈窗。
-- **HomeView**：快速入口磚牆（對話、貼文、夢境、黑盒子、通知等），角色橫向捲動快選。
+- **HomeView**：快速入口磚牆（對話、貼文、夢境、黑盒子、通知等），角色橫向捲動快選。**P55 起**：通知 tile 動態讀取 `notifications` store 未讀數，有未讀時顯示玫瑰色 badge 與「X 則未讀」文字。
 - **MomentsView / PostDetailView**：貼文列表與留言回覆。
 - **DiaryView / DiaryDetailView**：日記列表與全文展示。
 - **DreamView / DreamDetailView**：夢境列表與全文展示。
 - **BlackboxView**：Heart Voice 心聲記錄。
-- **NotificationsView**：顯示貼文／日記／夢境／心聲生成後寫入的通知，點擊跳轉對應頁面。
+- **NotificationsView**：顯示貼文／日記／夢境／心聲／主動訊息生成後寫入的通知，點擊跳轉對應頁面。支援 `type`：`post` / `diary` / `dream` / `hv` / `chat`。
 
 ---
 
@@ -285,16 +286,45 @@ globalStore = {
 
 ## 12. 版本更新紀錄
 
-### v0.54 / P55（2026-05-29）
+### P55（2026-05-29）
 
 **資安強化（防禦縱深）：**
 
-- **新增 `services/format.js`**：抽出共用 `formatContent(str)`（escape `&`/`<`/`>` 後將 `\n` 轉 `<br>`）。全站六個 v-html 渲染點（`ChatRoomView` / `GroupRoomView` / `PostDetailView` / `BlackboxView` 的 `formatContent`，`DiaryDetailView` / `DreamDetailView` 的 `bodyHtml`）統一引用，消除四份重複手刻的 escape，避免日後某處漏 escape 形成 stored XSS。這是 v-html 內容（AI 回應／使用者輸入／匯入備份）的唯一 XSS 防線。
-- **備份不含 API 金鑰**（`db.js`）：`exportAllData` 過濾掉 `settings` 內的 `api_key`。Vertex AI 的金鑰是整包含 RSA 私鑰（cloud-platform 權限）的 service account JSON，隨備份外流等同交出 GCP 專案憑證。`importAllData` 在還原後沿用本機原有金鑰（備份無金鑰時），使用者不需每次重貼。
-- **匯入先驗證後清空**（`db.js`）：`importAllData` 由「先清空全部 store 再逐筆還原」改為「驗證整份備份（store 須為陣列、每筆須為帶 keyPath 的物件）→ 通過才清空 → 還原」三段式，避免壞檔在清空後才失敗造成原資料全毀。
-- **ApiView 安全警告**（`ApiView.vue`）：Vertex service account 輸入區下方新增紅字提示（金鑰明文存本機、只授予 Vertex AI User 角色、勿在他人裝置輸入、遺失立即刪金鑰）。
-- **Content-Security-Policy**（`index.html` 來源檔與 root 產物）：加入 CSP meta，限制 `script-src 'self' 'unsafe-inline'`、`style-src` 含 Google Fonts、`img-src 'self' data: blob: https:`（支援 data URI 頭像）、`connect-src 'self' https:`（支援自訂 API proxy）、`manifest-src 'self' blob:`（blob manifest）、`object-src 'none'`、`base-uri 'self'`、`form-action 'self'`。
-  - **限制**：因 index.html 仍含主題 bootstrap 與 GitHub Pages SPA redirect 兩段 inline script，`script-src` 必須保留 `'unsafe-inline'`，故 CSP 無法阻擋 inline event handler 型 XSS——該層仍由 `formatContent` escape 把關。`frame-ancestors` 僅 HTTP header 生效，未放入 meta。未來若要收緊 `script-src`，須將兩段 inline script 外移為獨立檔案。
+- **新增 `services/format.js`**：抽出共用 `formatContent(str)`（escape `&`/`<`/`>` 後將 `\n` 轉 `<br>`）。全站六個 v-html 渲染點統一引用，消除重複手刻的 escape，避免日後某處漏 escape 形成 stored XSS。
+- **備份不含 API 金鑰**（`db.js`）：`exportAllData` 過濾掉 `settings` 內的 `api_key`，避免 service account JSON（含 RSA 私鑰）隨備份外流。
+- **匯入先驗證後清空**（`db.js`）：`importAllData` 改為驗證 → 清空 → 還原三段式，避免壞檔在清空後才失敗造成原資料全毀。
+- **ApiView 安全警告**（`ApiView.vue`）：Vertex service account 輸入區下方新增紅字提示。
+- **Content-Security-Policy**（`index.html`）：加入 CSP meta。
+
+---
+
+### P56（2026-05-31）
+
+**上線一週用戶反饋修復：**
+
+- **群組聊天玩家名字 key 修正**（`chatEngine.js` → `buildGroupChatSetup`）：`dbGet('settings', 'my_profile')` 改為 `getSetting('me_settings')`，與全站其餘函式一致。
+- **AI 回覆奇怪換行清洗**（`services/format.js` → `formatContent`）：加入 regex 移除夾在中文字／標點之間的孤立 `\n`，合併多餘連續換行，全站共用。
+- **首頁通知 tile 動態化**（`HomeView.vue`）：動態讀取未讀通知數，有未讀時顯示玫瑰色 badge。
+- **主動訊息寫入通知**（`ChatRoomView.vue` → `triggerProactive`）：主動訊息落地後寫入 `notifications`（`type: 'chat'`）。
+- **貼文生成加入聊天 context**（`contentEngine.js` → `generatePost`）：加入最近 6 則聊天，讓貼文貼近近期互動。
+- **夢境生成改善 context**（`contentEngine.js` → `generateDream`）：改為結構化對話格式（最近 8 則）。
+- **新增 OpenRouter 服務商選項**（`ApiView.vue`、`api.js`、`chatEngine.js`）：預設 base URL `https://openrouter.ai/api/v1`，走 OpenAI 相容格式。
+- **設定頁防盜與資安聲明**（`SettingsView.vue`）：版號上方新增聲明區塊。
+
+**受影響檔案：**
+
+| 檔案 | 變動 |
+|------|------|
+| `services/format.js` | 換行清洗邏輯加入共用 `formatContent` |
+| `services/chatEngine.js` | `buildGroupChatSetup` key 修正；`getDefBase` 加 openrouter |
+| `views/ChatRoomView.vue` | `triggerProactive` 寫通知 |
+| `views/HomeView.vue` | 通知 tile 動態未讀數 + badge |
+| `services/contentEngine.js` | `generatePost` / `generateDream` 加入聊天 context |
+| `views/ApiView.vue` | OpenRouter 服務商選項與模型列表 |
+| `services/api.js` | openrouter fallback base URL |
+| `views/SettingsView.vue` | 防盜聲明 + 版號更新至 P56 |
+
+---
 
 ### v0.54 / P53（2026-05-25）
 

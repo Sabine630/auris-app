@@ -76,12 +76,20 @@
       </div>
     </div>
 
+    <div style="margin:8px 16px 16px;padding:14px 16px;background:var(--surface);border-radius:12px;border:.5px solid var(--border)">
+      <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:.02em;margin-bottom:8px">⚠️ 使用聲明</div>
+      <div style="font-size:11px;font-weight:400;color:var(--text-2);line-height:1.7">
+        <strong>請勿未經原創者同意搬運、轉載他人角色設定。</strong>每個角色都是創作者的心血，尊重原創是社群的基石。<br><br>
+        <strong>請勿將 API 金鑰或個人資料輸入來源不明的第三方網站。</strong>Auris 所有資料均存於您的裝置本地，不經過任何中間伺服器。
+      </div>
+    </div>
+
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P55
+        Auris · P56
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P55 資安強化：備份不含金鑰・匯入先驗證後清空・共用 escape・CSP
+        P56 修復群組名字・換行清洗・通知動態・OpenRouter・貼文夢境聯動
       </div>
     </div>
   </div>

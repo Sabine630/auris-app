@@ -1,7 +1,7 @@
 # 🎨 Auris 完整開發進度總覽
 
-**最後更新**: 2026-05-29
-**當前版本**: P55（資安強化：備份不含金鑰、匯入先驗證後清空、共用 escape、CSP）
+**最後更新**: 2026-05-31
+**當前版本**: P56（上線一週用戶反饋修復：群組名字、換行清洗、通知動態、OpenRouter、貼文夢境聯動、防盜聲明）
 **狀態**: 持續優化中
 
 ---
@@ -59,6 +59,15 @@
    - 使用 service account JSON 認證，透過 Web Crypto API 在瀏覽器端產生 OAuth2 token
    - 走 Vertex AI 原生格式（contents/parts），費用透過 Google Cloud billing 抵免額支付
    - Vertex AI 模型清單獨立（只顯示 2.x 系列，排除僅 AI Studio 支援的 3.x 模型）
+11. ✅ **上線一週用戶反饋修復** — P56（2026-05-31）
+   - Bug 修復：群組聊天玩家名字 key 錯誤（`my_profile` → `me_settings`）
+   - Bug 修復：AI 回覆奇怪換行（中文字間孤立 `\n` 清洗，加入共用 `format.js`）
+   - Bug 修復：首頁通知 tile 靜態文字改為動態未讀數 + badge
+   - 新功能：主動訊息（proactive）落地後寫入 notifications，通知中心可查
+   - 新功能：貼文生成加入最近 6 則聊天 context
+   - 新功能：夢境生成從粗糙話題串改為結構化聊天對話 context
+   - 新功能：API 設定新增 OpenRouter 服務商選項（`https://openrouter.ai/api/v1`）
+   - 新功能：設定頁新增防盜與資安使用聲明
 9. ✅ **Vertex AI 全站修復** — P54b（2026-05-29）
    - 修復 contentEngine（generatePost / generateDiary / generateDream）直接用 api_key 當 Bearer token 的問題
    - 修復 chatEngine（generateAIResponseStream / generateProactiveMessageStream / generateGroupAIResponseStream / generateGroupAIResponse / summarizeToMemory）同樣問題
@@ -77,6 +86,21 @@
    - 增加每日登入與互動的遊戲化機制
 7. 🟢 **劇本 / 小說體驗 🎭**
    - AVG 選項分支與長篇協作創作模組
+
+#### 使用者反饋（上線一週後）— 延後至階段 B 開發
+8. 🟡 **角色與玩家作息設定**
+   - 新增角色與玩家的上班時間、地點設定欄位
+   - 讓 AI 主動發訊息時有情境感，避免時空錯亂
+   - 影響範圍：`CharEditView.vue`、`MeView.vue`、`chatEngine.js` system prompt
+9. 🟡 **自動總結記憶**
+   - 目前記憶總結需手動觸發，新增「每 X 則訊息後自動觸發」選項
+   - 影響範圍：`ChatRoomView.vue`、`chatEngine.js`
+10. 🟡 **玩家自訂大頭貼**
+    - 讓玩家可上傳或更換自己的大頭貼相片
+    - 影響範圍：`MeView.vue`
+11. 🟡 **圖片傳送與 AI 識別**
+    - 對話訊息支援傳送圖片，AI 能識別圖片內容（需多模態 API）
+    - 技術前提：確認使用者使用的模型支援 vision（OpenAI、Claude、Gemini 均支援）
 
 ### 🟣 階段 C：系統底層重構與打磨 (長期目標 - Phase 5)
 8. 🔵 **多世界系統 (平行世界切換) 🌍**
@@ -1239,6 +1263,40 @@ auris-vue/src/
 ---
 
 ### P41: UI Bug 修復 — 夢境雙月亮、鍵盤空白、群組多人回覆 ✅
+
+### P56: 上線一週用戶反饋修復 ✅
+**日期**: 2026-05-31
+**版本**: P56
+
+#### 功能描述
+Auris 上線一週後根據用戶反饋進行的集中修復與功能優化。
+
+**Bug 修復：**
+- **B1 群組聊天玩家名字不顯示**：`buildGroupChatSetup` 讀取 key 從 `my_profile` 修正為 `me_settings`，與全站一致。原先群組 system prompt 中玩家名稱永遠為空。
+- **B2 AI 回覆奇怪換行**：`formatContent` 在轉換 `\n` 為 `<br>` 前先清洗夾在中文字／標點之間的孤立換行，合併三個以上連續換行為兩個。
+- **B4 首頁通知無提示**：首頁通知 tile 的「無新通知」改為動態讀取未讀數，有未讀時顯示玫瑰色 badge 與「X 則未讀」文字。
+
+**新功能：**
+- **F1 貼文與夢境聯動**：`generatePost` 加入最近 6 則聊天 context；`generateDream` 從粗糙話題串改為結構化對話格式（最近 8 則），讓內容更貼近角色與玩家實際互動。
+- **F2 OpenRouter 服務商**：API 設定新增 OpenRouter（多模型）選項，預設 base URL `https://openrouter.ai/api/v1`，走 OpenAI 相容格式。其他第三方 proxy 仍選 OpenAI + 自訂 base URL。
+- **F3 防盜與資安聲明**：設定頁版號上方新增聲明區塊，提醒禁止搬運他人角色、禁止將金鑰輸入不明網站。
+- **B4b 主動訊息寫通知**：`triggerProactive` 成功落地後寫入 `notifications`（`type: 'chat'`），通知中心可查並跳轉聊天室。
+
+#### 受影響檔案
+
+| 檔案 | 變動說明 |
+|------|----------|
+| `auris-vue/src/services/chatEngine.js` | `buildGroupChatSetup` key 修正；`getDefBase` 加 openrouter |
+| `auris-vue/src/views/ChatRoomView.vue` | `formatContent` 換行清洗；`triggerProactive` 寫通知 |
+| `auris-vue/src/views/HomeView.vue` | 通知 tile 動態未讀數 + badge |
+| `auris-vue/src/services/contentEngine.js` | `generatePost` / `generateDream` 加入聊天 context |
+| `auris-vue/src/views/ApiView.vue` | OpenRouter 服務商選項與模型列表 |
+| `auris-vue/src/services/api.js` | openrouter fallback base URL |
+| `auris-vue/src/views/SettingsView.vue` | 防盜聲明 + 版號更新至 P56 |
+| `auris-vue/ARCHITECTURE.md` | 更新服務層說明、Settings key、版本紀錄 |
+| `Auris 完整開發進度總覽.md` | 新增 P55 進度節；延後功能加入階段 B |
+
+---
 
 ### P47: 聊天室 Streaming 串流輸出（一對一 + 群組）✅
 **日期**: 2026-05-24

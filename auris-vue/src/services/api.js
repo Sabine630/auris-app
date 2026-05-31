@@ -117,6 +117,7 @@ export async function sendLLMRequest(messages, customConfig = {}) {
   } else {
     if (!base) {
       if (provider === 'openai') base = 'https://api.openai.com/v1';
+      else if (provider === 'openrouter') base = 'https://openrouter.ai/api/v1';
       else base = 'https://generativelanguage.googleapis.com/v1beta/openai';
     }
     headers['Authorization'] = `Bearer ${key}`;
