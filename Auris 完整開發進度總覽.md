@@ -1,7 +1,7 @@
 # 🎨 Auris 完整開發進度總覽
 
 **最後更新**: 2026-05-31
-**當前版本**: P56（上線一週用戶反饋修復：群組名字、換行清洗、通知動態、OpenRouter、貼文夢境聯動、防盜聲明）
+**當前版本**: P57（上線後連續修復：Anthropic CORS、DB 競態、自訂模型測試、CSP、API 說明優化）
 **狀態**: 持續優化中
 
 ---
@@ -1263,6 +1263,38 @@ auris-vue/src/
 ---
 
 ### P41: UI Bug 修復 — 夢境雙月亮、鍵盤空白、群組多人回覆 ✅
+
+### P57: 上線後連續修復 ✅
+**日期**: 2026-05-31
+**版本**: P57
+
+#### 功能描述
+P56 推出後發現的連鎖問題，逐一修復。
+
+**Bug 修復：**
+- **Anthropic CORS**：chatEngine.js 與 api.js 所有 Anthropic 呼叫加入 `anthropic-dangerous-direct-browser-access: true` header，解決瀏覽器直打 API 被擋的問題。
+- **IndexedDB 競態條件**：`initDB()` 移至 `main.js` await 完成後再 mount app，確保所有元件 onMounted 時 DB 已就緒（P56 的 HomeView dbAll 會在 initDB 前觸發）。
+- **CSP 阻擋 Vercel 工具**：index.html CSP 加入 `https://vercel.live` 至 `script-src` 與 `frame-src`，讓 staging 預覽工具正常運作。
+- **generatePost 缺少 dbIdx import**：contentEngine.js 補上 `dbIdx` 靜態 import，移除 generateDream 的重複動態 import。
+- **測試連線送出 `__custom__`**：ApiView.vue testApi 函式補上自訂模型 ID 解析，不再把 `__custom__` 當作真實模型名稱送出。
+
+**UX 改善：**
+- **API 設定代理服務說明**：自訂 API 位址欄位下方加入代理服務使用說明，附範例格式。
+- **友善錯誤訊息**：401/403/404/429/逾時/網路錯誤全部翻譯成中文說明，不再顯示技術性英文。
+
+#### 受影響檔案
+
+| 檔案 | 變動說明 |
+|------|----------|
+| `auris-vue/src/main.js` | initDB() 移至 main.js，mount 前 await |
+| `auris-vue/src/services/chatEngine.js` | 所有 Anthropic 呼叫加 dangerous-direct-browser-access header |
+| `auris-vue/src/services/api.js` | sendLLMRequest Anthropic 路徑加同上 header |
+| `auris-vue/src/services/contentEngine.js` | 補 dbIdx import，移除重複動態 import |
+| `auris-vue/src/views/ApiView.vue` | testApi 修正自訂模型 ID；加代理說明；友善錯誤訊息 |
+| `auris-vue/index.html` | CSP 加入 vercel.live script-src 與 frame-src |
+| `auris-vue/src/views/SettingsView.vue` | 版號更新至 P57 |
+
+---
 
 ### P56: 上線一週用戶反饋修復 ✅
 **日期**: 2026-05-31

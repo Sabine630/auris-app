@@ -286,6 +286,19 @@ globalStore = {
 
 ## 12. 版本更新紀錄
 
+### P57（2026-05-31）
+
+**上線後連續修復：**
+
+- **Anthropic CORS**（`chatEngine.js`、`api.js`）：所有 Anthropic API 呼叫加入 `anthropic-dangerous-direct-browser-access: true`，解決 CORS preflight 被擋問題。
+- **IndexedDB 競態條件**（`main.js`）：`initDB()` 移至 app mount 之前 await，確保 DB 就緒後才渲染任何 View。
+- **CSP vercel.live**（`index.html`）：補上 `frame-src https://vercel.live`，解決 staging 預覽 iframe 被擋問題。
+- **generatePost dbIdx**（`contentEngine.js`）：補靜態 import，移除 generateDream 重複動態 import。
+- **測試連線自訂模型**（`ApiView.vue`）：testApi 正確解析 `__custom__` → 實際模型 ID。
+- **API 設定 UX**（`ApiView.vue`）：代理服務說明文字、友善中文錯誤訊息（401/403/404/429/逾時）。
+
+---
+
 ### P55（2026-05-29）
 
 **資安強化（防禦縱深）：**
