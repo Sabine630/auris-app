@@ -43,7 +43,7 @@
       <div class="form-row" v-if="apiProvider !== 'vertex'">
         <div class="form-label">自訂 API 位址 <span style="font-size:11px;color:var(--text-3);font-weight:300">選填</span></div>
         <input class="form-input" type="text" v-model="apiBase" :placeholder="defaultBase">
-        <div class="form-hint">使用代理或自架服務才需要填</div>
+        <div class="form-hint">使用代理服務？填入完整網址，例：<span style="font-family:monospace">https://api.xxx.xyz/v1</span><br>服務商選你使用的模型系列（Claude → Anthropic，GPT → OpenAI），其他不用動。</div>
       </div>
     </div>
 
@@ -247,15 +247,29 @@ async function testApi() {
       window.toast_('連線成功！');
     } else {
       const text = await res.text().catch(() => '');
-      let msg = `HTTP ${res.status}`;
+      let raw = `HTTP ${res.status}`;
       try {
         const d = JSON.parse(text);
-        msg = d.error?.message || d.error?.status || JSON.stringify(d.error) || msg;
-      } catch { msg = text.slice(0, 120) || msg; }
-      window.toast_('連線失敗：' + msg);
+        raw = d.error?.message || d.error?.status || JSON.stringify(d.error) || raw;
+      } catch { raw = text.slice(0, 120) || raw; }
+      let friendly = raw;
+      if (res.status === 401 || raw.includes('invalid') && raw.includes('key') || raw.includes('Unauthorized')) {
+        friendly = 'API 金鑰錯誤，請確認是否填對、或帳號是否仍有效';
+      } else if (res.status === 429 || raw.includes('rate') || raw.includes('quota')) {
+        friendly = '請求次數超限或額度用完，請稍後再試或確認帳號餘額';
+      } else if (res.status === 404 || raw.includes('doctype') || raw.includes('not found')) {
+        friendly = '找不到這個 API 位址，請確認自訂網址是否正確（需包含 /v1）';
+      } else if (res.status === 403) {
+        friendly = '金鑰無此模型的使用權限，請確認模型 ID 或帳號方案';
+      }
+      window.toast_('連線失敗：' + friendly, 6000);
     }
   } catch (err) {
-    window.toast_('連線異常：' + err.message);
+    const msg = err.message || '';
+    let friendly = '連線異常，請確認網路與 API 位址是否正確';
+    if (msg.includes('timeout') || msg.includes('request_timeout')) friendly = '連線逾時，請確認網路狀態或 API 位址';
+    else if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) friendly = '無法連線，請確認網路與 API 位址是否正確';
+    window.toast_(friendly, 6000);
   } finally {
     isTesting.value = false;
   }
