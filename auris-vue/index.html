@@ -5,7 +5,7 @@
     <!-- 內容安全政策（防禦縱深）：限制資源來源，降低 XSS 的可利用面。
          img/connect 允許 https:、data:、blob: 以支援頭像 data URI、blob manifest 與自訂 API proxy。
          note: frame-ancestors 只能透過 HTTP header 生效，<meta> 會被忽略，故不列入。 -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://vercel.live; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https:; manifest-src 'self' blob:">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://vercel.live; frame-src 'self' https://vercel.live; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https:; manifest-src 'self' blob:">
     <!-- PWA Icons (dynamically generated) -->
     <link rel="icon" type="image/png" sizes="192x192" href="" id="fav">
     <link rel="apple-touch-icon" sizes="180x180" href="" id="ati">
