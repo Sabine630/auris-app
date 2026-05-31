@@ -229,16 +229,18 @@ async function testApi() {
       url = `${base}/messages`;
       headers['x-api-key'] = apiKey.value;
       headers['anthropic-version'] = '2023-06-01';
+      headers['anthropic-dangerous-direct-browser-access'] = 'true';
     } else {
       const base = apiBase.value || defaultBase.value;
       url = `${base}/chat/completions`;
       headers['Authorization'] = `Bearer ${apiKey.value}`;
     }
 
+    const modelId = apiModel.value === '__custom__' ? customModel.value.trim() : apiModel.value;
     const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ model: apiModel.value, max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] })
+      body: JSON.stringify({ model: modelId, max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] })
     }, 15000);
 
     if (res.ok) {
