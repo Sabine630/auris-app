@@ -292,7 +292,7 @@ globalStore = {
 
 - **資料模型前提**：一角色 = 一對話；`messages`、`diary`、`dreams`、`moments` 全以 `charId` 索引，綁角色而非單次對話。故「刪除對話但保留角色」在此模型下等同「清空訊息」。
 - **左划移除「刪除角色」**：聊天列表左划只保留「置頂 / 清空」，不再提供殺角色入口（避免將 IM 慣例的「刪除＝刪對話串」誤解成刪角色）。刪除角色統一收斂至 `CharManageView`（已有確認 modal）。移除 `deleteChar`。
-- **清空走自訂確認 modal**：以 `bottom-menu` 樣式的 modal 取代 native `confirm()`，新增 state `showClearConfirm / clearTargetIds / clearTargetName / clearAlsoContent / clearing`。`clearChat(id)` 與 `batchClear()` 統一呼叫 `openClearModal(ids, name)`，由 `confirmClear()` 執行；勾選 `clearAlsoContent` 才連帶刪 `diary/dreams/moments`（並一併刪除對應的 `notifications`：type `post/diary/dream`，避免通知連到已刪內容），**預設僅刪 `messages/memories`**。
+- **清空走自訂確認 modal**：以 `bottom-menu` 樣式的 modal 取代 native `confirm()`，新增 state `showClearConfirm / clearTargetIds / clearTargetName / clearAlsoContent / clearing`。`clearChat(id)` 與 `batchClear()` 統一呼叫 `openClearModal(ids, name)`，由 `confirmClear()` 執行；勾選 `clearAlsoContent` 才連帶刪 `diary/dreams/moments`，**預設僅刪 `messages/memories`**。**通知連動**：心聲（`hv`）內容實際存於 `memories`，基本清空一律會刪它，故 `hv` 通知永遠一併清除（否則點進去是死連結）；`post/diary/dream` 通知僅在勾選連帶清除時清。
 
 ---
 

@@ -89,7 +89,7 @@
         Auris · P58
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P58 防誤刪：左划移除「刪除角色」・清空對話可選擇是否連帶清日記/夢境/貼文
+        P58 防誤刪：左划移除「刪除角色」・清空對話可選連帶清日記/夢境/貼文・清空一併清除心聲通知
       </div>
     </div>
   </div>

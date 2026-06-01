@@ -380,20 +380,19 @@ async function confirmClear() {
     const baseStores = ['messages', 'memories'];
     const contentStores = ['diary', 'dreams', 'moments'];
     const stores = clearAlsoContent.value ? [...baseStores, ...contentStores] : baseStores;
-    // 連帶清除日記/夢境/貼文時，這些內容當初產生的通知也要一併清掉，
-    // 否則通知點進去會連到已不存在的內容（空白）。type 對照：post=貼文、diary=日記、dream=夢境。
-    // 'hv'（心聲）綁的是 chat_memories，不在連帶清除範圍，故不動。
-    const contentNotifTypes = ['post', 'diary', 'dream'];
+    // 清掉某個 store 時，指向該 store 的通知也要一併清掉，否則點進去會連到已不存在的內容。
+    // 心聲（hv）內容其實存在 memories store，基本清空一律會刪它，故 hv 通知永遠要清；
+    // post/diary/dream 綁日記/夢境/貼文，只有勾選連帶清除時才刪，對應通知也才清。
+    const notifTypesToClear = ['hv'];
+    if (clearAlsoContent.value) notifTypesToClear.push('post', 'diary', 'dream');
     for (const id of clearTargetIds.value) {
       for (const store of stores) {
         const items = await dbIdx(store, 'charId', id);
         for (const item of items) await dbDel(store, item.id);
       }
-      if (clearAlsoContent.value) {
-        const notifs = await dbIdx('notifications', 'charId', id);
-        for (const n of notifs) {
-          if (contentNotifTypes.includes(n.type)) await dbDel('notifications', n.id);
-        }
+      const notifs = await dbIdx('notifications', 'charId', id);
+      for (const n of notifs) {
+        if (notifTypesToClear.includes(n.type)) await dbDel('notifications', n.id);
       }
       const c = await dbGet('characters', id);
       if (c) {
