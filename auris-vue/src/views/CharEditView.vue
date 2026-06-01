@@ -337,6 +337,13 @@
             </div>
             <div class="toggle" :class="{ on: char.autoPost }" @click="char.autoPost = !char.autoPost"><div class="toggle-knob"></div></div>
           </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-name">生理期關心</div>
+              <div class="toggle-desc">讓這個角色知道你的生理期，聊天時體貼帶到，並在經期前後主動傳訊息關心（需先在「我的設定」開啟週期追蹤）</div>
+            </div>
+            <div class="toggle" :class="{ on: char.cycleCare }" @click="char.cycleCare = !char.cycleCare"><div class="toggle-knob"></div></div>
+          </div>
         </div>
 
         <div class="sec-label">語言</div>
@@ -458,6 +465,7 @@ const char = ref({
   heartVoice: false,
   autoDiary: false,
   autoPost: false,
+  cycleCare: false,
   lang: 'zh-tw'
 });
 

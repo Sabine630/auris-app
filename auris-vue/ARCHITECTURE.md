@@ -286,6 +286,17 @@ globalStore = {
 
 ## 12. 版本更新紀錄
 
+### P59（2026-06-01）
+
+**生理期關心（新檔 `services/cycle.js`）：**
+
+- **資料**：週期設定存於 `me_settings`（`cycleEnabled / lastPeriodStart / cycleLength / periodLength`），全本地計算、不上傳。每個角色的 `char.cycleCare`（預設 false）決定該角色是否知道並關心，達成「逐角色授權」的隱私邊界。
+- **`getCyclePhase(me)`**：依開始日＋週期長度＋經期天數推算 `period/pms/ovulation/normal` 及 `dayNum/daysUntilNext`。
+- **被動體貼**：`buildAIChatSetup` 在 `c.cycleCare` 且階段為 period/pms 時，將 `cycleCareContext(ph)` 注入 system prompt（位置在 `timeCtx` 與 `memCtx` 之間），其餘階段為空字串。
+- **主動關心**：`generateCycleCareMessage(charId, trigger)` 非串流生成關心訊息 → 存 assistant 訊息 + `unreadCount++` + `type:'chat'` 通知；由 `App.vue` `runCycleCare()` 在開 app 時於「預測經期開始日」與「經期前2天」觸發，per-char 日期 setting（`cycle_care_<id>`）去重。
+
+---
+
 ### P58（2026-06-01）
 
 **防誤刪角色 ＋ 清空對話範圍可選（`ChatListView.vue`）：**

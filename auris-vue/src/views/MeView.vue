@@ -30,14 +30,47 @@
           <textarea class="form-input" v-model="me.note" rows="2" placeholder="其他想讓所有角色知道的事…"></textarea>
         </div>
       </div>
+
+      <div class="sec-label">生理期追蹤</div>
+      <div class="form-group">
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-name">開啟週期追蹤</div>
+            <div class="toggle-desc">資料只存在你的裝置本地、不會上傳。開啟後，再到個別角色的編輯頁打開「生理期關心」，該角色才會在經期前後體貼你、主動傳關心訊息。</div>
+          </div>
+          <div class="toggle" :class="{ on: me.cycleEnabled }" @click="me.cycleEnabled = !me.cycleEnabled"><div class="toggle-knob"></div></div>
+        </div>
+
+        <template v-if="me.cycleEnabled">
+          <div class="form-row">
+            <div class="form-label">最近一次經期開始日</div>
+            <input class="form-input" v-model="me.lastPeriodStart" type="date" style="width:auto">
+            <div class="form-hint">系統會用這天往後推算，預測之後的經期</div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">週期長度（天）</div>
+            <input class="form-input" v-model="me.cycleLength" type="number" min="20" max="45" placeholder="28" style="width:80px">
+            <div class="form-hint">兩次經期開始之間的天數，平均約 28 天</div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">經期天數</div>
+            <input class="form-input" v-model="me.periodLength" type="number" min="2" max="10" placeholder="5" style="width:80px">
+            <div class="form-hint">每次經期持續的天數，平均約 3～7 天</div>
+          </div>
+          <div v-if="phaseLabel" class="form-row">
+            <div class="form-hint" style="margin-top:0">目前推算：<b style="color:var(--rose)">{{ phaseLabel }}</b></div>
+          </div>
+        </template>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { getSetting, setSetting } from '../services/db.js';
+import { getCyclePhase, cyclePhaseLabel } from '../services/cycle.js';
 
 const router = useRouter();
 const me = ref({
@@ -45,8 +78,14 @@ const me = ref({
   age: '',
   job: '',
   persona: '',
-  note: ''
+  note: '',
+  cycleEnabled: false,
+  lastPeriodStart: '',
+  cycleLength: 28,
+  periodLength: 5
 });
+
+const phaseLabel = computed(() => cyclePhaseLabel(getCyclePhase(me.value)));
 
 onMounted(async () => {
   const data = await getSetting('me_settings');

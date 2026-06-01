@@ -34,6 +34,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from './store/index.js';
 import { getSetting, setSetting, dbAll, dbIdx, dbGet } from './services/db.js';
 import { generateDiary, generatePost } from './services/contentEngine.js';
+import { generateCycleCareMessage } from './services/chatEngine.js';
+import { getCyclePhase } from './services/cycle.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
@@ -161,6 +163,33 @@ async function runDailyAutoGen() {
   } catch (_) {}
 }
 
+// 生理期主動關心：在「預測經期開始日」與「經期前 2 天」各觸發一次，
+// 讓有開「生理期關心」的角色主動傳一則關心訊息進聊天室。
+// 以 per-char 的日期 setting 去重，同一天不重複傳；兩個觸發日為不同日期，各自只會發一次。
+async function runCycleCare() {
+  try {
+    const me = await getSetting('me_settings');
+    if (!me || !me.cycleEnabled || !me.lastPeriodStart) return;
+    const ph = getCyclePhase(me);
+    if (!ph) return;
+
+    let trigger = null;
+    if (ph.dayInCycle === 0) trigger = 'period';      // 預測經期開始日
+    else if (ph.daysUntilNext === 2) trigger = 'pms'; // 經期前 2 天
+    if (!trigger) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const chars = await dbAll('characters');
+    for (const c of chars) {
+      if (!c.cycleCare) continue;
+      const key = 'cycle_care_' + c.id;
+      if (await getSetting(key) === today) continue;
+      await setSetting(key, today);
+      try { await generateCycleCareMessage(c.id, trigger); } catch (_) {}
+    }
+  } catch (_) {}
+}
+
 let timer;
 onMounted(async () => {
   await globalStore.init();
@@ -190,6 +219,9 @@ onMounted(async () => {
 
   // Daily auto-generation (runs silently in background, P50)
   runDailyAutoGen();
+
+  // 生理期主動關心（背景靜默執行，P59）
+  runCycleCare();
 
   // Prevent iOS Safari swipe-back gesture (left/right edge swipe)
   document.addEventListener('touchstart', (e) => {

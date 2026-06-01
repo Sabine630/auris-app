@@ -1,5 +1,6 @@
 import { dbGet, dbPut, dbIdx, getSetting } from './db.js';
 import { fetchWithTimeout, sendLLMRequest, getVertexToken } from './api.js';
+import { getCyclePhase, cycleCareContext } from './cycle.js';
 
 function getDefModel(provider) {
   if (provider === 'anthropic') return 'claude-3-5-sonnet-20240620';
@@ -106,6 +107,10 @@ async function buildAIChatSetup(charId, allMsgs) {
     timeCtx = `\n現在時間：${n.getHours()}:${n.getMinutes().toString().padStart(2, '0')}，星期${days[n.getDay()]}。`;
   }
 
+  // 生理期被動體貼：僅當此角色開了「生理期關心」且使用者啟用週期追蹤時，
+  // 在經期/經期前把對方身體狀態餵進 prompt，讓角色自然地關心（其餘階段為空字串）。
+  const cycleCtx = c.cycleCare ? cycleCareContext(getCyclePhase(me)) : '';
+
   const storyCtx = c.stories?.filter(s => s.content).map(s => `【${s.title}】${s.content}`).join('\n') || '';
 
   let lang = '繁體中文';
@@ -133,7 +138,7 @@ ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}
 ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
-${timeCtx}${memCtx}
+${timeCtx}${cycleCtx}${memCtx}
 【回覆品質要求】
 ・每則訊息至少 50～150 字，要有具體內容，不能只是「嗯」「好啊」「哈哈」等空洞回應
 ・要回應對方說的具體內容，展現你真的在聽、在意
@@ -277,6 +282,55 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
     await dbPut('messages', msg);
   }
   return { msg, truncated };
+}
+
+// ── 1-on-1 生理期主動關心訊息（背景生成，非串流）─────────────────────────
+// 由 App.vue 的 runCycleCare 在預測經期開始日／經期前觸發。
+// trigger: 'period'（經期開始）| 'pms'（經期前）。
+// 直接把關心訊息存成一則 assistant 訊息進聊天室，並加未讀紅點與通知。
+export async function generateCycleCareMessage(charId, trigger) {
+  const c = await dbGet('characters', charId);
+  if (!c || !c.cycleCare) return null;
+  const me = await getSetting('me_settings') || {};
+  const ph = getCyclePhase(me);
+  if (!ph) return null;
+
+  const allMsgs = await dbIdx('messages', 'charId', charId);
+  allMsgs.sort((a, b) => a.createdAt - b.createdAt);
+  const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
+
+  const careGoal = trigger === 'pms'
+    ? `你算了一下，對方的生理期大概再過 ${ph.daysUntilNext} 天就要來了，有點擔心對方這幾天身體和心情。`
+    : `你想到對方今天生理期大概來了（第 ${ph.dayNum} 天），有點心疼，想關心對方。`;
+  const carePrompt = finalSystemPrompt + `\n\n【主動關心】${careGoal}請主動傳一則訊息關心對方，自然、簡短、有溫度，像真的在意對方的人會說的話（例如提醒保暖、喝熱水、好好休息、想吃什麼幫忙準備之類）。要完全符合你的角色個性與說話風格。不要像衛教文章、不要長篇大論、不要解釋你為什麼會知道。直接說你想說的。`;
+
+  // 沿用主動訊息的歷史處理：最後一則是 assistant（或無歷史）時補一個使用者佔位，
+  // 以滿足 Anthropic 等需 user 結尾的格式要求。
+  const careHistory = history.length
+    ? (history[history.length - 1].role === 'user'
+        ? history
+        : [...history, { role: 'user', content: '（沉默中）' }])
+    : [{ role: 'user', content: '（對方沒說話，你突然很想關心對方）' }];
+
+  let text = '';
+  try {
+    text = await sendLLMRequest(
+      [{ role: 'system', content: carePrompt }, ...careHistory],
+      { max_tokens: 800, temperature: 0.85 }
+    );
+  } catch (e) {
+    console.error('generateCycleCareMessage failed:', e);
+    return null;
+  }
+  if (!text || !text.trim()) return null;
+
+  const msg = { id: 'msg_' + Date.now() + '_care', charId, role: 'assistant', content: text.trim(), createdAt: Date.now() };
+  await dbPut('messages', msg);
+  c.unreadCount = (c.unreadCount || 0) + 1;
+  c.hasUnread = true;
+  await dbPut('characters', JSON.parse(JSON.stringify(c)));
+  await dbPut('notifications', { id: 'notif_care_' + Date.now(), charId, type: 'chat', targetId: charId, text: '傳了一則訊息關心你', read: false, createdAt: Date.now() });
+  return msg;
 }
 
 // ── Heart Voice Logic ─────────────────────────────────────────────────────

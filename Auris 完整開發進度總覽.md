@@ -1264,6 +1264,38 @@ auris-vue/src/
 
 ### P41: UI Bug 修復 — 夢境雙月亮、鍵盤空白、群組多人回覆 ✅
 
+### P59: 生理期關心 ✅
+**日期**: 2026-06-01
+**版本**: P59
+
+#### 功能描述
+使用者許願：希望能記錄月經週期，讓角色在生理期期間主動提醒注意事項、表達關心。本次以「被動體貼 ＋ 主動傳訊息」兩種方式實現，並完全尊重隱私（資料只存本機、每個角色單獨授權）。
+
+**設計決策（與使用者確認）：**
+- **關心方式**：被動體貼 ＋ 主動傳訊息，兩者都做。
+- **隱私範圍**：每個角色在編輯頁單獨開「生理期關心」，預設關；只有授權的角色會知道並關心。週期資料只存 `me_settings`（本機 IndexedDB），全本地計算、不上傳。
+
+**實作內容：**
+- **週期計算（`services/cycle.js`，新檔）**：`getCyclePhase(me)` 依「最近一次經期開始日 ＋ 週期長度（預設28）＋ 經期天數（預設5）」推算今天落在 `period`（經期中）/`pms`（經期前2天）/`ovulation`/`normal`。另提供 `cycleCareContext()`（組 prompt 用）與 `cyclePhaseLabel()`（UI 預覽用）。
+- **我的設定 UI（`MeView.vue`）**：新增「生理期追蹤」區塊——主開關、最近經期開始日、週期長度、經期天數，並即時預覽目前推算階段。
+- **角色開關（`CharEditView.vue`）**：自動功能區新增「生理期關心」toggle（`char.cycleCare`，預設 false）。
+- **被動體貼（`chatEngine.js` buildAIChatSetup）**：若角色開了 `cycleCare` 且使用者啟用週期追蹤，於經期/經期前把對方身體狀態餵進 system prompt，角色聊天時自然帶到關心（其餘階段不注入，避免角色一直把話題繞到生理期）。
+- **主動關心訊息（`chatEngine.js` `generateCycleCareMessage`）**：非串流生成一則關心訊息，存成 assistant 訊息進聊天室、加未讀紅點與 `type:'chat'` 通知。
+- **每日觸發（`App.vue` `runCycleCare`）**：開 app 時於「預測經期開始日」與「經期前2天」各觸發一次，per-char 日期去重避免同日重複傳。
+
+#### 受影響檔案
+
+| 檔案 | 變動說明 |
+|------|----------|
+| `auris-vue/src/services/cycle.js` | 新檔：週期階段計算與提示／標籤組裝 |
+| `auris-vue/src/services/chatEngine.js` | buildAIChatSetup 注入被動體貼 context；新增 `generateCycleCareMessage` |
+| `auris-vue/src/App.vue` | 新增 `runCycleCare` 每日觸發主動關心 |
+| `auris-vue/src/views/MeView.vue` | 新增「生理期追蹤」設定區塊與階段預覽 |
+| `auris-vue/src/views/CharEditView.vue` | 自動功能區新增「生理期關心」toggle |
+| `auris-vue/src/views/SettingsView.vue` | 版號更新至 P59 |
+
+---
+
 ### P58: 防誤刪角色 ＋ 清空對話範圍可選 ✅
 **日期**: 2026-06-01
 **版本**: P58
