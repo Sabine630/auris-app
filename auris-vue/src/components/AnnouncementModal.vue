@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P47 – P52 更新公告</div>
+      <div class="ann-badge">P53 – P59 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,55 +16,51 @@
               <div class="ann-title">新功能</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">串流輸出</div>
-                  <div class="ann-item-desc">AI 回覆逐字出現，不再等整段生成完才顯示。</div>
+                  <div class="ann-item-title">生理期關心</div>
+                  <div class="ann-item-desc">在「我」頁面設定月經週期，授權的角色會在生理期前後主動傳關心訊息，聊天時也會自然帶到體貼語氣。資料只存本機、不上傳。（角色設定 → 自動功能 → 生理期關心）</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">記憶抽屜</div>
-                  <div class="ann-item-desc">每位角色擁有長期記憶。AI 自動歸納重要事件，你也可以手動新增、編輯、或關閉個別記憶條目。</div>
+                  <div class="ann-item-title">防誤刪角色</div>
+                  <div class="ann-item-desc">聊天列表左划「刪除」已移除——不再因誤觸殺掉整個角色。刪除角色請走「設定 → 角色管理」。左划現在只有置頂與清空。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">動態回覆模式</div>
-                  <div class="ann-item-desc">AI 自動選擇回覆風格，不需要手動切換。</div>
+                  <div class="ann-item-title">清空對話可選範圍</div>
+                  <div class="ann-item-desc">清空時會跳確認視窗，預設只清聊天訊息與記憶；若想連日記、夢境、貼文一起清，手動勾選即可。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">每日自動生成</div>
-                  <div class="ann-item-desc">開啟 App 時自動在背景幫角色生成日記與貼文（需在角色設定中開啟）。</div>
+                  <div class="ann-item-title">OpenRouter 服務商</div>
+                  <div class="ann-item-desc">API 設定新增 OpenRouter，可直接使用多家模型，無需另設代理。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">角色主動發訊息</div>
-                  <div class="ann-item-desc">特定情境下角色可能主動傳訊，這是設計行為，不是 bug。</div>
+                  <div class="ann-item-title">Google Vertex AI</div>
+                  <div class="ann-item-desc">API 設定支援 Vertex AI，使用 GCP 免費額度或帳單抵免。</div>
                 </div>
               </div>
             </template>
 
-            <!-- 第二頁：介面修復 -->
+            <!-- 第二頁：修復與強化 -->
             <template v-else-if="page === 1">
-              <div class="ann-title">介面修復</div>
+              <div class="ann-title">修復與強化</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">時間顯示修正</div>
-                  <div class="ann-item-desc">對話中的時間格式已修正。</div>
+                  <div class="ann-item-title">Anthropic API 直連修復</div>
+                  <div class="ann-item-desc">修復瀏覽器直接呼叫 Anthropic API 被 CORS 擋住的問題，Anthropic 金鑰用戶無需再設代理。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">通知頁修復</div>
-                  <div class="ann-item-desc">通知顯示異常問題已解決。</div>
+                  <div class="ann-item-title">友善錯誤訊息</div>
+                  <div class="ann-item-desc">API 錯誤（401/403/429/逾時/網路斷線）現在顯示中文說明，不再出現技術英文錯誤碼。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">iOS / Android 滑動返回鎖定</div>
-                  <div class="ann-item-desc">防止觸碰螢幕邊緣時意外觸發返回手勢。</div>
+                  <div class="ann-item-title">貼文與夢境更貼近角色</div>
+                  <div class="ann-item-desc">貼文與夢境生成時加入近期聊天脈絡，內容更符合你們實際的互動。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">Enter 鍵發送訊息</div>
-                  <div class="ann-item-desc">桌機使用者可直接按 Enter 送出訊息。</div>
+                  <div class="ann-item-title">資安強化</div>
+                  <div class="ann-item-desc">匯出備份不再包含 API 金鑰；匯入前先驗證格式再清空舊資料，防止因損壞備份導致資料遺失。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">備份檔名加時間戳</div>
-                  <div class="ann-item-desc">匯出備份現在命名為 auris_backup_YYYYMMDD-HHMM.json。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">Onboarding 防重複</div>
-                  <div class="ann-item-desc">匯入備份後有角色資料，不會再跳新手引導流程。</div>
+                  <div class="ann-item-title">群組聊天名字修正</div>
+                  <div class="ann-item-desc">修復群組 system prompt 中你的名字永遠空白的問題。</div>
                 </div>
               </div>
             </template>
@@ -98,7 +94,12 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P52</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P59</strong> 即為最新版</div>
+              </div>
+
+              <div class="ann-guide-section">
+                <div class="ann-guide-label">注意：左划刪除已移除</div>
+                <div class="ann-guide-text">聊天列表左划不再有「刪除角色」按鈕。刪除請走 設定 → 角色管理。</div>
               </div>
 
               <div class="ann-guide-section">
