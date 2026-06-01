@@ -1,6 +1,12 @@
 import { dbGet, dbPut, dbIdx, getSetting } from './db.js';
 import { sendLLMRequest } from './api.js';
 
+function buildRecentChat(msgs, charName, userLabel, count, maxLen) {
+  return msgs.slice(0, count).reverse().map(m =>
+    `${m.role === 'user' ? userLabel : charName}：${m.content.substring(0, maxLen)}`
+  ).join('\n');
+}
+
 function dedupeRepeats(text) {
   const sentences = text.match(/[^。！？.!?]+[。！？.!?]?/g);
   if (!sentences) return text;
@@ -29,9 +35,7 @@ export async function generatePost(charId) {
   const me = await getSetting('me_settings') || {};
   const msgs = await dbIdx('messages', 'charId', charId);
   msgs.sort((a, b) => b.createdAt - a.createdAt);
-  const recentChat = msgs.slice(0, 6).reverse().map(m =>
-    `${m.role === 'user' ? (me.name || '對方') : c.name}：${m.content.substring(0, 50)}`
-  ).join('\n');
+  const recentChat = buildRecentChat(msgs, c.name, me.name || '對方', 6, 50);
 
   const prompt = `你是「${c.name}」。請根據以下設定，寫一則短篇社群貼文（類似 IG 或 Twitter），分享你此刻的想法或生活片段。
 【個性】${c.persona || ''}
@@ -109,12 +113,9 @@ export async function generateDiary(charId) {
 
   const me = await getSetting('me_settings') || {};
 
-  const { dbIdx } = await import('./db.js');
   const msgs = await dbIdx('messages', 'charId', charId);
   msgs.sort((a, b) => b.createdAt - a.createdAt);
-  const recentChat = msgs.slice(0, 8).reverse().map(m =>
-    `${m.role === 'user' ? (me.name || '你') : c.name}：${m.content.substring(0, 60)}`
-  ).join('\n');
+  const recentChat = buildRecentChat(msgs, c.name, me.name || '你', 8, 60);
 
   const n = new Date();
   const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -171,9 +172,7 @@ export async function generateDream(charId) {
   const me = await getSetting('me_settings') || {};
   const msgs = await dbIdx('messages', 'charId', charId);
   msgs.sort((a, b) => b.createdAt - a.createdAt);
-  const recentChat = msgs.slice(0, 8).reverse().map(m =>
-    `${m.role === 'user' ? (me.name || '對方') : c.name}：${m.content.substring(0, 50)}`
-  ).join('\n');
+  const recentChat = buildRecentChat(msgs, c.name, me.name || '對方', 8, 50);
 
   const prompt = `你是「${c.name}」，個性：${c.persona || ''}。
 ${recentChat ? `最近和對方的對話：\n${recentChat}\n夢境可以若有似無地折射這段互動，也可以完全無關。` : ''}

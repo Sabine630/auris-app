@@ -86,10 +86,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P59
+        Auris · P60
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P59 生理期關心：本地週期追蹤・角色聊天時體貼・經期前後主動傳關心訊息
+        P60 代碼整理・串流空回應錯誤提示
       </div>
     </div>
   </div>

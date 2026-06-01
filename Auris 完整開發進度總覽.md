@@ -1264,6 +1264,38 @@ auris-vue/src/
 
 ### P41: UI Bug 修復 — 夢境雙月亮、鍵盤空白、群組多人回覆 ✅
 
+### P60: 代碼整理 ＋ 串流空回應錯誤提示 ✅
+**日期**: 2026-06-01
+**版本**: P60
+
+#### 功能描述
+全專案資安掃描（無高風險漏洞）、程式碼清理、以及修復串流空回應靜默失敗問題。
+
+**清理內容：**
+- 刪除未使用的 `HelloWorld.vue`
+- 移除 `store.reloadCharacters()`（只是 `loadCharacters()` 的空殼）
+- 移除 `summarizeToMemory` 中 3 個抓了但從未使用的變數
+- 移除 `generateDiary` 中多餘的動態 import（`dbIdx` 已靜態 import）
+- 修正 `buildGroupChatSetup` 的 model fallback 寫死成 `'gpt-5.4-mini'` 而非 `getDefModel(provider)`（Anthropic 用戶會選錯模型的 bug）
+- 提取 `buildRecentChat()` 工具函式，取代 `contentEngine.js` 中 3 處重複邏輯
+
+**錯誤提示修復：**
+- `sendMsg` / `doRegenerate`：串流回應為空時（代理回傳空串流）原本靜默消失，現在顯示明確的 toast 提示使用者確認代理設定
+
+#### 受影響檔案
+
+| 檔案 | 變動說明 |
+|------|----------|
+| `auris-vue/src/components/HelloWorld.vue` | 刪除（未使用） |
+| `auris-vue/src/store/index.js` | 移除 `reloadCharacters()` |
+| `auris-vue/src/views/CharManageView.vue` | `reloadCharacters()` 改為 `loadCharacters()` |
+| `auris-vue/src/services/chatEngine.js` | 移除 `summarizeToMemory` 死碼；修正 group chat model fallback |
+| `auris-vue/src/services/contentEngine.js` | 移除多餘動態 import；提取 `buildRecentChat()` |
+| `auris-vue/src/views/ChatRoomView.vue` | 串流空回應加 toast 錯誤提示 |
+| `auris-vue/src/views/SettingsView.vue` | 版號更新至 P60 |
+
+---
+
 ### P59: 生理期關心 ✅
 **日期**: 2026-06-01
 **版本**: P59

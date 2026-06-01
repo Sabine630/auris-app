@@ -28,9 +28,5 @@ export const globalStore = reactive({
 
   async loadCharacters() {
     this.characters = await dbAll('characters');
-  },
-
-  async reloadCharacters() {
-    await this.loadCharacters();
   }
 });

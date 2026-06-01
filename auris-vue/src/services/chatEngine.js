@@ -416,14 +416,8 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
   const apiKey = await getSetting('api_key');
   if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
   const provider = await getSetting('api_provider') || 'openai';
-  const model = await getSetting('api_model') || 'gpt-5.4-mini';
-  let base = await getSetting('api_base');
-  if (!base) {
-    if (provider === 'anthropic') base = 'https://api.anthropic.com/v1';
-    else if (provider === 'google') base = 'https://generativelanguage.googleapis.com/v1beta/openai';
-    else base = 'https://api.openai.com/v1';
-  }
-  base = base.replace(/\/$/, '');
+  const model = await getSetting('api_model') || getDefModel(provider);
+  const base = (await getSetting('api_base') || getDefBase(provider)).replace(/\/$/, '');
 
   const validChars = members.filter(x => x.id);
   const otherChars = validChars.filter(oc => oc.id !== c.id).map(oc => oc.name).join('、');
@@ -626,9 +620,6 @@ export async function summarizeToMemory(charId, recentMsgs, count = 20) {
   const apiKey = await getSetting('api_key');
   if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
 
-  const provider = await getSetting('api_provider') || 'openai';
-  const model = await getSetting('api_model') || getDefModel(provider);
-  const base = (await getSetting('api_base') || getDefBase(provider)).replace(/\/$/, '');
   const c = await dbGet('characters', charId);
 
   const slice = recentMsgs.filter(m => m.type !== 'hv').slice(-count);

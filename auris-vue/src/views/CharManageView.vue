@@ -97,7 +97,7 @@ async function confirmDelete() {
     await dbDel('characters', charId);
     
     // Reload characters in the global store
-    await globalStore.reloadCharacters();
+    await globalStore.loadCharacters();
     
     showDeleteConfirm.value = false;
     deleteTarget.value = null;

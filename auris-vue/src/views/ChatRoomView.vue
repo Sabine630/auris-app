@@ -553,10 +553,15 @@ async function sendMsg() {
     });
     if (streamIdx !== -1) {
       messages.value.splice(streamIdx, 1, msg || null);
-      if (!msg) messages.value.splice(streamIdx, 1);
+      if (!msg) {
+        messages.value.splice(streamIdx, 1);
+        window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
+      }
     } else if (msg) {
       messages.value.push(msg);
       scrollToBottom();
+    } else {
+      window.toast_('沒有收到任何回應，請確認 API 設定與代理是否正常');
     }
     if (truncated) window.toast_('⚠ 回覆可能被截斷，可長按訊息「重新生成回覆」');
   } catch (err) {
@@ -737,10 +742,15 @@ async function doRegenerate(m) {
     });
     if (streamIdx !== -1) {
       messages.value.splice(streamIdx, 1, msg || null);
-      if (!msg) messages.value.splice(streamIdx, 1);
+      if (!msg) {
+        messages.value.splice(streamIdx, 1);
+        window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
+      }
     } else if (msg) {
       messages.value.push(msg);
       scrollToBottom();
+    } else {
+      window.toast_('沒有收到任何回應，請確認 API 設定與代理是否正常');
     }
     if (truncated) window.toast_('⚠ 回覆可能被截斷');
   } catch (err) {
