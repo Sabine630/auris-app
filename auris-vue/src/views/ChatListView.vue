@@ -74,10 +74,6 @@
                 <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                 清空
               </div>
-              <div class="chat-swipe-btn delete" @click.stop="deleteChar(item.c.id)">
-                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                刪除
-              </div>
             </div>
           </div>
           <div style="height:.5px;background:var(--border);" :style="{ marginLeft: manageMode ? '100px' : '80px' }"></div>
@@ -135,6 +131,35 @@
         </div>
       </div>
     </div>
+
+    <!-- 清空對話確認 -->
+    <div class="menu-overlay" v-if="showClearConfirm" @click="showClearConfirm = false"></div>
+    <div class="bottom-menu" :style="{ display: showClearConfirm ? 'block' : 'none' }">
+      <div style="padding:20px 16px 12px;text-align:center">
+        <div style="font-weight:500;font-size:15px;margin-bottom:6px">
+          {{ clearTargetName ? `清空與「${clearTargetName}」的對話？` : `清空 ${clearTargetIds.length} 個角色的對話？` }}
+        </div>
+        <div style="font-size:12px;color:var(--text-3);font-weight:300;line-height:1.6">
+          聊天記錄與對話記憶會被清除，<b>角色不會被刪除</b>。
+        </div>
+      </div>
+      <div style="padding:0 16px 4px">
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border-radius:12px;background:var(--surface);border:.5px solid var(--border);cursor:pointer" @click="clearAlsoContent = !clearAlsoContent">
+          <div class="chat-item-checkbox show" :class="{ checked: clearAlsoContent }" style="flex-shrink:0;margin-top:1px"></div>
+          <div style="text-align:left">
+            <div style="font-size:13px;font-weight:400;color:var(--text)">同時清除日記、夢境、貼文</div>
+            <div style="font-size:11px;color:var(--text-3);font-weight:300;line-height:1.5;margin-top:2px">這些是角色過去產生的內容。若想徹底重新開始，可一併清除以免之後對不上。</div>
+          </div>
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;padding:12px 16px 20px">
+        <button @click="showClearConfirm = false"
+          style="flex:1;padding:12px;border-radius:12px;background:var(--surface);color:var(--text);border:.5px solid var(--border);font-size:14px;font-weight:400;cursor:pointer">取消</button>
+        <button @click="confirmClear" :disabled="clearing"
+          style="flex:1;padding:12px;border-radius:12px;background:var(--rose);color:#fff;border:none;font-size:14px;font-weight:500;cursor:pointer"
+          :style="clearing ? 'opacity:0.5' : ''">{{ clearing ? '清空中…' : '確認清空' }}</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -156,6 +181,12 @@ const showSortMenu = ref(false);
 const showAddChat = ref(false);
 
 const chatData = ref([]);
+
+const showClearConfirm = ref(false);
+const clearTargetIds = ref([]);
+const clearTargetName = ref('');
+const clearAlsoContent = ref(false);
+const clearing = ref(false);
 
 const swipedId = ref(null);
 let touchStartX = 0;
@@ -291,24 +322,12 @@ async function markAllRead() {
   await loadChatData();
 }
 
-async function batchClear() {
+function batchClear() {
   if (!selectedChats.value.length) {
     window.toast_('請先選擇角色');
     return;
   }
-  if (!confirm(`確定要清空 ${selectedChats.value.length} 個角色的對話記錄嗎？`)) return;
-  
-  for (const id of selectedChats.value) {
-    const msgs = await dbIdx('messages', 'charId', id);
-    for (const m of msgs) await dbDel('messages', m.id);
-    const mems = await dbIdx('memories', 'charId', id);
-    for (const m of mems) await dbDel('memories', m.id);
-    const c = await dbGet('characters', id);
-    c.unreadCount = 0;
-    await dbPut('characters', c);
-  }
-  manageMode.value = false;
-  await loadChatData();
+  openClearModal([...selectedChats.value], '');
 }
 
 async function batchDelete() {
@@ -339,29 +358,55 @@ async function togglePin(id) {
 }
 
 async function clearChat(id) {
-  if (!confirm('確定要清空與此角色的所有對話記錄嗎？角色不會被刪除。')) return;
-  const msgs = await dbIdx('messages', 'charId', id);
-  for (const m of msgs) await dbDel('messages', m.id);
-  const mems = await dbIdx('memories', 'charId', id);
-  for (const m of mems) await dbDel('memories', m.id);
   const c = await dbGet('characters', id);
-  c.unreadCount = 0;
-  await dbPut('characters', c);
-  swipedId.value = null;
-  await loadChatData();
+  openClearModal([id], c?.name || '');
 }
 
-async function deleteChar(id) {
-  const c = await dbGet('characters', id);
-  if (!confirm(`確定要刪除「${c.name}」嗎？所有對話記錄也會一併刪除。`)) return;
-  await dbDel('characters', id);
-  const stores = ['messages', 'memories', 'diary', 'dreams', 'moments'];
-  for (const store of stores) {
-    const items = await dbIdx(store, 'charId', id);
-    for (const item of items) await dbDel(store, item.id);
-  }
+function openClearModal(ids, name) {
+  clearTargetIds.value = ids;
+  clearTargetName.value = name;
+  clearAlsoContent.value = false;
   swipedId.value = null;
-  await loadChatData();
+  showClearConfirm.value = true;
+}
+
+async function confirmClear() {
+  if (clearing.value || !clearTargetIds.value.length) return;
+  clearing.value = true;
+  try {
+    // 「清空」一律清掉聊天訊息與對話記憶；
+    // 日記/夢境/貼文是綁角色而非綁單次對話，只有使用者主動勾選才連帶清除，
+    // 避免「我只想清訊息，結果日記也沒了」的二次誤刪。
+    const baseStores = ['messages', 'memories'];
+    const contentStores = ['diary', 'dreams', 'moments'];
+    const stores = clearAlsoContent.value ? [...baseStores, ...contentStores] : baseStores;
+    // 連帶清除日記/夢境/貼文時，這些內容當初產生的通知也要一併清掉，
+    // 否則通知點進去會連到已不存在的內容（空白）。type 對照：post=貼文、diary=日記、dream=夢境。
+    // 'hv'（心聲）綁的是 chat_memories，不在連帶清除範圍，故不動。
+    const contentNotifTypes = ['post', 'diary', 'dream'];
+    for (const id of clearTargetIds.value) {
+      for (const store of stores) {
+        const items = await dbIdx(store, 'charId', id);
+        for (const item of items) await dbDel(store, item.id);
+      }
+      if (clearAlsoContent.value) {
+        const notifs = await dbIdx('notifications', 'charId', id);
+        for (const n of notifs) {
+          if (contentNotifTypes.includes(n.type)) await dbDel('notifications', n.id);
+        }
+      }
+      const c = await dbGet('characters', id);
+      if (c) {
+        c.unreadCount = 0;
+        await dbPut('characters', JSON.parse(JSON.stringify(c)));
+      }
+    }
+    showClearConfirm.value = false;
+    manageMode.value = false;
+    await loadChatData();
+  } finally {
+    clearing.value = false;
+  }
 }
 
 // Swipe gestures

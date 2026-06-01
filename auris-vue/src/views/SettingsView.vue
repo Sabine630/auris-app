@@ -86,10 +86,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P57
+        Auris · P58
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P57 修復上線後問題・CORS・DB 競態・自訂模型・API 說明優化
+        P58 防誤刪：左划移除「刪除角色」・清空對話可選擇是否連帶清日記/夢境/貼文
       </div>
     </div>
   </div>
