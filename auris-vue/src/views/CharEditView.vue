@@ -130,6 +130,23 @@
             <textarea class="form-input" rows="2" v-model="char.hobby" placeholder="例：喜歡深夜騎車、黑膠唱片、討厭人際應酬…"></textarea>
           </div>
         </div>
+
+        <div class="sec-label">作息 / 行程</div>
+        <div class="form-group" style="margin-bottom:0">
+          <div class="form-row">
+            <div class="form-label">上班 / 上課時間</div>
+            <input class="form-input" type="text" v-model="char.workTime" placeholder="例：週一到五 09:00–18:00、輪班制…">
+          </div>
+          <div class="form-row">
+            <div class="form-label">上班 / 上課地點</div>
+            <input class="form-input" type="text" v-model="char.workPlace" placeholder="例：信義區的設計公司、學校…">
+          </div>
+          <div class="form-row">
+            <div class="form-label">作息習慣</div>
+            <textarea class="form-input" rows="2" v-model="char.restTime" placeholder="例：通常凌晨1點睡、早上8點起；週末會睡到中午…"></textarea>
+            <div class="form-hint">搭配「時間感」開啟時，角色會依現在時間推測自己在上班、通勤還是睡覺，主動訊息更有情境感</div>
+          </div>
+        </div>
       </div>
 
       <!-- ── Tab 2：說話方式 ── -->
@@ -344,6 +361,21 @@
             </div>
             <div class="toggle" :class="{ on: char.cycleCare }" @click="char.cycleCare = !char.cycleCare"><div class="toggle-knob"></div></div>
           </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-name">自動總結記憶</div>
+              <div class="toggle-desc">對話累積到一定則數時，自動讓 AI 濃縮成長期記憶，不必手動按總結</div>
+            </div>
+            <div class="toggle" :class="{ on: char.autoSummarize }" @click="char.autoSummarize = !char.autoSummarize"><div class="toggle-knob"></div></div>
+          </div>
+          <div class="slider-row" v-if="char.autoSummarize">
+            <div class="slider-header">
+              <span class="slider-label">每幾則自動總結</span>
+              <span class="slider-val">{{ char.autoSumEvery }} 則</span>
+            </div>
+            <input type="range" min="10" max="80" step="5" v-model.number="char.autoSumEvery">
+            <div class="form-hint" style="margin-top:6px">每累積這麼多則新對話，就自動總結一次</div>
+          </div>
         </div>
 
         <div class="sec-label">語言</div>
@@ -439,6 +471,9 @@ const char = ref({
   stories: JSON.parse(JSON.stringify(DEFAULT_STORIES)),
   status: '',
   hobby: '',
+  workTime: '',
+  workPlace: '',
+  restTime: '',
   style: 'casual',
   talkative: 'mid',
   call: '',
@@ -466,6 +501,8 @@ const char = ref({
   autoDiary: false,
   autoPost: false,
   cycleCare: false,
+  autoSummarize: false,
+  autoSumEvery: 30,
   lang: 'zh-tw'
 });
 

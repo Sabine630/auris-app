@@ -40,9 +40,17 @@
           </div>
 
           <!-- User Message -->
-          <div v-else-if="m.role === 'user'" class="msg me" :class="{'msg-cont': isCont(i)}">
-            <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id }" :data-msg-id="m.id" data-role="user" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
-            <div v-if="!isCont(i)" class="msg-time">{{ fmtT(m.createdAt) }}</div>
+          <div v-else-if="m.role === 'user'" class="msg-with-av me-side">
+            <div v-if="!isCont(i)" class="msg-av">
+              <img v-if="meAvatar && meAvatar.startsWith('data:')" :src="meAvatar" style="width:100%;height:100%;object-fit:cover;border-radius:8px">
+              <span v-else>{{ meAvatar || '🙂' }}</span>
+            </div>
+            <div v-else class="msg-av-spacer"></div>
+            <div class="msg me">
+              <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id }" :data-msg-id="m.id" data-role="user" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
+              <div v-if="m.reaction" class="msg-reaction" @click="removeReaction(m)">{{ m.reaction }}</div>
+              <div v-if="!isCont(i)" class="msg-time">{{ fmtT(m.createdAt) }}</div>
+            </div>
           </div>
 
           <!-- AI Message -->
@@ -54,11 +62,13 @@
               </div>
               <div class="msg them">
                 <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id, streaming: m.isStreaming }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
+                <div v-if="m.reaction" class="msg-reaction" @click="removeReaction(m)">{{ m.reaction }}</div>
                 <div class="msg-time">{{ fmtT(m.createdAt) }}</div>
               </div>
             </div>
             <div v-else class="msg-cont them">
               <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id, streaming: m.isStreaming }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
+              <div v-if="m.reaction" class="msg-reaction msg-reaction-cont" @click="removeReaction(m)">{{ m.reaction }}</div>
             </div>
           </template>
         </template>
@@ -217,6 +227,9 @@
     <!-- Message Action Sheet -->
     <div class="msg-sheet-mask show" v-if="activeMsg" @click="activeMsg = null"></div>
     <div class="msg-sheet show" v-if="activeMsg">
+      <div class="msg-react-bar">
+        <div v-for="e in REACTIONS" :key="e" class="msg-react-opt" :class="{ sel: activeMsg.reaction === e }" @click="setReaction(activeMsg, e)">{{ e }}</div>
+      </div>
       <div class="msg-sheet-item" @click="doCopy(activeMsg)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>
         <span>複製</span>
@@ -237,7 +250,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbIdx, dbDel, dbPut } from '../services/db.js';
+import { dbGet, dbIdx, dbDel, dbPut, getSetting } from '../services/db.js';
 import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, summarizeToMemory } from '../services/chatEngine.js';
 import { formatContent } from '../services/format.js';
 
@@ -257,6 +270,7 @@ const chatInp = ref(null);
 
 const cName = ref('—');
 const cAvatar = ref('');
+const meAvatar = ref('🙂');
 
 // ── Long Press & Actions State ──
 const activeMsg = ref(null);
@@ -277,6 +291,8 @@ const showNewMemForm = ref(false);
 const newMemTitle = ref('');
 const newMemContent = ref('');
 const sumCount = 20;
+let isAutoSumming = false;
+const REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🙏'];
 
 const enabledMemCount = computed(() => chatMems.value.filter(m => m.enabled).length);
 const enabledTokenEstimate = computed(() => {
@@ -299,6 +315,9 @@ onMounted(async () => {
   character.value = c;
   cName.value = c.name;
   cAvatar.value = c.avatar;
+
+  const me = await getSetting('me_settings');
+  if (me?.avatar) meAvatar.value = me.avatar;
 
   await loadMessages();
   await loadChatMems();
@@ -442,6 +461,7 @@ async function triggerProactive() {
     isProactiveGenerating.value = false;
     proactiveController = null;
     scheduleProactive();
+    maybeAutoSummarize();
   }
 }
 
@@ -468,6 +488,32 @@ async function doSummarize() {
     window.toast_('總結失敗：' + err.message);
   } finally {
     isSummarizing.value = false;
+  }
+}
+
+// 自動總結記憶：累積到設定則數時，背景觸發一次濃縮
+async function maybeAutoSummarize() {
+  const c = character.value;
+  if (!c?.autoSummarize || isAutoSumming || isSummarizing.value) return;
+
+  const every = c.autoSumEvery || 30;
+  const lastAt = c.lastAutoSumAt || 0;
+  const rawMsgs = messages.value.filter(m => m.type !== 'hv');
+  const freshCount = rawMsgs.filter(m => m.createdAt > lastAt).length;
+  if (freshCount < every) return;
+
+  isAutoSumming = true;
+  try {
+    const mem = await summarizeToMemory(charId, rawMsgs, every);
+    chatMems.value.unshift(mem);
+    c.lastAutoSumAt = Date.now();
+    await dbPut('characters', { ...c });
+    window.toast_('已自動總結記憶');
+  } catch (err) {
+    console.error('Auto summarize failed:', err);
+    // 自動流程失敗不打擾使用者，下次達標再試
+  } finally {
+    isAutoSumming = false;
   }
 }
 
@@ -571,6 +617,7 @@ async function sendMsg() {
   } finally {
     isTyping.value = false;
     scheduleProactive();
+    maybeAutoSummarize();
   }
 }
 
@@ -693,6 +740,24 @@ function doCopy(m) {
   const ok = copyTextSync(m.content);
   activeMsg.value = null;
   window.toast_(ok ? '已複製' : '複製失敗，請手動選取');
+}
+
+async function setReaction(m, emoji) {
+  // 點同一個表情＝取消
+  m.reaction = m.reaction === emoji ? '' : emoji;
+  activeMsg.value = null;
+  try {
+    const stored = await dbGet('messages', m.id);
+    if (stored) { stored.reaction = m.reaction; await dbPut('messages', stored); }
+  } catch (e) { console.error('save reaction failed:', e); }
+}
+
+async function removeReaction(m) {
+  m.reaction = '';
+  try {
+    const stored = await dbGet('messages', m.id);
+    if (stored) { stored.reaction = ''; await dbPut('messages', stored); }
+  } catch (e) { console.error('remove reaction failed:', e); }
 }
 
 function doEditAndResend(m) {

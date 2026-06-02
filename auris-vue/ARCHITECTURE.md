@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-02（P61）
+> 最後更新：2026-06-02（P62）
 
 ---
 
@@ -302,6 +302,32 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P62（2026-06-02）批次更新
+
+一版集中四項功能：
+
+**① 自動總結記憶：**
+
+- **觸發（`ChatRoomView`）**：玩家送訊息 `sendMsg` 與角色主動訊息流程兩處 `finally` 都背景呼叫 `maybeAutoSummarize()`。以角色 `lastAutoSumAt` 時間戳為界統計 `createdAt > lastAutoSumAt` 的非 hv 訊息數；達 `autoSumEvery`（`CharEditView` 滑桿，10～80、預設 30）時呼叫既有 `summarizeToMemory()`，存入 `chat_memories`、`unshift` 到抽屜、`dbPut` 更新 `lastAutoSumAt`。失敗只記 console；`isAutoSumming` 旗標防併發。
+
+**② 玩家自訂大頭貼：**
+
+- `MeView` 新增頭像區，沿用角色頭像同款上傳（FileReader → canvas 200×200 置中裁切 → base64 JPEG 0.8）與 Emoji 選擇，存 `me_settings.avatar`（預設 `🙂`）。
+- `ChatRoomView` 玩家訊息改為對稱帶頭像列：`.msg-with-av.me-side`（`flex-direction:row-reverse`），連續訊息以 `.msg-av-spacer` 佔位；`onMounted` 讀 `me_settings.avatar` 存入 `meAvatar`。
+
+**③ 角色作息設定：**
+
+- `CharEditView` 「近況」下新增作息區：`workTime`/`workPlace`/`restTime`。
+- `chatEngine.buildAIChatSetup` 組 `scheduleCtx`（接在 `timeCtx` 後）注入 system prompt，請角色依現在時間推測上班／通勤／睡覺等狀態。走共用 setup，故聊天／主動訊息／生理期關心三路徑皆生效。
+
+**④ 訊息表情反應：**
+
+- `ChatRoomView` action sheet 頂部加表情列（`REACTIONS`），`setReaction()` 寫入 `messages.reaction` 並 `dbPut`、點同表情/點徽章 `removeReaction()` 清除；泡泡下方以 `.msg-reaction` 徽章呈現，使用者與 AI 訊息共用。
+
+- **資料**：無 IndexedDB 結構異動——`characters` 加軟欄位 `lastAutoSumAt`/`workTime`/`workPlace`/`restTime`，`messages` 加 `reaction`，`me_settings` 加 `avatar`，皆免升版本。
+
+---
 
 ### P61（2026-06-02）
 

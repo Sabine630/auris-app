@@ -86,10 +86,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P61
+        Auris · P62
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P61 連線測試強化・揪出位址打錯的假成功
+        P62 批次更新・自動總結記憶＋玩家頭像＋角色作息＋訊息表情
       </div>
     </div>
   </div>

@@ -445,6 +445,15 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .msg-cont .msg-bubble{border-radius:4px 16px 16px 4px}
 .msg.me .msg-bubble+.msg-bubble{border-radius:16px 4px 4px 16px}
 
+/* 玩家訊息：頭像靠右、整列靠右對齊 */
+.msg-with-av.me-side{flex-direction:row-reverse;align-self:flex-end}
+.msg-with-av.me-side .msg-av{background:var(--rose)}
+
+/* 訊息表情反應徽章 */
+.msg-reaction{font-size:14px;line-height:1;margin-top:3px;padding:2px 5px;background:var(--surface);border:.5px solid var(--border);border-radius:10px;box-shadow:var(--sh);cursor:pointer;align-self:flex-start}
+.msg.me .msg-reaction{align-self:flex-end}
+.msg-reaction-cont{margin-left:0}
+
 /* 訊息操作 Action Sheet */
 .msg-sheet-mask{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9990;opacity:0;pointer-events:none;transition:opacity .2s ease}
 .msg-sheet-mask.show{opacity:1;pointer-events:auto}
@@ -455,6 +464,11 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .msg-sheet-item svg{width:18px;height:18px;flex-shrink:0;opacity:.7}
 .msg-sheet-item.danger{color:#c44}
 .msg-sheet-cancel{margin:6px 12px 0;padding:13px;text-align:center;font-size:15px;font-weight:400;color:var(--rose);border-top:.5px solid var(--border);cursor:pointer}
+/* 表情反應選擇列 */
+.msg-react-bar{display:flex;justify-content:space-around;gap:4px;padding:10px 16px 12px;border-bottom:.5px solid var(--border)}
+.msg-react-opt{font-size:24px;line-height:1;padding:6px;border-radius:50%;cursor:pointer;transition:transform .12s ease,background .15s ease}
+.msg-react-opt:active{transform:scale(1.25)}
+.msg-react-opt.sel{background:var(--rose-pale)}
 
 /* 訊息編輯模式 */
 .msg-edit-wrap{display:flex;flex-direction:column;gap:6px;width:100%}

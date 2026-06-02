@@ -1,7 +1,7 @@
 # 🎨 Auris 完整開發進度總覽
 
 **最後更新**：2026-06-02
-**當前版本**：P61（連線測試強化——揪出位址打錯造成的假成功）
+**當前版本**：P62（批次更新——自動總結記憶＋玩家頭像＋角色作息＋訊息表情）
 **狀態**：上線後持續優化中
 
 ---
@@ -253,7 +253,7 @@ IndexedDB 升 **v5**，新增 `chat_memories` 表（索引 charId）；`summariz
 - 被動體貼：`buildAIChatSetup` 於 period/pms 注入 system prompt（其餘階段空字串，避免一直繞話題）。
 - 主動關心：`generateCycleCareMessage` 非串流生成 → 存 assistant 訊息 + unreadCount++ + `type:'chat'` 通知；`App.vue` `runCycleCare()` 於「預測經期開始日」與「經期前 2 天」觸發，per-char setting `cycle_care_<id>` 去重。
 
-### P60 代碼整理 + 串流空回應錯誤提示（2026-06-01，當前版本）
+### P60 代碼整理 + 串流空回應錯誤提示（2026-06-01）
 - 全專案資安掃描（無高風險）。清理：刪未用 `HelloWorld.vue`、移除 `store.reloadCharacters()` 空殼、`summarizeToMemory` 三個死變數、`generateDiary` 多餘動態 import；修 `buildGroupChatSetup` model fallback 寫死 `'gpt-5.4-mini'`→`getDefModel(provider)`（Anthropic 用戶會選錯模型）；提取 `buildRecentChat()` 取代 contentEngine 三處重複。
 - `sendMsg`/`doRegenerate`：串流回應為空（代理回空串流）原本靜默消失，改為明確 toast 提示確認代理設定。
 
@@ -261,6 +261,34 @@ IndexedDB 升 **v5**，新增 `chat_memories` 表（索引 charId）；`summariz
 **背景**：使用者把自訂位址 `…/v1` 誤打成 `…/v.1`，閘道對不存在的路徑回了自己的 HTML 網頁＋HTTP 200。而 `testApi` 原本**只看狀態碼**，於是誤報「連線成功」，但實際聊天時 `parseSSEStream` 在 HTML 裡找不到 `data:` → 空回應。假成功害使用者卡了很久。
 - `ApiView.testApi`：改為**讀取回應內容並驗證**——新增 `looksLikeChatResponse()`（檢查是否含非空的 `choices`/`content`/`candidates` 陣列）與 `describeBadOkBody()`。`res.ok` 但內容不是合法聊天回應（回了網頁／error 物件／空殼）時，明確報「位址或端點不正確…別打成 /v.1」而非假成功。御三家＋Vertex 路徑統一套用。
 - 測試請求 `max_tokens` 10→16，避免 reasoning 模型把額度用在思考、回空內容造成誤判。
+
+### P62 批次更新：自動總結記憶＋玩家頭像＋角色作息＋訊息表情（2026-06-02，當前版本）
+**背景**：一次推進階段 B 多個使用者反饋待辦，集中成一版發布（不再一功能一版）。
+
+**① 自動總結記憶**
+- `CharEditView`：角色「自動功能」區新增**自動總結記憶**開關 `autoSummarize`，開啟後顯示「每幾則自動總結」滑桿 `autoSumEvery`（10～80，預設 30）。
+- `ChatRoomView`：回覆完成後（玩家送訊息 `sendMsg`＋角色主動訊息流程，兩處 finally）背景呼叫 `maybeAutoSummarize()`——以角色上的 `lastAutoSumAt` 時間戳為界，統計新增非 hv 訊息數，達門檻就背景觸發既有 `summarizeToMemory()`、存入記憶並更新時間戳，完成 toast「已自動總結記憶」。失敗只記 console 不打擾、下次達標再試；`isAutoSumming` 旗標防併發。
+
+**② 玩家自訂大頭貼**
+- `MeView`：新增頭像區（沿用全域 `av-hero`/`av-circle`/`av-menu`/`emoji-picker` 樣式與角色頭像同款上傳邏輯，200×200 置中裁切存 base64），可上傳圖片或選 Emoji，預設 `🙂`，存於 `me_settings.avatar`。
+- `ChatRoomView`：玩家訊息改為與 AI 對稱的帶頭像列（頭像靠右、連續訊息用 `msg-av-spacer` 佔位），讀 `me_settings.avatar` 顯示。
+
+**③ 角色作息設定**
+- `CharEditView`：「近況」下新增**作息 / 行程**區——`workTime`（上班/上課時間）、`workPlace`（地點）、`restTime`（作息習慣）三欄。
+- `chatEngine.buildAIChatSetup`：組 `scheduleCtx` 注入 system prompt（位於 `timeCtx` 之後），請角色依現在時間推測自身狀態（上班/通勤/睡覺），讓對話與主動訊息有情境感。因走共用 setup，聊天／主動訊息／生理期關心三條路徑皆受惠。
+
+**④ 訊息表情反應**
+- `ChatRoomView`：長按訊息的 action sheet 頂部新增表情列（`❤️😂👍😮😢🙏`），點選即在該訊息泡泡掛上徽章並存進 `messages.reaction`；點同表情或點徽章可取消。使用者與 AI 訊息皆適用。
+
+| 檔案 | 變更 |
+|------|------|
+| `views/CharEditView.vue` | 新增 `autoSummarize`/`autoSumEvery` 與作息 `workTime`/`workPlace`/`restTime` 欄位與 UI |
+| `views/ChatRoomView.vue` | `maybeAutoSummarize()`＋玩家頭像列＋表情反應（`setReaction`/`removeReaction`、`REACTIONS`） |
+| `views/MeView.vue` | 玩家頭像上傳/Emoji 區、`me.avatar` |
+| `services/chatEngine.js` | `scheduleCtx` 作息注入 |
+| `assets/main.css` | `.me-side` 玩家頭像列、`.msg-reaction`、`.msg-react-bar/-opt` |
+
+> 無 IndexedDB 結構異動：`characters` 新增軟欄位 `lastAutoSumAt`/`workTime`/`workPlace`/`restTime`，`messages` 新增 `reaction`，`me_settings` 新增 `avatar`，皆免升版本。
 
 ---
 

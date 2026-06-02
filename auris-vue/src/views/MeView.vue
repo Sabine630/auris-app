@@ -6,6 +6,33 @@
       <div class="ph-act" @click="saveMe">儲存</div>
     </div>
     <div style="padding-bottom:32px;overflow-y:auto;flex:1">
+      <div class="av-hero">
+        <div class="av-circle" :class="{'has-img': hasAvImg}" @click="showAvMenu = !showAvMenu">
+          <img v-if="hasAvImg" :src="me.avatar">
+          <span v-else>{{ me.avatar || '🙂' }}</span>
+          <div class="av-edit"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></div>
+        </div>
+        <div class="av-hint">點擊更換你的頭像</div>
+      </div>
+
+      <input type="file" ref="avFileInput" accept="image/*" style="display:none" @change="onAvFileChange">
+
+      <div class="av-menu" :class="{ open: showAvMenu }">
+        <div class="av-menu-item" @click="triggerAvUpload">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>從相簿上傳圖片
+        </div>
+        <div class="av-menu-item" @click="showAvMenu=false; showEmojiPicker=true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>選擇 Emoji
+        </div>
+        <div class="av-menu-item" v-if="hasAvImg" style="color:var(--red)" @click="removeAvImg">
+          <svg viewBox="0 0 24 24" style="stroke:var(--red)"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>移除圖片
+        </div>
+      </div>
+
+      <div class="emoji-picker" :class="{ open: showEmojiPicker }">
+        <div v-for="e in EMOJIS" :key="e" class="emoji-opt" :class="{ sel: me.avatar === e }" @click="pickEmoji(e)">{{ e }}</div>
+      </div>
+
       <div class="sec-label" style="margin-top:8px">你在故事世界裡的身份</div>
       <div class="form-group">
         <div class="form-row">
@@ -75,6 +102,7 @@ import { getCyclePhase, cyclePhaseLabel } from '../services/cycle.js';
 const router = useRouter();
 const me = ref({
   name: '',
+  avatar: '🙂',
   age: '',
   job: '',
   persona: '',
@@ -85,6 +113,12 @@ const me = ref({
   periodLength: 5
 });
 
+const EMOJIS = ['🙂','😊','😎','🥰','😴','🤓','🦊','🐰','🐱','🌸','🌙','⭐','🍀','🎀','🦋','💎','🌷','🍓','🎵','🌊','🌈','✨','🍵','📖'];
+const showAvMenu = ref(false);
+const showEmojiPicker = ref(false);
+const avFileInput = ref(null);
+const hasAvImg = computed(() => me.value.avatar && me.value.avatar.startsWith('data:'));
+
 const phaseLabel = computed(() => cyclePhaseLabel(getCyclePhase(me.value)));
 
 onMounted(async () => {
@@ -93,6 +127,43 @@ onMounted(async () => {
     me.value = { ...me.value, ...data };
   }
 });
+
+function triggerAvUpload() {
+  showAvMenu.value = false;
+  avFileInput.value.click();
+}
+
+function removeAvImg() {
+  me.value.avatar = '🙂';
+  showAvMenu.value = false;
+}
+
+function pickEmoji(e) {
+  me.value.avatar = e;
+  showEmojiPicker.value = false;
+}
+
+function onAvFileChange(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const size = 200;
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const s = Math.min(img.width, img.height);
+      const ox = (img.width - s) / 2, oy = (img.height - s) / 2;
+      ctx.drawImage(img, ox, oy, s, s, 0, 0, size, size);
+      me.value.avatar = canvas.toDataURL('image/jpeg', 0.8);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
 
 async function saveMe() {
   await setSetting('me_settings', JSON.parse(JSON.stringify(me.value)));
