@@ -1,7 +1,7 @@
 # 🎨 Auris 完整開發進度總覽
 
 **最後更新**：2026-06-02
-**當前版本**：P63（補玩家作息設定・角色感知你的上班時間）
+**當前版本**：P64（返回鍵修正・未讀自動清除・儲存提示）
 **狀態**：上線後持續優化中
 
 ---
@@ -262,7 +262,23 @@ IndexedDB 升 **v5**，新增 `chat_memories` 表（索引 charId）；`summariz
 - `ApiView.testApi`：改為**讀取回應內容並驗證**——新增 `looksLikeChatResponse()`（檢查是否含非空的 `choices`/`content`/`candidates` 陣列）與 `describeBadOkBody()`。`res.ok` 但內容不是合法聊天回應（回了網頁／error 物件／空殼）時，明確報「位址或端點不正確…別打成 /v.1」而非假成功。御三家＋Vertex 路徑統一套用。
 - 測試請求 `max_tokens` 10→16，避免 reasoning 模型把額度用在思考、回空內容造成誤判。
 
-### P63 補玩家作息設定：角色感知你的上班時間（2026-06-02，當前版本）
+### P64 UX 修正：返回鍵・未讀清除・儲存提示（2026-06-02，當前版本）
+
+| 問題 | 修法 |
+|------|------|
+| 聊天室返回鍵跳回首頁 | `chat-hd-back` 改 `router.push('/chat-list')` |
+| 進入聊天後未讀標示不消失 | `ChatRoomView` `onMounted` 進場即清除 `unreadCount`/`hasUnread` 並寫回 DB |
+| 儲存角色／我的設定無提示直接跳頁 | `CharEditView.saveChar` 與 `MeView.saveMe` 儲存後加 `window.toast_` 再導頁 |
+
+| 檔案 | 變更 |
+|------|------|
+| `views/ChatRoomView.vue` | 返回路徑修正；`onMounted` 清除未讀 |
+| `views/CharEditView.vue` | `saveChar` 加 `window.toast_('角色已儲存')` |
+| `views/MeView.vue` | `saveMe` 加 `window.toast_('已儲存')` |
+
+---
+
+### P63 補玩家作息設定：角色感知你的上班時間（2026-06-02）
 **背景**：P62 的「角色與玩家作息設定」只做了角色側，玩家側漏掉了。本版補齊玩家作息欄位，讓角色真正知道對方現在在幹嘛，主動訊息才能有情境感（例如上班時輕輕打擾而不是高能互動）。
 
 | 檔案 | 變更 |

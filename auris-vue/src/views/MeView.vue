@@ -187,6 +187,7 @@ function onAvFileChange(e) {
 
 async function saveMe() {
   await setSetting('me_settings', JSON.parse(JSON.stringify(me.value)));
+  window.toast_('已儲存');
   router.push('/settings');
 }
 </script>

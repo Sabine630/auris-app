@@ -617,6 +617,7 @@ async function saveChar() {
 
   await dbPut('characters', JSON.parse(JSON.stringify(char.value)));
   await globalStore.loadCharacters();
+  window.toast_('角色已儲存');
   router.push('/char-manage');
 }
 

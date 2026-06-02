@@ -2,7 +2,7 @@
   <div class="page active" id="pg-chat-room" style="display:flex;flex-direction:column; height: 100%">
     <!-- Header -->
     <div class="chat-hd">
-      <div class="chat-hd-back" @click="$router.push('/')">
+      <div class="chat-hd-back" @click="$router.push('/chat-list')">
         <svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>
       </div>
       <div class="chat-hd-av" id="chat-av">
@@ -315,6 +315,12 @@ onMounted(async () => {
   character.value = c;
   cName.value = c.name;
   cAvatar.value = c.avatar;
+
+  if (c.unreadCount > 0 || c.hasUnread) {
+    c.unreadCount = 0;
+    c.hasUnread = false;
+    await dbPut('characters', c);
+  }
 
   const me = await getSetting('me_settings');
   if (me?.avatar) meAvatar.value = me.avatar;
