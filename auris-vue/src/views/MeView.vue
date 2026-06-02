@@ -58,6 +58,23 @@
         </div>
       </div>
 
+      <div class="sec-label">作息 / 行程</div>
+      <div class="form-group">
+        <div class="form-row">
+          <div class="form-label">上班 / 上課時間</div>
+          <input class="form-input" type="text" v-model="me.workTime" placeholder="例：週一到五 09:00–18:00、輪班制…">
+        </div>
+        <div class="form-row">
+          <div class="form-label">上班 / 上課地點</div>
+          <input class="form-input" type="text" v-model="me.workPlace" placeholder="例：信義區的公司、學校…">
+        </div>
+        <div class="form-row">
+          <div class="form-label">作息習慣</div>
+          <textarea class="form-input" rows="2" v-model="me.restTime" placeholder="例：通常凌晨1點睡、早上8點起；週末會睡到中午…"></textarea>
+          <div class="form-hint">填寫後，角色會依現在時間推測你在上班、通勤還是休息，主動訊息更有情境感，也更知道什麼時候該關心你</div>
+        </div>
+      </div>
+
       <div class="sec-label">生理期追蹤</div>
       <div class="form-group">
         <div class="toggle-row">
@@ -107,6 +124,9 @@ const me = ref({
   job: '',
   persona: '',
   note: '',
+  workTime: '',
+  workPlace: '',
+  restTime: '',
   cycleEnabled: false,
   lastPeriodStart: '',
   cycleLength: 28,

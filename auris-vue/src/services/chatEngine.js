@@ -116,6 +116,15 @@ async function buildAIChatSetup(charId, allMsgs) {
     ? `\n【作息】${sched.join('；')}。請依現在時間推測你此刻的狀態（上班中／通勤／下班放鬆／睡覺等），讓對話與主動訊息符合當下情境，但不要每句都報告自己的行程。`
     : '';
 
+  // 玩家作息：讓角色知道對方現在可能在做什麼，主動訊息更有情境感（例如上班中就用溫柔打擾的方式傳訊）
+  const pSched = [];
+  if (me.workTime) pSched.push(`上班時間：${me.workTime}`);
+  if (me.workPlace) pSched.push(`上班地點：${me.workPlace}`);
+  if (me.restTime) pSched.push(`作息：${me.restTime}`);
+  const playerScheduleCtx = pSched.length
+    ? `\n【對方作息】${pSched.join('；')}。請依現在時間推測對方此刻的狀態（上班中／通勤／休息中／睡覺等），在傳訊或主動關心時考慮對方是否方便，語氣要體貼當下情境。`
+    : '';
+
   // 生理期被動體貼：僅當此角色開了「生理期關心」且使用者啟用週期追蹤時，
   // 在經期/經期前把對方身體狀態餵進 prompt，讓角色自然地關心（其餘階段為空字串）。
   const cycleCtx = c.cycleCare ? cycleCareContext(getCyclePhase(me)) : '';
@@ -147,7 +156,7 @@ ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}
 ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
-${timeCtx}${scheduleCtx}${cycleCtx}${memCtx}
+${timeCtx}${scheduleCtx}${playerScheduleCtx}${cycleCtx}${memCtx}
 【回覆品質要求】
 ・每則訊息至少 50～150 字，要有具體內容，不能只是「嗯」「好啊」「哈哈」等空洞回應
 ・要回應對方說的具體內容，展現你真的在聽、在意
