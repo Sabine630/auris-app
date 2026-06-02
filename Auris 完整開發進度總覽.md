@@ -1,7 +1,7 @@
 # 🎨 Auris 完整開發進度總覽
 
-**最後更新**：2026-06-01
-**當前版本**：P60（代碼整理＋串流空回應錯誤提示）
+**最後更新**：2026-06-02
+**當前版本**：P61（連線測試強化——揪出位址打錯造成的假成功）
 **狀態**：上線後持續優化中
 
 ---
@@ -256,6 +256,11 @@ IndexedDB 升 **v5**，新增 `chat_memories` 表（索引 charId）；`summariz
 ### P60 代碼整理 + 串流空回應錯誤提示（2026-06-01，當前版本）
 - 全專案資安掃描（無高風險）。清理：刪未用 `HelloWorld.vue`、移除 `store.reloadCharacters()` 空殼、`summarizeToMemory` 三個死變數、`generateDiary` 多餘動態 import；修 `buildGroupChatSetup` model fallback 寫死 `'gpt-5.4-mini'`→`getDefModel(provider)`（Anthropic 用戶會選錯模型）；提取 `buildRecentChat()` 取代 contentEngine 三處重複。
 - `sendMsg`/`doRegenerate`：串流回應為空（代理回空串流）原本靜默消失，改為明確 toast 提示確認代理設定。
+
+### P61 連線測試強化（2026-06-02）
+**背景**：使用者把自訂位址 `…/v1` 誤打成 `…/v.1`，閘道對不存在的路徑回了自己的 HTML 網頁＋HTTP 200。而 `testApi` 原本**只看狀態碼**，於是誤報「連線成功」，但實際聊天時 `parseSSEStream` 在 HTML 裡找不到 `data:` → 空回應。假成功害使用者卡了很久。
+- `ApiView.testApi`：改為**讀取回應內容並驗證**——新增 `looksLikeChatResponse()`（檢查是否含非空的 `choices`/`content`/`candidates` 陣列）與 `describeBadOkBody()`。`res.ok` 但內容不是合法聊天回應（回了網頁／error 物件／空殼）時，明確報「位址或端點不正確…別打成 /v.1」而非假成功。御三家＋Vertex 路徑統一套用。
+- 測試請求 `max_tokens` 10→16，避免 reasoning 模型把額度用在思考、回空內容造成誤判。
 
 ---
 

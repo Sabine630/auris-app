@@ -193,6 +193,21 @@ async function saveApi() {
   window.toast_('API 設定已儲存！');
 }
 
+// 判斷回應是否「長得像」合法的聊天/生成回應——用來識破「位址打錯時代理回 200 + HTML 網頁」的假成功
+function looksLikeChatResponse(data) {
+  if (!data || typeof data !== 'object' || data.error) return false;
+  if (Array.isArray(data.choices) && data.choices.length) return true;       // OpenAI 相容
+  if (Array.isArray(data.content) && data.content.length) return true;       // Anthropic 原生
+  if (Array.isArray(data.candidates) && data.candidates.length) return true; // Vertex / Gemini 原生
+  return false;
+}
+
+function describeBadOkBody(data) {
+  if (!data) return '位址或端點不正確：伺服器回的是一個網頁而不是 API 回應，請確認自訂網址（需以 /v1 結尾、且不要多餘字元，例如別打成 /v.1）';
+  if (data.error) return data.error.message || data.error.status || JSON.stringify(data.error);
+  return '伺服器有回應但格式不是預期的聊天回應，請確認自訂網址與模型 ID 是否正確';
+}
+
 async function testApi() {
   if (!apiKey.value) {
     window.toast_('請先填寫金鑰');
@@ -214,14 +229,18 @@ async function testApi() {
 
       const res = await fetchWithTimeout(url, {
         method: 'POST', headers,
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }], generationConfig: { maxOutputTokens: 10 } })
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }], generationConfig: { maxOutputTokens: 16 } })
       }, 15000);
-      if (res.ok) { window.toast_('連線成功！'); }
-      else {
-        const text = await res.text().catch(() => '');
+      const text = await res.text().catch(() => '');
+      let data = null; try { data = JSON.parse(text); } catch { /* 非 JSON */ }
+      if (res.ok && looksLikeChatResponse(data)) {
+        window.toast_('連線成功！');
+      } else if (res.ok) {
+        window.toast_('連線失敗：' + describeBadOkBody(data), 6000);
+      } else {
         let msg = `HTTP ${res.status}`;
-        try { const d = JSON.parse(text); msg = d.error?.message || d.error?.status || msg; } catch { msg = text.slice(0, 120) || msg; }
-        window.toast_('連線失敗：' + msg);
+        if (data) msg = data.error?.message || data.error?.status || msg; else msg = text.slice(0, 120) || msg;
+        window.toast_('連線失敗：' + msg, 6000);
       }
       return;
     } else if (apiProvider.value === 'anthropic') {
@@ -240,18 +259,21 @@ async function testApi() {
     const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ model: modelId, max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] })
+      body: JSON.stringify({ model: modelId, max_tokens: 16, messages: [{ role: 'user', content: 'hi' }] })
     }, 15000);
 
-    if (res.ok) {
+    const text = await res.text().catch(() => '');
+    let data = null; try { data = JSON.parse(text); } catch { /* 非 JSON，多半是位址打錯回了 HTML */ }
+
+    if (res.ok && looksLikeChatResponse(data)) {
       window.toast_('連線成功！');
+    } else if (res.ok) {
+      // HTTP 200 但內容不是合法聊天回應（最常見：位址打錯，代理回了網頁；或回了 error 物件）
+      window.toast_('連線失敗：' + describeBadOkBody(data), 6000);
     } else {
-      const text = await res.text().catch(() => '');
       let raw = `HTTP ${res.status}`;
-      try {
-        const d = JSON.parse(text);
-        raw = d.error?.message || d.error?.status || JSON.stringify(d.error) || raw;
-      } catch { raw = text.slice(0, 120) || raw; }
+      if (data) raw = data.error?.message || data.error?.status || JSON.stringify(data.error) || raw;
+      else raw = text.slice(0, 120) || raw;
       let friendly = raw;
       if (res.status === 401 || raw.includes('invalid') && raw.includes('key') || raw.includes('Unauthorized')) {
         friendly = 'API 金鑰錯誤，請確認是否填對、或帳號是否仍有效';
