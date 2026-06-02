@@ -47,7 +47,8 @@
             </div>
             <div v-else class="msg-av-spacer"></div>
             <div class="msg me">
-              <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id }" :data-msg-id="m.id" data-role="user" v-html="formatContent(m.content)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
+              <img v-if="m.image" :src="m.image" class="msg-image msg-image-me" @click="viewImage(m.image)" />
+              <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id }" :data-msg-id="m.id" data-role="user" v-html="m.content ? formatContent(m.content) : ''" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent v-show="!!m.content"></div>
               <div v-if="m.reaction" class="msg-reaction" @click="removeReaction(m)">{{ m.reaction }}</div>
               <div v-if="!isCont(i)" class="msg-time">{{ fmtT(m.createdAt) }}</div>
             </div>
@@ -94,8 +95,18 @@
       <div @click="cancelEdit" style="font-weight:600;padding:4px 8px;border-radius:4px;background:rgba(255,255,255,0.2);cursor:pointer">取消</div>
     </div>
 
+    <!-- Image Preview Bar -->
+    <div v-if="pendingImage" class="chat-img-preview">
+      <img :src="pendingImage" class="chat-img-thumb" />
+      <button class="chat-img-rm" @click="pendingImage = null">✕</button>
+    </div>
+
     <!-- Input Area -->
     <div class="chat-ia">
+      <input type="file" ref="fileInputRef" accept="image/*" style="display:none" @change="handleImageFile" />
+      <button class="chat-img-btn" @click="pickImage" :disabled="isTyping" title="傳送圖片">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      </button>
       <textarea class="chat-in" ref="chatInp" v-model="inputContent" placeholder="說點什麼…" rows="1"
         @keydown.enter.exact.prevent="sendMsg" @input="handleInput"></textarea>
       <button class="chat-send" @click="sendMsg" :disabled="isTyping">
@@ -293,6 +304,51 @@ const newMemContent = ref('');
 const sumCount = 20;
 let isAutoSumming = false;
 const REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🙏'];
+
+// ── Image Attachment State ──
+const pendingImage = ref(null); // base64 string，同時用於 API 和存 DB
+const fileInputRef = ref(null);
+
+function compressImage(file, maxPx = 512, quality = 0.8) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+function pickImage() { fileInputRef.value?.click(); }
+
+function viewImage(src) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+  const img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:94%;max-height:94%;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.5)';
+  overlay.appendChild(img);
+  overlay.onclick = () => overlay.remove();
+  document.body.appendChild(overlay);
+}
+
+async function handleImageFile(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  e.target.value = '';
+  if (!file.type.startsWith('image/')) { window.toast_('請選擇圖片檔案'); return; }
+  const compressed = await compressImage(file);
+  if (compressed) pendingImage.value = compressed;
+  else window.toast_('圖片處理失敗');
+}
 
 const enabledMemCount = computed(() => chatMems.value.filter(m => m.enabled).length);
 const enabledTokenEstimate = computed(() => {
@@ -572,7 +628,7 @@ function isNearBottom() {
 
 async function sendMsg() {
   const content = inputContent.value.trim();
-  if (!content || isTyping.value) return;
+  if ((!content && !pendingImage.value) || isTyping.value) return;
 
   if (editingMsgRef.value) {
     const toDelete = messages.value.filter(x => x.createdAt >= editingMsgRef.value.createdAt);
@@ -581,9 +637,11 @@ async function sendMsg() {
     editingMsgRef.value = null;
   }
 
-  const userMsg = await sendUserMessage(charId, content);
+  const imgToSend = pendingImage.value;
+  const userMsg = await sendUserMessage(charId, content, imgToSend);
   messages.value.push(userMsg);
   inputContent.value = '';
+  pendingImage.value = null;
   autoResize();
   scrollToBottom();
 
@@ -602,7 +660,7 @@ async function sendMsg() {
         messages.value[streamIdx].content += text;
         if (isNearBottom()) scrollToBottom();
       }
-    });
+    }, imgToSend);
     if (streamIdx !== -1) {
       messages.value.splice(streamIdx, 1, msg || null);
       if (!msg) {
@@ -836,6 +894,65 @@ async function doRegenerate(m) {
 
 <style scoped>
 .page { height: 100%; }
+
+/* ── Image Attachment ── */
+.chat-img-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border-top: .5px solid var(--border);
+}
+.chat-img-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: .5px solid var(--border);
+}
+.chat-img-rm {
+  background: rgba(0,0,0,.35);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -24px;
+  margin-top: -40px;
+  align-self: flex-start;
+}
+.chat-img-btn {
+  background: none;
+  border: none;
+  padding: 0 4px;
+  cursor: pointer;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  transition: color .15s;
+}
+.chat-img-btn:hover { color: var(--rose); }
+.chat-img-btn svg { width: 22px; height: 22px; }
+.chat-img-btn:disabled { opacity: .4; pointer-events: none; }
+
+.msg-image {
+  display: block;
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 10px;
+  object-fit: cover;
+  cursor: zoom-in;
+  margin-bottom: 4px;
+  border: .5px solid rgba(0,0,0,.08);
+}
+.msg-image-me { margin-left: auto; }
 
 .msg-bubble.streaming::after {
   content: '▍';

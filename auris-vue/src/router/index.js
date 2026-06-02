@@ -21,6 +21,8 @@ import DreamDetailView from '../views/DreamDetailView.vue';
 import BlackboxView from '../views/BlackboxView.vue';
 import NotificationsView from '../views/NotificationsView.vue';
 import MeView from '../views/MeView.vue';
+import WorldsView from '../views/WorldsView.vue';
+import WorldEditView from '../views/WorldEditView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -45,7 +47,9 @@ const router = createRouter({
     { path: '/group-room/:id?', name: 'group-room', component: GroupRoomView },
     { path: '/blackbox', name: 'blackbox', component: BlackboxView },
     { path: '/notifications', name: 'notifications', component: NotificationsView },
-    { path: '/me', name: 'me', component: MeView }
+    { path: '/me', name: 'me', component: MeView },
+    { path: '/worlds', name: 'worlds', component: WorldsView },
+    { path: '/worlds/edit/:id?', name: 'worlds-edit', component: WorldEditView }
   ]
 });
 

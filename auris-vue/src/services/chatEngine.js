@@ -1,4 +1,4 @@
-import { dbGet, dbPut, dbIdx, getSetting } from './db.js';
+import { dbGet, dbPut, dbIdx, dbAll, getSetting } from './db.js';
 import { fetchWithTimeout, sendLLMRequest, getVertexToken } from './api.js';
 import { getCyclePhase, cycleCareContext } from './cycle.js';
 
@@ -125,6 +125,19 @@ async function buildAIChatSetup(charId, allMsgs) {
     ? `\n【對方作息】${pSched.join('；')}。請依現在時間推測對方此刻的狀態（上班中／通勤／休息中／睡覺等），在傳訊或主動關心時考慮對方是否方便，語氣要體貼當下情境。`
     : '';
 
+  // 世界書：掃描近 10 則訊息，命中詞條名稱或別名才注入，節省 token
+  const allWorlds = await dbAll('worlds');
+  const recentText = allMsgs.slice(-10).map(m => m.content).join(' ');
+  const matchedWorlds = allWorlds.filter(w => {
+    if (!w.enabled) return false;
+    if (w.charScope?.length && !w.charScope.includes(charId)) return false;
+    const keywords = [w.name, ...(w.aliases || [])];
+    return keywords.some(kw => kw && recentText.includes(kw));
+  });
+  const worldCtx = matchedWorlds.length
+    ? `\n【世界觀設定】以下是相關設定，請在回覆中自然地參考：\n${matchedWorlds.map(w => `▸ ${w.name}：${w.content}`).join('\n')}`
+    : '';
+
   // 生理期被動體貼：僅當此角色開了「生理期關心」且使用者啟用週期追蹤時，
   // 在經期/經期前把對方身體狀態餵進 prompt，讓角色自然地關心（其餘階段為空字串）。
   const cycleCtx = c.cycleCare ? cycleCareContext(getCyclePhase(me)) : '';
@@ -156,7 +169,7 @@ ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}
 ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
-${timeCtx}${scheduleCtx}${playerScheduleCtx}${cycleCtx}${memCtx}
+${timeCtx}${scheduleCtx}${playerScheduleCtx}${cycleCtx}${worldCtx}${memCtx}
 【回覆品質要求】
 ・每則訊息至少 50～150 字，要有具體內容，不能只是「嗯」「好啊」「哈哈」等空洞回應
 ・要回應對方說的具體內容，展現你真的在聽、在意
@@ -179,17 +192,37 @@ ${timeCtx}${scheduleCtx}${playerScheduleCtx}${cycleCtx}${memCtx}
 }
 
 // ── 1-on-1 User Message ───────────────────────────────────────────────────
-export async function sendUserMessage(charId, content) {
+export async function sendUserMessage(charId, content, image = null) {
   const userMsg = { id: 'msg_' + Date.now(), charId, role: 'user', content, createdAt: Date.now() };
+  if (image) userMsg.image = image;
   await dbPut('messages', userMsg);
   return userMsg;
 }
 
 // ── 1-on-1 Chat: Streaming ────────────────────────────────────────────────
-export async function generateAIResponseStream(charId, allMsgs, { onChunk }) {
+export async function generateAIResponseStream(charId, allMsgs, { onChunk }, imageBase64 = null) {
   const { c, provider, model, base, apiKey, history, finalSystemPrompt, dynamicMaxTokens } = await buildAIChatSetup(charId, allMsgs);
 
   if (c.delay > 0) await new Promise(r => setTimeout(r, c.delay * 1000));
+
+  // 若有圖片，將最後一則 user 訊息改為多模態格式（各家格式不同）
+  const buildImgHistory = (prov) => {
+    if (!imageBase64) return history;
+    const rawB64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+    return history.map((m, i) => {
+      if (i !== history.length - 1 || m.role !== 'user') return m;
+      if (prov === 'anthropic') {
+        return { role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: rawB64 } },
+          { type: 'text', text: m.content || '這是一張圖片，請描述並回應' }
+        ]};
+      }
+      return { role: 'user', content: [
+        { type: 'text', text: m.content || '這是一張圖片，請描述並回應' },
+        { type: 'image_url', image_url: { url: imageBase64 } }
+      ]};
+    });
+  };
 
   let fullText = '';
   const accumulate = (text) => { fullText += text; onChunk(text); };
@@ -200,8 +233,18 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }) {
     const token = await getVertexToken(sa);
     const region = 'us-central1';
     const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
+    const rawB64 = imageBase64 ? imageBase64.replace(/^data:image\/\w+;base64,/, '') : null;
     const body = {
-      contents: history.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+      contents: history.map((m, i) => {
+        const isLastUser = imageBase64 && i === history.length - 1 && m.role === 'user';
+        if (isLastUser) {
+          return { role: 'user', parts: [
+            { inlineData: { mimeType: 'image/jpeg', data: rawB64 } },
+            { text: m.content || '這是一張圖片，請描述並回應' }
+          ]};
+        }
+        return { role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] };
+      }),
       systemInstruction: { parts: [{ text: finalSystemPrompt }] },
       generationConfig: { maxOutputTokens: dynamicMaxTokens, temperature: c.temperature ?? 0.8 }
     };
@@ -214,7 +257,7 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }) {
     const r = await fetchWithTimeout(`${base}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, system: finalSystemPrompt, messages: history, stream: true })
+      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, system: finalSystemPrompt, messages: buildImgHistory('anthropic'), stream: true })
     }, 90000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
     ({ truncated } = await parseSSEStream(r, 'anthropic', accumulate));
@@ -222,7 +265,7 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }) {
     const r = await fetchWithTimeout(`${base}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: finalSystemPrompt }, ...history], stream: true })
+      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: finalSystemPrompt }, ...buildImgHistory('openai')], stream: true })
     }, 90000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
     ({ truncated } = await parseSSEStream(r, 'openai', accumulate));

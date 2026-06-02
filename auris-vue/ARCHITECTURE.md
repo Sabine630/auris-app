@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-02（P64）
+> 最後更新：2026-06-02（P65）
 
 ---
 
@@ -303,6 +303,23 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P65（2026-06-02）世界書 + 圖片傳送
+
+**世界書（World Book）**
+- 新增 `views/WorldsView.vue`：詞條列表，分類篩選（地點/人物/規則/物件/歷史），啟用 toggle。
+- 新增 `views/WorldEditView.vue`：詞條編輯，含名稱/別名/分類/內容/適用角色/啟用。存入既有 `worlds` store（DB v5 已預留）。
+- `router/index.js`：新增 `/worlds`、`/worlds/edit/:id?` 兩條路由，共 23 條。
+- `services/chatEngine.js` `buildAIChatSetup`：新增 `worldCtx`，掃描近 10 則對話命中詞條名稱或別名才注入，節省 token。
+- `views/SettingsView.vue`：世界書入口從 toast 改為實際路由跳轉。
+
+**圖片傳送與 AI 識別**
+- `services/chatEngine.js` `sendUserMessage`：加 `image` 選用參數，存入 `messages.image`（軟欄位，免升版本）。
+- `services/chatEngine.js` `generateAIResponseStream`：加 `imageBase64` 選用參數，新增 `buildImgHistory(provider)` 將最後一則 user 訊息改為多模態格式：Anthropic 用 `image+text` content block；OpenAI 相容用 `image_url+text` array；Vertex 用 `inlineData+text` parts。
+- `views/ChatRoomView.vue`：新增 camera 按鈕、隱藏 file input、`compressImage()`（canvas，512px JPEG Q0.8）、圖片預覽列（可取消）、泡泡圖片渲染（`.msg-image`）、點圖全螢幕預覽 overlay（`viewImage()`）。
+- 匯出備份：圖片以 512px 壓縮版存 DB，備份含縮圖；無法對話歷史回放，但可顯示。
+
+---
 
 ### P64（2026-06-02）UX 修正
 
