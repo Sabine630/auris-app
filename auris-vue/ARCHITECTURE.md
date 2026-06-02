@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-05-31
+> 最後更新：2026-06-01（P60）
 
 ---
 
@@ -97,9 +97,11 @@ graph TD
 | `api_model` | 模型名稱字串 |
 | `api_base` | 自訂 API 位址（空 = 用預設） |
 | `theme` | 主題名稱（`cream` / `warm` / `dark` / `gray` / `ocean` / `matcha`） |
-| `me_settings` | 使用者自身設定物件（名字、年齡、個性等） |
+| `me_settings` | 使用者自身設定物件（名字、年齡、個性等）；含生理期欄位 `cycleEnabled` / `lastPeriodStart` / `cycleLength` / `periodLength`（P59，全本地） |
 | `onboarding_done` | `true` = 已完成新手引導 |
 | `last_auto_gen_date` | 最後一次自動生成日期（`YYYY-MM-DD`），防重複觸發 |
+| `last_seen_announcement` | 最後看過的更新公告版本（P53），用於決定是否彈出公告 |
+| `cycle_care_<charId>` | 各角色最後一次生理期主動關心的日期（P59），per-char 去重 |
 
 > [!WARNING]
 > **升版注意**：升版（`version` 數字 +1）只能「新增」資料表或索引，不能修改已有結構。修改已有 store 的結構必須刪掉重建，**會清空該 store 的資料**。
@@ -133,18 +135,32 @@ API 請求的底層工具。
 > [!NOTE]
 > **Gemini 相容性**：Gemini 不支援 `frequency_penalty` / `presence_penalty`，`sendLLMRequest` 已內部處理。
 
+### `services/format.js`
+共用文字處理。`formatContent(str)`：escape `&`/`<`/`>` 後將 `\n` 轉 `<br>`，並清洗夾在中文字／標點之間的孤立換行（P56）。全站六個 v-html 渲染點統一引用，避免某處漏 escape 形成 stored XSS（P55 抽出）。
+
+### `services/cycle.js`（P59）
+生理期週期計算，全本地、不上傳。
+
+| 函式 | 用途 |
+|------|------|
+| `getCyclePhase(me)` | 依 `lastPeriodStart` + `cycleLength`(預設28) + `periodLength`(預設5) 推算今天落在 `period`/`pms`/`ovulation`/`normal`，回傳含 `dayNum`/`daysUntilNext` |
+| `cycleCareContext(phase)` | 依階段組裝注入 system prompt 的關心 context（僅 period/pms 有內容） |
+| `cyclePhaseLabel(phase)` | UI 預覽用的階段中文標籤 |
+
 ### `services/contentEngine.js` 與 `chatEngine.js`
 AI 內容與對話生成邏輯：
 
-- `contentEngine.js`：負責生成貼文 (`generatePost`)、日記 (`generateDiary`)、夢境 (`generateDream`) 以及留言回覆 (`generateCommentReply`)。每次生成成功後會同步寫入 `notifications` store，讓通知頁顯示新動態。**P55 起**：`generatePost` 與 `generateDream` 在 prompt 中加入最近 6–8 則聊天紀錄 context，讓內容更貼近角色與玩家的實際互動。
+- `contentEngine.js`：負責生成貼文 (`generatePost`)、日記 (`generateDiary`)、夢境 (`generateDream`) 以及留言回覆 (`generateCommentReply`)。每次生成成功後會同步寫入 `notifications` store，讓通知頁顯示新動態。**P56 起**：`generatePost` 與 `generateDream` 在 prompt 中加入最近 6–8 則聊天紀錄 context；**P60**：三處重複的近期對話組裝提取為 `buildRecentChat()` 工具函式。
 - `chatEngine.js`：核心對話引擎，主要函式：
   - `generateAIResponseStream` — 一對一串流回覆，完成後觸發 Heart Voice
   - `generateGroupAIResponseStream` — 群組串流回覆，支援 `onStart`（切換動畫）與 `onChunk`（逐字更新）
-  - `generateProactiveMessageStream` — 主動訊息串流，配合背景計時器使用；**P55 起**：主動訊息落地後會寫入 `notifications`（`type: 'chat'`），通知中心可查
+  - `generateProactiveMessageStream` — 主動訊息串流，配合背景計時器使用；**P56 起**：主動訊息落地後會寫入 `notifications`（`type: 'chat'`），通知中心可查
   - `summarizeToMemory` — 將近期對話濃縮為 `chat_memories` 條目
   - `generateHeartVoice` — 機率性生成說不出口的心聲，寫入 `memories` 並發出 `new-heart-voice` 事件與通知
-  - **API Error Handling**：支援 Array 格式 Proxy 錯誤捕捉；群組放寬 `max_tokens: 4000`；生成錯誤時以「【系統偵錯】」訊息顯示於畫面。
-  - **群組玩家名字**：`buildGroupChatSetup` 使用 `getSetting('me_settings')` 讀取玩家資料（P55 修正 key 錯誤）。
+  - `generateCycleCareMessage` — 生理期主動關心（P59），非串流生成關心訊息 → 存 assistant 訊息 + `unreadCount++` + `type:'chat'` 通知
+  - **生理期被動體貼**（P59）：`buildAIChatSetup` 在角色 `cycleCare` 開啟且階段為 period/pms 時，將 `cycleCareContext()` 注入 system prompt（其餘階段為空字串）
+  - **API Error Handling**：支援 Array 格式 Proxy 錯誤捕捉；群組放寬 `max_tokens: 4000`；生成錯誤時以「【系統偵錯】」訊息顯示於畫面；**P60**：串流回應為空時改顯示明確 toast，不再靜默消失。
+  - **群組玩家名字**：`buildGroupChatSetup` 使用 `getSetting('me_settings')` 讀取玩家資料（P56 修正 key 錯誤）；model fallback 用 `getDefModel(provider)`（P60 修正寫死 bug）。
 
 ---
 
@@ -221,7 +237,8 @@ globalStore = {
 
 - **ChatRoomView (單人聊天)**：串流逐字輸出（`generateAIResponseStream`）、長按訊息選單（複製／編輯重傳／重新生成）、記憶抽屜（AI 總結、手動新增、編輯、toggle、刪除）、背景主動訊息計時器（`scheduleProactive`）、auto-interrupt 打斷模式。
 - **GroupRoomView (群組聊天)**：多角色串流輪替回覆，`@點名` 強制指定角色，角色前綴清洗防止 AI 混淆發言。
-- **CharEditView (角色編輯)**：5 個 Tab 切換，包含基本資訊、個性背景、說話方式、關係規範、AI 參數，必須確保 modal CSS 存在以正常顯示彈窗。
+- **CharEditView (角色編輯)**：5 個 Tab 切換，包含基本資訊、個性背景、說話方式、關係規範、AI 參數，必須確保 modal CSS 存在以正常顯示彈窗。自動功能區含「生理期關心」toggle（`char.cycleCare`，預設 false，P59）。
+- **MeView (我的設定)**：玩家自身資料；含「生理期追蹤」區塊（主開關、最近經期開始日、週期長度、經期天數，即時預覽推算階段，P59），資料寫入 `me_settings`。
 - **HomeView**：快速入口磚牆（對話、貼文、夢境、黑盒子、通知等），角色橫向捲動快選。**P55 起**：通知 tile 動態讀取 `notifications` store 未讀數，有未讀時顯示玫瑰色 badge 與「X 則未讀」文字。
 - **MomentsView / PostDetailView**：貼文列表與留言回覆。
 - **DiaryView / DiaryDetailView**：日記列表與全文展示。
@@ -286,6 +303,17 @@ globalStore = {
 
 ## 12. 版本更新紀錄
 
+### P60（2026-06-01）
+
+**代碼整理 ＋ 串流空回應錯誤提示：**
+
+- **清理死碼**：刪除未用的 `HelloWorld.vue`；移除 `store.reloadCharacters()`（`loadCharacters()` 空殼，`CharManageView` 改直呼）；移除 `summarizeToMemory` 三個抓了沒用的變數；移除 `generateDiary` 多餘的動態 import。
+- **修 model fallback**：`buildGroupChatSetup` 的 model fallback 寫死 `'gpt-5.4-mini'` → 改 `getDefModel(provider)`，避免 Anthropic 用戶選錯模型。
+- **去重**：`contentEngine.js` 三處近期對話組裝提取為 `buildRecentChat()`。
+- **錯誤提示**：`sendMsg` / `doRegenerate` 在串流回應為空（代理回空串流）時改顯示明確 toast，不再靜默消失。
+
+---
+
 ### P59（2026-06-01）
 
 **生理期關心（新檔 `services/cycle.js`）：**
@@ -320,18 +348,6 @@ globalStore = {
 
 ---
 
-### P55（2026-05-29）
-
-**資安強化（防禦縱深）：**
-
-- **新增 `services/format.js`**：抽出共用 `formatContent(str)`（escape `&`/`<`/`>` 後將 `\n` 轉 `<br>`）。全站六個 v-html 渲染點統一引用，消除重複手刻的 escape，避免日後某處漏 escape 形成 stored XSS。
-- **備份不含 API 金鑰**（`db.js`）：`exportAllData` 過濾掉 `settings` 內的 `api_key`，避免 service account JSON（含 RSA 私鑰）隨備份外流。
-- **匯入先驗證後清空**（`db.js`）：`importAllData` 改為驗證 → 清空 → 還原三段式，避免壞檔在清空後才失敗造成原資料全毀。
-- **ApiView 安全警告**（`ApiView.vue`）：Vertex service account 輸入區下方新增紅字提示。
-- **Content-Security-Policy**（`index.html`）：加入 CSP meta。
-
----
-
 ### P56（2026-05-31）
 
 **上線一週用戶反饋修復：**
@@ -360,6 +376,27 @@ globalStore = {
 
 ---
 
+### P55（2026-05-29）
+
+**資安強化（防禦縱深）：**
+
+- **新增 `services/format.js`**：抽出共用 `formatContent(str)`（escape `&`/`<`/`>` 後將 `\n` 轉 `<br>`）。全站六個 v-html 渲染點統一引用，消除重複手刻的 escape，避免日後某處漏 escape 形成 stored XSS。
+- **備份不含 API 金鑰**（`db.js`）：`exportAllData` 過濾掉 `settings` 內的 `api_key`，避免 service account JSON（含 RSA 私鑰）隨備份外流。
+- **匯入先驗證後清空**（`db.js`）：`importAllData` 改為驗證 → 清空 → 還原三段式，避免壞檔在清空後才失敗造成原資料全毀。
+- **ApiView 安全警告**（`ApiView.vue`）：Vertex service account 輸入區下方新增紅字提示。
+- **Content-Security-Policy**（`index.html`）：加入 CSP meta。
+
+---
+
+### v0.54 / P54+P54b（2026-05-28~29）
+
+**Google Vertex AI 服務商 ＋ 全站認證修復：**
+- `ApiView.vue`：新增「Google（Vertex AI）」provider，key 輸入框改 textarea 收 service account JSON、Vertex 專屬模型清單（2.x 系列）、儲存驗證 JSON。
+- `api.js`：`getVertexToken(sa)` 以 Web Crypto（RSASSA-PKCS1-v1_5/SHA-256）在瀏覽器端從 SA JSON 產 JWT 換 OAuth2 token（快取 55 分）；`sendLLMRequest` 加 vertex 分支走原生 `generateContent`（contents/parts/systemInstruction）。
+- **P54b**：`contentEngine`（generatePost/Diary/Dream）與 `chatEngine` 五個函式原本直接拿 api_key 當 Bearer，統一改走 `sendLLMRequest`/`getVertexToken`，御三家行為不受影響。
+
+---
+
 ### v0.54 / P53（2026-05-25）
 
 **更新公告系統：**
@@ -379,15 +416,6 @@ globalStore = {
 **記憶抽屜手動新增（`ChatRoomView.vue`）：**
 - Header 新增「+」按鈕（`mem-add-btn`）；點擊展開 `showNewMemForm` 表單（`mem-new-form`），含標題 input（選填）與內容 textarea。
 - `saveNewMem()`：若標題為空則自動截取內容前 20 字作為標題，寫入 `chat_memories` 並 unshift 到列表頂端，`enabled: true`。
-
-### v0.54 / P54+P54b（2026-05-29）
-
-**新增 Google Vertex AI 服務商：**
-
-- `ApiView.vue`：新增「Google（Vertex AI）」provider 選項；key 輸入框改為 textarea 接受 service account JSON；Vertex AI 專屬模型清單（2.x 系列）；儲存時驗證 JSON 格式。
-- `api.js`：新增 `getVertexToken(sa)` — 使用 Web Crypto API（RSASSA-PKCS1-v1_5 / SHA-256）在瀏覽器端從 service account JSON 產生 JWT，再換取 OAuth2 access token（快取 55 分鐘）。`sendLLMRequest` 新增 vertex 分支，走 `https://us-central1-aiplatform.googleapis.com/v1/projects/{id}/locations/us-central1/publishers/google/models/{model}:generateContent` 原生格式（contents/parts/systemInstruction）。
-- `contentEngine.js`：generatePost / generateDiary / generateDream 全部改用 `sendLLMRequest`，自動支援所有 provider 包含 Vertex AI。
-- `chatEngine.js`：五個 API 呼叫函式加入 vertex 分支（streaming 函式用非串流 fallback，一次推送全文給 onChunk）。
 
 ### v0.52 / P51（2026-05-25）
 
