@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P53 – P59 更新公告</div>
+      <div class="ann-badge">P60 – P64 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,24 +16,20 @@
               <div class="ann-title">新功能</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">生理期關心</div>
-                  <div class="ann-item-desc">在「我」頁面設定月經週期，授權的角色會在生理期前後主動傳關心訊息，聊天時也會自然帶到體貼語氣。資料只存本機、不上傳。（角色設定 → 自動功能 → 生理期關心）</div>
+                  <div class="ann-item-title">角色與玩家作息設定</div>
+                  <div class="ann-item-desc">在角色設定與「我的設定」填入上班時間、地點、作息習慣後，角色會依現在時間推測你在上班還是休息，主動訊息更有情境感、關心更到位。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">防誤刪角色</div>
-                  <div class="ann-item-desc">聊天列表左划「刪除」已移除——不再因誤觸殺掉整個角色。刪除角色請走「設定 → 角色管理」。左划現在只有置頂與清空。</div>
+                  <div class="ann-item-title">自動總結記憶</div>
+                  <div class="ann-item-desc">角色設定 → 自動功能 → 開啟「自動總結記憶」，每累積到設定則數就自動幫你們的對話建立長期記憶，不再需要手動按總結。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">清空對話可選範圍</div>
-                  <div class="ann-item-desc">清空時會跳確認視窗，預設只清聊天訊息與記憶；若想連日記、夢境、貼文一起清，手動勾選即可。</div>
+                  <div class="ann-item-title">玩家自訂大頭貼</div>
+                  <div class="ann-item-desc">「我的設定」頁面可上傳大頭貼或選 Emoji，聊天室中玩家的訊息也會顯示你的頭像，對話更有臨場感。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">OpenRouter 服務商</div>
-                  <div class="ann-item-desc">API 設定新增 OpenRouter，可直接使用多家模型，無需另設代理。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">Google Vertex AI</div>
-                  <div class="ann-item-desc">API 設定支援 Vertex AI，使用 GCP 免費額度或帳單抵免。</div>
+                  <div class="ann-item-title">訊息表情反應</div>
+                  <div class="ann-item-desc">長按訊息可對任何一則訊息加上表情反應（❤️ 😂 👍 😮 😢 🙏），再點一次可取消。</div>
                 </div>
               </div>
             </template>
@@ -43,24 +39,24 @@
               <div class="ann-title">修復與強化</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">Anthropic API 直連修復</div>
-                  <div class="ann-item-desc">修復瀏覽器直接呼叫 Anthropic API 被 CORS 擋住的問題，Anthropic 金鑰用戶無需再設代理。</div>
+                  <div class="ann-item-title">連線測試更準確</div>
+                  <div class="ann-item-desc">修復位址打錯（如 /v.1）時測試仍顯示「成功」的假陽性問題，現在會明確提示「位址或端點不正確」。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">友善錯誤訊息</div>
-                  <div class="ann-item-desc">API 錯誤（401/403/429/逾時/網路斷線）現在顯示中文說明，不再出現技術英文錯誤碼。</div>
+                  <div class="ann-item-title">返回鍵修正</div>
+                  <div class="ann-item-desc">聊天室左上角返回鍵現在正確導向聊天列表，不再跳到首頁。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">貼文與夢境更貼近角色</div>
-                  <div class="ann-item-desc">貼文與夢境生成時加入近期聊天脈絡，內容更符合你們實際的互動。</div>
+                  <div class="ann-item-title">未讀標示自動消失</div>
+                  <div class="ann-item-desc">進入聊天室後，返回列表時未讀紅點會即時清除，不再需要重開 App。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">資安強化</div>
-                  <div class="ann-item-desc">匯出備份不再包含 API 金鑰；匯入前先驗證格式再清空舊資料，防止因損壞備份導致資料遺失。</div>
+                  <div class="ann-item-title">儲存成功提示</div>
+                  <div class="ann-item-desc">角色設定與我的設定儲存後，現在會先出現「已儲存」提示再跳頁。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">群組聊天名字修正</div>
-                  <div class="ann-item-desc">修復群組 system prompt 中你的名字永遠空白的問題。</div>
+                  <div class="ann-item-title">串流空回應提示</div>
+                  <div class="ann-item-desc">代理回傳空回應時，改為顯示明確提示，不再靜默消失讓你以為卡住了。</div>
                 </div>
               </div>
             </template>
@@ -94,12 +90,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P59</strong> 即為最新版</div>
-              </div>
-
-              <div class="ann-guide-section">
-                <div class="ann-guide-label">注意：左划刪除已移除</div>
-                <div class="ann-guide-text">聊天列表左划不再有「刪除角色」按鈕。刪除請走 設定 → 角色管理。</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P64</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">

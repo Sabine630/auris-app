@@ -39,7 +39,7 @@ import { getCyclePhase } from './services/cycle.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
-const ANNOUNCEMENT_VERSION = 'P59';
+const ANNOUNCEMENT_VERSION = 'P64';
 const showAnnouncement = ref(false);
 
 async function closeAnnouncement() {
