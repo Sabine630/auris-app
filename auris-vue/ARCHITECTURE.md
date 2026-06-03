@@ -304,6 +304,18 @@ globalStore = {
 
 ## 12. 版本更新紀錄
 
+### P66（2026-06-03）Bug 修正 + 作息主動訊息 + 時間流逝感知
+
+- **貼文留言頭像**（`PostDetailView.vue`）：`cm.role === 'user'` 的頭像改從 `me_settings.avatar` 讀取，支援 emoji 與 base64 圖片。
+- **角色冠夫姓修正**（`chatEngine.js`）：`c.call` 加「不可擅自改稱謂」；`youName` 加「不可幫對方冠夫姓或改名」。
+- **時間流逝感知**（`chatEngine.js` `buildAIChatSetup`）：`timeAware` 開啟時，若距最後一則訊息 ≥ 3 小時，自動在 system prompt 注入時間差提示（`gapHrs`、前後時間戳）。
+- **作息主動訊息**（`CharEditView.vue` + `chatEngine.js` + `App.vue`）：
+  - `characters.scheduleTriggers`：新軟欄位，陣列，每筆 `{ time: 'HH:MM', desc: string, enabled: bool }`。
+  - `generateScheduleMessage(charId, triggerDesc)`：非串流背景生成，結構同 `generateCycleCareMessage`。
+  - `runScheduleTriggers()`：`App.vue` 每 5 分鐘執行，以 `±4 分鐘容差`命中時段；`sched_sent_{charId}_{time}_{date}` key 去重，同一時段一天只發一次。
+
+---
+
 ### P65（2026-06-02）世界書 + 圖片傳送
 
 **世界書（World Book）**

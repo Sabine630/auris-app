@@ -105,6 +105,19 @@ async function buildAIChatSetup(charId, allMsgs) {
     const n = new Date();
     const days = ['日', '一', '二', '三', '四', '五', '六'];
     timeCtx = `\n現在時間：${n.getHours()}:${n.getMinutes().toString().padStart(2, '0')}，星期${days[n.getDay()]}。`;
+
+    // 若距上一則訊息超過 3 小時，注入時間流逝提示，讓角色感知到對話中斷了一段時間
+    const lastMsg = allMsgs.length ? allMsgs[allMsgs.length - 1] : null;
+    if (lastMsg && lastMsg.createdAt) {
+      const gapMs = Date.now() - lastMsg.createdAt;
+      const gapHrs = Math.floor(gapMs / 3600000);
+      if (gapHrs >= 3) {
+        const prev = new Date(lastMsg.createdAt);
+        const prevStr = `${prev.getMonth() + 1}/${prev.getDate()} ${prev.getHours()}:${prev.getMinutes().toString().padStart(2, '0')}`;
+        const nowStr = `${n.getMonth() + 1}/${n.getDate()} ${n.getHours()}:${n.getMinutes().toString().padStart(2, '0')}`;
+        timeCtx += `\n【時間提示】距上次對話已過了約 ${gapHrs} 小時（${prevStr} → ${nowStr}）。請自然地感知這段時間的流逝，不需要特別說明，但語氣和話題要符合現在的時間點。`;
+      }
+    }
   }
 
   // 作息設定：把角色的上班時段／地點／作息餵進 prompt，讓角色（與主動訊息）依現在時間有情境感
@@ -158,14 +171,14 @@ ${c.status ? `【近況】${c.status}` : ''}
 ${c.hobby ? `【喜好】${c.hobby}` : ''}
 【說話風格】${styleMap[c.style] || '輕鬆自然'}
 【話量】${talkMap[c.talkative] || '適中'}
-${c.call ? `稱呼對方為「${c.call}」。` : ''}
+${c.call ? `平時稱呼對方為「${c.call}」，用此暱稱叫對方，不可擅自改為其他稱謂。` : ''}
 ${c.phrase ? `口頭禪：${c.phrase}。` : ''}
 ${c.conflict ? `面對衝突時：${{ direct: '直接表達不滿', cold: '傾向冷戰迴避', cute: '用撒嬌化解', rational: '保持理性溝通' }[c.conflict]}。` : ''}
 ${c.relation ? `與對方的關係：${{ lover: '戀人', childhood: '青梅竹馬', friend: '好友', online: '網友', colleague: '同事', stranger: '陌生人' }[c.relation] || c.relation}。` : ''}
 ${c.rel_bg ? `關係背景：${c.rel_bg}` : ''}
 ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
 
-【對方資訊】對方叫「${youName}」${youRole ? `，身份：${youRole}` : ''}${youPersona ? `，個性：${youPersona}` : ''}。
+【對方資訊】對方本名是「${youName}」${youRole ? `，身份：${youRole}` : ''}${youPersona ? `，個性：${youPersona}` : ''}。無論兩人關係為何，不可幫對方冠夫姓、改姓或更改名字。
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}
 ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
@@ -391,6 +404,44 @@ export async function generateCycleCareMessage(charId, trigger) {
   c.hasUnread = true;
   await dbPut('characters', JSON.parse(JSON.stringify(c)));
   await dbPut('notifications', { id: 'notif_care_' + Date.now(), charId, type: 'chat', targetId: charId, text: '傳了一則訊息關心你', read: false, createdAt: Date.now() });
+  return msg;
+}
+
+// ── 作息時段主動訊息（背景生成，非串流）──────────────────────────────────────
+// triggerDesc：使用者填的情境描述（例：「提醒我吃午餐」「叫我起床」）
+export async function generateScheduleMessage(charId, triggerDesc) {
+  const allMsgs = await dbIdx('messages', 'charId', charId);
+  allMsgs.sort((a, b) => a.createdAt - b.createdAt);
+  const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
+
+  const goal = `你設定的提醒事項是：「${triggerDesc}」。現在時間到了，請主動傳一則訊息給對方，自然、簡短、有溫度，完全符合你的角色個性與說話風格，像真的在意對方的人會說的話。不要像通知或系統提示，直接用你自己的方式說。`;
+  const schedPrompt = finalSystemPrompt + `\n\n【主動訊息】${goal}`;
+
+  const schedHistory = history.length
+    ? (history[history.length - 1].role === 'user'
+        ? history
+        : [...history, { role: 'user', content: '（沉默中）' }])
+    : [{ role: 'user', content: '（對方沒說話，你有件事想提醒對方）' }];
+
+  let text = '';
+  try {
+    text = await sendLLMRequest(
+      [{ role: 'system', content: schedPrompt }, ...schedHistory],
+      { max_tokens: 800, temperature: 0.85 }
+    );
+  } catch (e) {
+    console.error('generateScheduleMessage failed:', e);
+    return null;
+  }
+  if (!text || !text.trim()) return null;
+
+  const c = await dbGet('characters', charId);
+  const msg = { id: 'msg_' + Date.now() + '_sched', charId, role: 'assistant', content: text.trim(), createdAt: Date.now() };
+  await dbPut('messages', msg);
+  c.unreadCount = (c.unreadCount || 0) + 1;
+  c.hasUnread = true;
+  await dbPut('characters', JSON.parse(JSON.stringify(c)));
+  await dbPut('notifications', { id: 'notif_sched_' + Date.now(), charId, type: 'chat', targetId: charId, text: '傳了一則訊息給你', read: false, createdAt: Date.now() });
   return msg;
 }
 

@@ -34,7 +34,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from './store/index.js';
 import { getSetting, setSetting, dbAll, dbIdx, dbGet } from './services/db.js';
 import { generateDiary, generatePost } from './services/contentEngine.js';
-import { generateCycleCareMessage } from './services/chatEngine.js';
+import { generateCycleCareMessage, generateScheduleMessage } from './services/chatEngine.js';
 import { getCyclePhase } from './services/cycle.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
@@ -190,7 +190,34 @@ async function runCycleCare() {
   } catch (_) {}
 }
 
+// 作息時段主動訊息：每 5 分鐘掃一次，時間命中且當天未發過才觸發
+async function runScheduleTriggers() {
+  try {
+    const chars = await dbAll('characters');
+    const now = new Date();
+    const nowHHMM = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    const today = now.toISOString().slice(0, 10);
+    for (const c of chars) {
+      if (!c.scheduleTriggers || !c.scheduleTriggers.length) continue;
+      for (const t of c.scheduleTriggers) {
+        if (!t.enabled || !t.time || !t.desc) continue;
+        // 允許 ±4 分鐘的容差視窗（每 5 分鐘掃一次，避免剛好錯過）
+        const [th, tm] = t.time.split(':').map(Number);
+        const triggerMins = th * 60 + tm;
+        const nowMins = now.getHours() * 60 + now.getMinutes();
+        if (Math.abs(nowMins - triggerMins) > 4) continue;
+        const key = `sched_sent_${c.id}_${t.time}_${today}`;
+        const sent = await getSetting(key);
+        if (sent) continue;
+        await setSetting(key, true);
+        try { await generateScheduleMessage(c.id, t.desc); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+}
+
 let timer;
+let schedTimer;
 onMounted(async () => {
   await globalStore.init();
   syncRootBg(globalStore.theme);
@@ -223,6 +250,10 @@ onMounted(async () => {
   // 生理期主動關心（背景靜默執行，P59）
   runCycleCare();
 
+  // 作息時段主動訊息（每 5 分鐘掃一次）
+  runScheduleTriggers();
+  schedTimer = setInterval(runScheduleTriggers, 5 * 60 * 1000);
+
   // Prevent iOS Safari swipe-back gesture (left/right edge swipe)
   document.addEventListener('touchstart', (e) => {
     const x = e.touches[0].clientX;
@@ -242,6 +273,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   clearInterval(timer);
+  clearInterval(schedTimer);
 });
 </script>
 

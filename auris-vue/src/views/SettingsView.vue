@@ -86,10 +86,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P65
+        Auris · P66
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P65 世界書・圖片傳送與 AI 識別
+        P66 頭像修正・冠夫姓修正・時間流逝感知・作息主動訊息
       </div>
     </div>
   </div>

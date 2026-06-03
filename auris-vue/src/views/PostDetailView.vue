@@ -37,7 +37,10 @@
         <div v-else>
           <div v-for="(cm, idx) in post.comments" :key="idx" class="post-comment-item">
             <div class="comment-av" :style="cm.role === 'user' ? 'background:var(--surface3)' : ''">
-              <span v-if="cm.role === 'user'">🙂</span>
+              <template v-if="cm.role === 'user'">
+                <img v-if="meAvatar && meAvatar.startsWith('data:')" :src="meAvatar" style="width:100%;height:100%;object-fit:cover;border-radius:10px">
+                <span v-else>{{ meAvatar || '🙂' }}</span>
+              </template>
               <template v-else>
                 <img v-if="getAvatar(post.charId) && getAvatar(post.charId).startsWith('data:')" :src="getAvatar(post.charId)" style="width:100%;height:100%;object-fit:cover;border-radius:10px">
                 <span v-else>{{ getAvatar(post.charId) || '🌸' }}</span>
@@ -92,12 +95,14 @@ const post = ref(null);
 const inputComment = ref('');
 const commentInp = ref(null);
 const meName = ref('');
+const meAvatar = ref('🙂');
 const isReplying = ref(false);
 
 onMounted(async () => {
   await globalStore.loadCharacters();
   const meSetting = await getSetting('me_settings');
   if (meSetting && meSetting.name) meName.value = meSetting.name;
+  if (meSetting && meSetting.avatar) meAvatar.value = meSetting.avatar;
   
   await loadPost();
 });

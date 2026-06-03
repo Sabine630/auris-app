@@ -146,6 +146,17 @@
             <textarea class="form-input" rows="2" v-model="char.restTime" placeholder="例：通常凌晨1點睡、早上8點起；週末會睡到中午…"></textarea>
             <div class="form-hint">搭配「時間感」開啟時，角色會依現在時間推測自己在上班、通勤還是睡覺，主動訊息更有情境感</div>
           </div>
+          <div class="form-row">
+            <div class="form-label">主動訊息時段</div>
+            <div class="form-hint" style="margin-bottom:8px">設定後角色會在指定時間主動傳訊，每個時段每天只發一次</div>
+            <div v-for="(t, i) in char.scheduleTriggers" :key="i" style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+              <input type="time" v-model="t.time" class="form-input" style="width:100px;flex-shrink:0">
+              <input type="text" v-model="t.desc" class="form-input" placeholder="例：提醒我吃午餐、叫我起床…" style="flex:1">
+              <div class="toggle" :class="{ on: t.enabled }" @click="t.enabled = !t.enabled" style="flex-shrink:0"><div class="toggle-knob"></div></div>
+              <div @click="char.scheduleTriggers.splice(i, 1)" style="cursor:pointer;color:var(--text-3);font-size:18px;line-height:1;flex-shrink:0">×</div>
+            </div>
+            <div class="form-hint" style="cursor:pointer;color:var(--accent);margin-top:4px" @click="char.scheduleTriggers.push({ time: '12:00', desc: '', enabled: true })">＋ 新增時段</div>
+          </div>
         </div>
       </div>
 
@@ -474,6 +485,7 @@ const char = ref({
   workTime: '',
   workPlace: '',
   restTime: '',
+  scheduleTriggers: [],
   style: 'casual',
   talkative: 'mid',
   call: '',

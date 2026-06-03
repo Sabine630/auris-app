@@ -262,7 +262,31 @@ IndexedDB 升 **v5**，新增 `chat_memories` 表（索引 charId）；`summariz
 - `ApiView.testApi`：改為**讀取回應內容並驗證**——新增 `looksLikeChatResponse()`（檢查是否含非空的 `choices`/`content`/`candidates` 陣列）與 `describeBadOkBody()`。`res.ok` 但內容不是合法聊天回應（回了網頁／error 物件／空殼）時，明確報「位址或端點不正確…別打成 /v.1」而非假成功。御三家＋Vertex 路徑統一套用。
 - 測試請求 `max_tokens` 10→16，避免 reasoning 模型把額度用在思考、回空內容造成誤判。
 
-### P65 世界書 + 圖片傳送與 AI 識別（2026-06-02，當前版本）
+### P66 Bug 修正 + 作息主動訊息 + 時間流逝感知（2026-06-03，當前版本）
+
+**① 貼文回覆頭像修正**
+使用者在貼文留言時，頭像從硬寫的 🙂 改為讀取 `me_settings` 的自訂頭像（支援 emoji 與圖片）。
+
+**② 角色冠夫姓修正**
+system prompt 中明確區分暱稱（`c.call`）與本名（`youName`），加入禁止語「無論關係為何，不可幫對方冠夫姓、改姓或更改名字」，解決夫妻關係設定下 AI 自作主張改名的問題。
+
+**③ 跨天時間流逝感知**
+開啟「時間感」的角色，若距上一則訊息超過 3 小時，自動在 system prompt 注入「距上次對話已過約 X 小時（上次時間戳 → 現在）」，讓角色能自然感知對話中斷、不再接著舊話題繼續說。
+
+**④ 作息主動訊息時段**
+角色設定「作息/行程」區塊新增自訂時段清單，每筆設定一個時間點與情境描述（例：「12:00，提醒我吃午餐」），App.vue 每 5 分鐘掃一次，命中時段且當天尚未發過才觸發。每個時段可單獨開關，不受固定範本限制。
+
+| 檔案 | 變更 |
+|------|------|
+| `views/PostDetailView.vue` | 留言頭像改讀 `me_settings.avatar` |
+| `services/chatEngine.js` | `c.call` prompt 加暱稱禁改說明；`youName` prompt 加冠姓禁止語；`buildAIChatSetup` 加時間流逝注入邏輯；新增 `generateScheduleMessage()` |
+| `views/CharEditView.vue` | 作息區塊新增 `scheduleTriggers` 自訂時段清單 UI |
+| `App.vue` | 新增 `runScheduleTriggers()`，`onMounted` 啟動，`setInterval` 每 5 分鐘執行 |
+| `views/SettingsView.vue` | 版號 P65 → P66 |
+
+---
+
+### P65 世界書 + 圖片傳送與 AI 識別（2026-06-02）
 
 **① 世界觀設定書 World Book**
 與角色脫鉤的全域詞條庫，供 AI 在對話中自動參考。每筆詞條含：名稱（觸發關鍵字）、別名、分類（地點/人物/規則/物件/歷史）、詞條內容、適用角色（全部或指定）、啟用開關。
