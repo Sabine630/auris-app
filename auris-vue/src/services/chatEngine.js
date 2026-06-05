@@ -107,7 +107,8 @@ async function buildAIChatSetup(charId, allMsgs) {
     timeCtx = `\n現在時間：${n.getHours()}:${n.getMinutes().toString().padStart(2, '0')}，星期${days[n.getDay()]}。`;
 
     // 若距上一則訊息超過 3 小時，注入時間流逝提示，讓角色感知到對話中斷了一段時間
-    const lastMsg = allMsgs.length ? allMsgs[allMsgs.length - 1] : null;
+    // 最後一則通常是剛送出的使用者訊息（時間差幾乎為 0），取倒數第二則才能正確算出間隔
+    const lastMsg = allMsgs.length >= 2 ? allMsgs[allMsgs.length - 2] : (allMsgs.length === 1 && allMsgs[0].role !== 'user' ? allMsgs[0] : null);
     if (lastMsg && lastMsg.createdAt) {
       const gapMs = Date.now() - lastMsg.createdAt;
       const gapHrs = Math.floor(gapMs / 3600000);

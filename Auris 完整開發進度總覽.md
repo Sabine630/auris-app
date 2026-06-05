@@ -262,7 +262,28 @@ IndexedDB 升 **v5**，新增 `chat_memories` 表（索引 charId）；`summariz
 - `ApiView.testApi`：改為**讀取回應內容並驗證**——新增 `looksLikeChatResponse()`（檢查是否含非空的 `choices`/`content`/`candidates` 陣列）與 `describeBadOkBody()`。`res.ok` 但內容不是合法聊天回應（回了網頁／error 物件／空殼）時，明確報「位址或端點不正確…別打成 /v.1」而非假成功。御三家＋Vertex 路徑統一套用。
 - 測試請求 `max_tokens` 10→16，避免 reasoning 模型把額度用在思考、回空內容造成誤判。
 
-### P66 Bug 修正 + 作息主動訊息 + 時間流逝感知（2026-06-03，當前版本）
+### P67 時間感知 Bug 修正・聊天日期分隔線・卡片間距（2026-06-05，當前版本）
+
+**① 時間感知 bug 修正**
+`buildAIChatSetup` 在計算「距上次對話間隔」時，`allMsgs` 最後一則已是剛送出的使用者訊息（時間差幾乎為 0），導致永遠偵測不到跨天/長時間間隔。改為取 `allMsgs[length - 2]`（倒數第二則）作為基準，正確偵測前一輪對話的時間點。
+
+**② 聊天室加入日期分隔線**
+ChatRoomView 新增 `showDateSep()` / `fmtDateSep()` 函式：每當相鄰訊息跨越不同日期，就在訊息前插入「M 月 D 日　星期X」分隔標籤，讓使用者滑動查看歷史時清楚辨別日期邊界。
+
+**③ 日記／夢境卡片間距修正**
+DiaryView 與 DreamView 的卡片列表因外層 `<div v-else>` 包層導致 `gap` 無法作用在卡片之間。在 wrapper div 補上 `display:flex;flex-direction:column;gap:Npx`，使間距正確套用。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/chatEngine.js` | `lastMsg` 改用 `allMsgs[length-2]` 修時間間隔計算 bug |
+| `views/ChatRoomView.vue` | 新增 `showDateSep()` / `fmtDateSep()` + 日期分隔 template + `.chat-date-sep` CSS |
+| `views/DiaryView.vue` | v-else wrapper 加 `flex gap:12px` |
+| `views/DreamView.vue` | v-else wrapper 加 `flex gap:10px` |
+| `views/SettingsView.vue` | 版號 P66 → P67 |
+
+---
+
+### P66 Bug 修正 + 作息主動訊息 + 時間流逝感知（2026-06-03）
 
 **① 貼文回覆頭像修正**
 使用者在貼文留言時，頭像從硬寫的 🙂 改為讀取 `me_settings` 的自訂頭像（支援 emoji 與圖片）。

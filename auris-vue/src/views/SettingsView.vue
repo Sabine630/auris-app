@@ -86,10 +86,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P66
+        Auris · P67
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P66 頭像修正・冠夫姓修正・時間流逝感知・作息主動訊息
+        P67 時間感知 bug 修正・聊天加日期分隔線・日記夢境卡片間距修正
       </div>
     </div>
   </div>

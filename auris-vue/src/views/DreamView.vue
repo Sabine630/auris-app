@@ -36,7 +36,7 @@
         <div class="bb-empty-ttl">還沒有夢境紀錄</div>
         <div class="bb-empty-sub">選擇角色，讓他告訴你<br>他今晚夢見了什麼</div>
       </div>
-      <div v-else>
+      <div v-else style="display:flex;flex-direction:column;gap:10px">
         <div v-for="d in sortedDreams" :key="d.id" class="dream-entry" @click="$router.push('/dream/' + d.id)">
           <div class="dream-entry-top">
             <div class="dream-entry-av">

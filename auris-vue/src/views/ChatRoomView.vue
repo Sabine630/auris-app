@@ -33,6 +33,9 @@
         </div>
 
         <template v-for="(m, i) in messages" :key="m.id">
+          <!-- Date Separator -->
+          <div v-if="showDateSep(i)" class="chat-date-sep">{{ fmtDateSep(m.createdAt) }}</div>
+
           <!-- Heart Voice Insert -->
           <div v-if="m.type === 'hv'" class="hv-inline">
             <div class="hv-label">heart voice</div>
@@ -600,6 +603,23 @@ function isCont(i) {
   return prev.role === m.role && (m.createdAt - prev.createdAt) < 120000;
 }
 
+function showDateSep(i) {
+  const m = messages.value[i];
+  if (!m?.createdAt || m.type === 'hv') return false;
+  if (i === 0) return true;
+  const prev = messages.value[i - 1];
+  if (!prev?.createdAt) return false;
+  const d1 = new Date(m.createdAt);
+  const d2 = new Date(prev.createdAt);
+  return d1.getDate() !== d2.getDate() || d1.getMonth() !== d2.getMonth() || d1.getFullYear() !== d2.getFullYear();
+}
+
+function fmtDateSep(ts) {
+  const d = new Date(ts);
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  return `${d.getMonth() + 1} 月 ${d.getDate()} 日　星期${weekdays[d.getDay()]}`;
+}
+
 function fmtT(ts) {
   const d = new Date(ts);
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
@@ -894,6 +914,16 @@ async function doRegenerate(m) {
 
 <style scoped>
 .page { height: 100%; }
+
+/* ── Date Separator ── */
+.chat-date-sep {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--text-3);
+  padding: 12px 0 4px;
+  letter-spacing: .04em;
+}
 
 /* ── Image Attachment ── */
 .chat-img-preview {

@@ -33,7 +33,7 @@
         <div class="bb-empty-sub">{{ globalStore.characters.length === 0 ? '先新增一個角色，他才能寫日記' : '點右上角「＋ 生成」讓他寫今天的日記' }}</div>
         <button v-if="globalStore.characters.length === 0" class="empty-cta" @click="$router.push('/char-manage')">＋ 新增角色</button>
       </div>
-      <div v-else>
+      <div v-else style="display:flex;flex-direction:column;gap:12px">
         <div v-for="d in filteredDiary" :key="d.id" class="diary-card" @click="$router.push('/diary/' + d.id)">
           <div class="diary-card-top">
             <div class="diary-card-av">
