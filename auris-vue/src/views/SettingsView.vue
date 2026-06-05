@@ -86,10 +86,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P67
+        Auris · P68
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P67 時間感知 bug 修正・聊天加日期分隔線・日記夢境卡片間距修正
+        P68 節日季節感知・首頁動態磚塊・自訂 confirm modal・語音輸入
       </div>
     </div>
   </div>
@@ -155,12 +155,12 @@ function importData() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.json';
-  input.onchange = (e) => {
+  input.onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    
+
     const confirmMsg = '【嚴重警告】\n\n這將會清除您目前所有的聊天紀錄與角色，並完全替換為備份檔的內容。\n\n這個動作無法復原，確定要繼續嗎？';
-    if (!window.confirm(confirmMsg)) {
+    if (!await window.confirm_(confirmMsg)) {
       input.value = '';
       return;
     }

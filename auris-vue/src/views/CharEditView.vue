@@ -607,8 +607,8 @@ function doAddStory() {
   newStoryTitle.value = '';
 }
 
-function removeStory(idx) {
-  if(confirm('確定要刪除這個章節嗎？內容將無法復原。')) {
+async function removeStory(idx) {
+  if (await window.confirm_('確定要刪除這個章節嗎？內容將無法復原。')) {
     char.value.stories.splice(idx, 1);
   }
 }

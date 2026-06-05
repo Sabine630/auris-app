@@ -335,7 +335,7 @@ async function batchDelete() {
     window.toast_('請先選擇角色');
     return;
   }
-  if (!confirm(`確定要刪除 ${selectedChats.value.length} 個角色嗎？所有對話記錄也會一併刪除。`)) return;
+  if (!await window.confirm_(`確定要刪除 ${selectedChats.value.length} 個角色嗎？所有對話記錄也會一併刪除。`)) return;
   
   const stores = ['messages', 'memories', 'diary', 'dreams', 'moments'];
   for (const charId of selectedChats.value) {

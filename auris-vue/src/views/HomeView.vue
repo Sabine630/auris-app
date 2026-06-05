@@ -45,11 +45,11 @@
       </div>
       <div class="tile anim" style="animation-delay:.13s" @click="$router.push('/diary')">
         <div class="t-ic"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M8 7h8M8 11h5"/></svg></div>
-        <div class="t-name">日記</div><div class="t-sub">今日未生成</div>
+        <div class="t-name">日記</div><div class="t-sub">{{ diarySub }}</div>
       </div>
       <div class="tile anim" style="animation-delay:.16s" @click="$router.push('/dream')">
         <div class="t-ic"><svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div>
-        <div class="t-name">夢境</div><div class="t-sub">點擊生成</div>
+        <div class="t-name">夢境</div><div class="t-sub">{{ dreamSub }}</div>
       </div>
     </div>
 
@@ -116,10 +116,28 @@ import { globalStore } from '../store/index.js';
 import { dbAll } from '../services/db.js';
 
 const unreadNotifCount = ref(0);
+const diarySub = ref('讀取中…');
+const dreamSub = ref('讀取中…');
 
 onMounted(async () => {
-  const all = await dbAll('notifications');
-  unreadNotifCount.value = all.filter(n => !n.read).length;
+  const today = new Date().toISOString().slice(0, 10);
+  const [notifications, diaries, dreams] = await Promise.all([
+    dbAll('notifications'),
+    dbAll('diary'),
+    dbAll('dreams'),
+  ]);
+
+  unreadNotifCount.value = notifications.filter(n => !n.read).length;
+
+  const todayDiaries = diaries.filter(d => d.date === today);
+  diarySub.value = todayDiaries.length > 0
+    ? `今日已生成 ${todayDiaries.length} 則`
+    : '今日未生成';
+
+  const todayDreams = dreams.filter(d => d.date === today);
+  dreamSub.value = todayDreams.length > 0
+    ? `今日已生成 ${todayDreams.length} 則`
+    : '點擊生成';
 });
 
 function openAnnouncement() {

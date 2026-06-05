@@ -25,6 +25,19 @@
 
     <!-- Announcement Modal -->
     <AnnouncementModal v-if="showAnnouncement" @close="closeAnnouncement" />
+
+    <!-- Confirm Modal -->
+    <Teleport to="body">
+      <div v-if="confirmVisible" class="cm-overlay" @click.self="onConfirmCancel">
+        <div class="cm-box">
+          <div class="cm-msg">{{ confirmMsg }}</div>
+          <div class="cm-btns">
+            <button class="cm-btn cm-cancel" @click="onConfirmCancel">取消</button>
+            <button class="cm-btn cm-ok" @click="onConfirmOk">確定</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -39,8 +52,22 @@ import { getCyclePhase } from './services/cycle.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
-const ANNOUNCEMENT_VERSION = 'P67';
+const ANNOUNCEMENT_VERSION = 'P68';
 const showAnnouncement = ref(false);
+
+// ── 全域 confirm modal ─────────────────────────────────────────────────────
+const confirmVisible = ref(false);
+const confirmMsg = ref('');
+let confirmResolve = null;
+
+window.confirm_ = (msg) => new Promise(resolve => {
+  confirmMsg.value = msg;
+  confirmVisible.value = true;
+  confirmResolve = resolve;
+});
+
+function onConfirmOk() { confirmVisible.value = false; confirmResolve?.(true); }
+function onConfirmCancel() { confirmVisible.value = false; confirmResolve?.(false); }
 
 async function closeAnnouncement() {
   showAnnouncement.value = false;
@@ -286,5 +313,48 @@ onUnmounted(() => {
 .fade-leave-to {
   opacity: 0;
   transform: translateX(10px);
+}
+.cm-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.cm-box {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 24px 20px 16px;
+  width: min(320px, 85vw);
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+}
+.cm-msg {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  margin-bottom: 20px;
+  text-align: center;
+}
+.cm-btns {
+  display: flex;
+  gap: 10px;
+}
+.cm-btn {
+  flex: 1;
+  padding: 11px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: opacity .15s;
+}
+.cm-btn:active { opacity: .7; }
+.cm-cancel {
+  background: var(--surface);
+  color: var(--text-3);
+  border: .5px solid var(--border);
+}
+.cm-ok {
+  background: var(--rose);
+  color: #fff;
 }
 </style>

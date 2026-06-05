@@ -83,7 +83,7 @@ function timeAgo(ts) {
 }
 
 async function deleteGroup(id) {
-  if (!confirm('確定要刪除這個群組嗎？對話記錄也會一併刪除。')) return;
+  if (!await window.confirm_('確定要刪除這個群組嗎？對話記錄也會一併刪除。')) return;
   await dbDel('groups', id);
   const msgs = await dbIdx('group_messages', 'groupId', id);
   for (const m of msgs) await dbDel('group_messages', m.id);

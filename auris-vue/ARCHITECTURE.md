@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-05（P67）
+> 最後更新：2026-06-06（P68）
 
 ---
 
@@ -314,6 +314,15 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P68（2026-06-06）節日季節感知 + 首頁動態磚塊 + 自訂 confirm modal + 語音輸入
+
+- **節日/季節感知**（`chatEngine.js`）：新增 `getHolidaySeasonCtx()`，依當天日期計算季節（春/夏/秋/冬）與節日（固定西方節日 + 農曆節日硬編碼 2025–2027），在 `timeAware` 開啟時一併注入 timeCtx（格式：`，夏天，今天是端午節`）。
+- **首頁磚塊動態化**（`HomeView.vue`）：日記／夢境磚塊副標題改為 `onMounted` 查詢 IndexedDB，顯示今日已生成數量或「今日未生成」/「點擊生成」。
+- **全域 confirm modal**（`App.vue`）：新增 `window.confirm_()` Promise API（Teleport 彈出層），取代原生 `confirm()` 的 4 處呼叫（GroupListView、CharEditView、ChatListView、SettingsView）。
+- **語音輸入**（`ChatRoomView.vue`）：輸入列新增麥克風按鈕，使用 `SpeechRecognition` API（`lang: zh-TW`），辨識結果附加至 `inputContent`；錄音中以玫瑰色脈衝動畫提示；不支援時顯示 toast。
+
+---
 
 ### P67（2026-06-05）時間感知 Bug 修正 + 聊天日期分隔線 + 卡片間距修正
 

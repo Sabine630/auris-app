@@ -110,6 +110,9 @@
       <button class="chat-img-btn" @click="pickImage" :disabled="isTyping" title="傳送圖片">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
       </button>
+      <button class="chat-img-btn chat-mic-btn" :class="{ recording: isRecording }" @click="toggleVoice" :disabled="isTyping" title="語音輸入">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10a7 7 0 01-14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
+      </button>
       <textarea class="chat-in" ref="chatInp" v-model="inputContent" placeholder="說點什麼…" rows="1"
         @keydown.enter.exact.prevent="sendMsg" @input="handleInput"></textarea>
       <button class="chat-send" @click="sendMsg" :disabled="isTyping">
@@ -284,6 +287,35 @@ const chatInp = ref(null);
 
 const cName = ref('—');
 const cAvatar = ref('');
+
+// ── 語音輸入 ──────────────────────────────────────────────────────────────
+const isRecording = ref(false);
+let recognition = null;
+
+function toggleVoice() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    window.toast_('您的瀏覽器不支援語音輸入');
+    return;
+  }
+  if (isRecording.value) {
+    recognition?.stop();
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'zh-TW';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.onstart = () => { isRecording.value = true; };
+  recognition.onend = () => { isRecording.value = false; };
+  recognition.onerror = () => { isRecording.value = false; };
+  recognition.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    inputContent.value = (inputContent.value + text).trim();
+    chatInp.value?.dispatchEvent(new Event('input'));
+  };
+  recognition.start();
+}
 const meAvatar = ref('🙂');
 
 // ── Long Press & Actions State ──
@@ -971,6 +1003,8 @@ async function doRegenerate(m) {
 .chat-img-btn:hover { color: var(--rose); }
 .chat-img-btn svg { width: 22px; height: 22px; }
 .chat-img-btn:disabled { opacity: .4; pointer-events: none; }
+.chat-mic-btn.recording { color: var(--rose); animation: mic-pulse 1s ease-in-out infinite; }
+@keyframes mic-pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
 
 .msg-image {
   display: block;

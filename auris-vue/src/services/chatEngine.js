@@ -16,6 +16,49 @@ function getDefBase(provider) {
 }
 
 const LONG_FORM_RE = /(\d{2,}\s*字|\d{2,}\s*words?|[一二三四五六七八九兩幾]百\s*字|[一二兩三]千\s*字|[一二三四五六七八九十兩]+\s*萬\s*字|(寫|說|講|來|編|想|聽|給我).{0,6}(故事|小說|文章|信|詩|散文|劇本|演講|報告|論文|介紹|長篇|短篇|童話|寓言|傳記|日記|劇情)|睡前故事|床邊故事|長一?點|詳細|完整|具體說明|長篇|大綱)/i;
+
+// 節日/季節感知：回傳當下的季節與節日提示字串，注入 system prompt 讓角色有時節感
+function getHolidaySeasonCtx() {
+  const n = new Date();
+  const m = n.getMonth() + 1;
+  const d = n.getDate();
+  const y = n.getFullYear();
+
+  // 季節（台灣氣候為準）
+  const season = m >= 3 && m <= 5 ? '春天' : m >= 6 && m <= 8 ? '夏天' : m >= 9 && m <= 11 ? '秋天' : '冬天';
+
+  // 固定節日
+  const fixed = {
+    '1-1': '元旦', '2-14': '西洋情人節', '3-14': '白色情人節',
+    '4-1': '愚人節', '5-1': '勞動節', '8-8': '父親節',
+    '10-31': '萬聖節', '12-24': '聖誕夜', '12-25': '聖誕節', '12-31': '跨年夜'
+  };
+
+  // 農曆節日（依年份硬編碼至 2027）
+  const lunar = {
+    2025: { '1-28':'農曆除夕','1-29':'農曆新年','2-12':'元宵節','4-4':'清明節','5-31':'端午節','8-29':'七夕情人節','10-6':'中秋節','10-29':'重陽節','12-21':'冬至' },
+    2026: { '2-16':'農曆除夕','2-17':'農曆新年','3-3':'元宵節','4-5':'清明節','6-19':'端午節','8-20':'七夕情人節','9-25':'中秋節','11-17':'重陽節','12-22':'冬至' },
+    2027: { '2-5':'農曆除夕','2-6':'農曆新年','2-21':'元宵節','4-5':'清明節','6-9':'端午節','8-10':'七夕情人節','9-15':'中秋節','10-8':'重陽節','12-22':'冬至' }
+  };
+
+  // 母親節（五月第二個星期日）
+  let motherDay = null;
+  if (m === 5) {
+    let sundays = 0;
+    for (let i = 1; i <= 31; i++) {
+      if (new Date(y, 4, i).getDay() === 0 && ++sundays === 2) { motherDay = i; break; }
+    }
+  }
+  if (motherDay && d === motherDay) fixed['5-' + motherDay] = '母親節';
+
+  const key = `${m}-${d}`;
+  const todayHoliday = fixed[key] || lunar[y]?.[key] || null;
+
+  let ctx = `，${season}`;
+  if (todayHoliday) ctx += `，今天是${todayHoliday}`;
+
+  return ctx;
+}
 const CLEAN_END_RE = /[。！？！?.…」』）)」"’”]/;
 
 // ── Shared SSE stream parser ───────────────────────────────────────────────
@@ -104,7 +147,7 @@ async function buildAIChatSetup(charId, allMsgs) {
   if (c.timeAware) {
     const n = new Date();
     const days = ['日', '一', '二', '三', '四', '五', '六'];
-    timeCtx = `\n現在時間：${n.getHours()}:${n.getMinutes().toString().padStart(2, '0')}，星期${days[n.getDay()]}。`;
+    timeCtx = `\n現在時間：${n.getHours()}:${n.getMinutes().toString().padStart(2, '0')}，星期${days[n.getDay()]}${getHolidaySeasonCtx()}。`;
 
     // 若距上一則訊息超過 3 小時，注入時間流逝提示，讓角色感知到對話中斷了一段時間
     // 最後一則通常是剛送出的使用者訊息（時間差幾乎為 0），取倒數第二則才能正確算出間隔
