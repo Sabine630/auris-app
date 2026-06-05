@@ -227,6 +227,22 @@
           </div>
         </div>
 
+        <div class="sec-label">紀念日</div>
+        <div class="form-group">
+          <div class="form-row">
+            <div class="form-label">角色生日</div>
+            <input class="form-input" type="date" v-model="char.birthday" style="color-scheme:var(--color-scheme,light)">
+          </div>
+          <div class="form-row">
+            <div class="form-label">相識日</div>
+            <input class="form-input" type="date" v-model="char.meetDate" style="color-scheme:var(--color-scheme,light)">
+          </div>
+          <div class="form-row">
+            <div class="form-label">在一起的日期</div>
+            <input class="form-input" type="date" v-model="char.togetherDate" style="color-scheme:var(--color-scheme,light)">
+          </div>
+        </div>
+
         <div class="sec-label">在這段關係中——你是誰</div>
         <div class="form-group">
           <div class="toggle-row">

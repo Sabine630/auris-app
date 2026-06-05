@@ -59,7 +59,31 @@ function getHolidaySeasonCtx() {
 
   return ctx;
 }
-const CLEAN_END_RE = /[。！？！?.…」』）)」"’”]/;
+
+// 個人紀念日感知：回傳今天與角色/玩家生日、相識日、在一起紀念日相關的提示字串
+function getPersonalDateCtx(char, me) {
+  const n = new Date();
+  const today = `${String(n.getMonth() + 1).padStart(2, ‘0’)}-${String(n.getDate()).padStart(2, ‘0’)}`;
+  const parts = [];
+
+  function mmdd(dateStr) {
+    if (!dateStr) return null;
+    return dateStr.slice(5); // ‘YYYY-MM-DD’ → ‘MM-DD’
+  }
+
+  if (mmdd(char.birthday) === today) parts.push(`今天是【${char.name}】的生日🎂`);
+  if (mmdd(me?.birthday) === today) parts.push(‘今天是【對方】的生日🎂，請特別祝福、表達心意’);
+  if (mmdd(char.meetDate) === today) parts.push(`今天是你們的相識紀念日🌸`);
+  if (mmdd(char.togetherDate) === today) {
+    const start = new Date(char.togetherDate);
+    const days = Math.floor((n - start) / 86400000);
+    parts.push(`今天是你們在一起的紀念日❤️（第 ${days} 天）`);
+  }
+
+  return parts.length ? `\n【紀念日】${parts.join(‘；’)}` : ‘’;
+}
+
+const CLEAN_END_RE = /[。！？！?.…」』）)」”’”]/;
 
 // ── Shared SSE stream parser ───────────────────────────────────────────────
 async function parseSSEStream(response, provider, onChunk) {
@@ -164,6 +188,9 @@ async function buildAIChatSetup(charId, allMsgs) {
     }
   }
 
+  // 個人紀念日（生日、相識日、在一起紀念日）——不依賴 timeAware，只要有設定就注入
+  const personalDateCtx = getPersonalDateCtx(c, me);
+
   // 作息設定：把角色的上班時段／地點／作息餵進 prompt，讓角色（與主動訊息）依現在時間有情境感
   const sched = [];
   if (c.workTime) sched.push(`上班時間：${c.workTime}`);
@@ -226,7 +253,7 @@ ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}
 ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
-${timeCtx}${scheduleCtx}${playerScheduleCtx}${cycleCtx}${worldCtx}${memCtx}
+${timeCtx}${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${worldCtx}${memCtx}
 【回覆品質要求】
 ・每則訊息至少 50～150 字，要有具體內容，不能只是「嗯」「好啊」「哈哈」等空洞回應
 ・要回應對方說的具體內容，展現你真的在聽、在意

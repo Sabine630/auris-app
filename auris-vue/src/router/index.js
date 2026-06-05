@@ -23,6 +23,7 @@ import NotificationsView from '../views/NotificationsView.vue';
 import MeView from '../views/MeView.vue';
 import WorldsView from '../views/WorldsView.vue';
 import WorldEditView from '../views/WorldEditView.vue';
+import RelationView from '../views/RelationView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -49,7 +50,8 @@ const router = createRouter({
     { path: '/notifications', name: 'notifications', component: NotificationsView },
     { path: '/me', name: 'me', component: MeView },
     { path: '/worlds', name: 'worlds', component: WorldsView },
-    { path: '/worlds/edit/:id?', name: 'worlds-edit', component: WorldEditView }
+    { path: '/worlds/edit/:id?', name: 'worlds-edit', component: WorldEditView },
+    { path: '/relation/:id', name: 'relation', component: RelationView }
   ]
 });
 

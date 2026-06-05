@@ -58,6 +58,15 @@
         </div>
       </div>
 
+      <div class="sec-label">生日</div>
+      <div class="form-group">
+        <div class="form-row">
+          <div class="form-label">你的生日</div>
+          <input class="form-input" type="date" v-model="me.birthday" style="color-scheme:var(--color-scheme,light)">
+          <div class="form-hint">設定後，角色會在你生日當天有特別的互動</div>
+        </div>
+      </div>
+
       <div class="sec-label">作息 / 行程</div>
       <div class="form-group">
         <div class="form-row">
@@ -124,6 +133,7 @@ const me = ref({
   job: '',
   persona: '',
   note: '',
+  birthday: '',
   workTime: '',
   workPlace: '',
   restTime: '',

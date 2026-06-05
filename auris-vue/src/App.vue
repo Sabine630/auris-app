@@ -81,7 +81,7 @@ const router = useRouter();
 const time = ref('');
 
 const showNav = computed(() => {
-  const hiddenRoutes = ['chat', 'onboarding', 'api', 'lock', 'char-edit', 'char-manage', 'group-room', 'group-create', 'post-detail', 'diary-detail', 'dream-detail'];
+  const hiddenRoutes = ['chat', 'onboarding', 'api', 'lock', 'char-edit', 'char-manage', 'group-room', 'group-create', 'post-detail', 'diary-detail', 'dream-detail', 'relation'];
   return !hiddenRoutes.includes(route.name);
 });
 

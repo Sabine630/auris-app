@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-06（P68）
+> 最後更新：2026-06-06（P69）
 
 ---
 
@@ -314,6 +314,16 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P69（2026-06-06）生日紀念日系統 + 關係主頁
+
+- **生日/紀念日欄位**（`CharEditView.vue`）：Tab3 新增「紀念日」區段：角色生日（`birthday`）、相識日（`meetDate`）、在一起日（`togetherDate`）—— date picker 軟欄位，無需 DB 升版。
+- **玩家生日**（`MeView.vue`）：`me_settings` 加 `birthday` 欄位，`me` reactive 預設值同步補上。
+- **個人日期感知**（`chatEngine.js`）：新增 `getPersonalDateCtx(char, me)`，比對今日 MM-DD，若命中生日/紀念日則注入 `【紀念日】` 段落至 system prompt（與 timeAware 無關，獨立觸發）。
+- **RelationView**（新建 `views/RelationView.vue`）：路由 `/relation/:id`，聊天室選單「關係主頁」進入；顯示在一起天數（主視覺）、相識天數、對話則數、90 天內重要日子倒數。
+- **路由 + 導覽**（`router/index.js`、`App.vue`、`ChatRoomView.vue`）：新增路由，`relation` 加入 `hiddenRoutes`，聊天選單加入口與 `goRelation()`。
+
+---
 
 ### P68（2026-06-06）節日季節感知 + 首頁動態磚塊 + 自訂 confirm modal + 語音輸入
 

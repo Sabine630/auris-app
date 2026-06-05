@@ -131,6 +131,12 @@
           </svg>
           <span>角色資訊</span>
         </div>
+        <div class="menu-item" @click="goRelation">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
+            <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+          </svg>
+          <span>關係主頁</span>
+        </div>
         <div class="menu-item" @click="clearChat">
           <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
@@ -741,6 +747,11 @@ async function sendMsg() {
 function goCharInfo() {
   showMenu.value = false;
   router.push('/char-edit/' + charId);
+}
+
+function goRelation() {
+  showMenu.value = false;
+  router.push('/relation/' + charId);
 }
 
 function clearChat() {
