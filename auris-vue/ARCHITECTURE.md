@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-02（P65）
+> 最後更新：2026-06-05（P67）
 
 ---
 
@@ -160,6 +160,7 @@ AI 內容與對話生成邏輯：
   - `generateCycleCareMessage` — 生理期主動關心（P59），非串流生成關心訊息 → 存 assistant 訊息 + `unreadCount++` + `type:'chat'` 通知
   - **生理期被動體貼**（P59）：`buildAIChatSetup` 在角色 `cycleCare` 開啟且階段為 period/pms 時，將 `cycleCareContext()` 注入 system prompt（其餘階段為空字串）
   - **玩家作息注入**（P63）：`buildAIChatSetup` 新增 `playerScheduleCtx`，讀 `me_settings.workTime`/`workPlace`/`restTime`，告知角色對方當前可能狀態（上班中／休息中），讓主動訊息語氣符合情境
+  - **時間間隔 Bug 修正**（P67）：`buildAIChatSetup` 計算「距上次對話間隔」時，`allMsgs` 末位是剛送出的使用者訊息（時間差近 0），改用 `allMsgs[length-2]` 作為比較基準，正確偵測跨天間隔並注入時間流逝提示。
   - **API Error Handling**：支援 Array 格式 Proxy 錯誤捕捉；群組放寬 `max_tokens: 4000`；生成錯誤時以「【系統偵錯】」訊息顯示於畫面；**P60**：串流回應為空時改顯示明確 toast，不再靜默消失。
   - **群組玩家名字**：`buildGroupChatSetup` 使用 `getSetting('me_settings')` 讀取玩家資料（P56 修正 key 錯誤）；model fallback 用 `getDefModel(provider)`（P60 修正寫死 bug）。
 
@@ -236,7 +237,7 @@ globalStore = {
 
 ### 關鍵 View 說明
 
-- **ChatRoomView (單人聊天)**：串流逐字輸出（`generateAIResponseStream`）、長按訊息選單（複製／編輯重傳／重新生成）、記憶抽屜（AI 總結、手動新增、編輯、toggle、刪除）、背景主動訊息計時器（`scheduleProactive`）、auto-interrupt 打斷模式。
+- **ChatRoomView (單人聊天)**：串流逐字輸出（`generateAIResponseStream`）、長按訊息選單（複製／編輯重傳／重新生成）、記憶抽屜（AI 總結、手動新增、編輯、toggle、刪除）、背景主動訊息計時器（`scheduleProactive`）、auto-interrupt 打斷模式。**P67 起**：訊息列表在跨日邊界自動插入「M 月 D 日　星期X」分隔標籤（`showDateSep()` / `fmtDateSep()`）。
 - **GroupRoomView (群組聊天)**：多角色串流輪替回覆，`@點名` 強制指定角色，角色前綴清洗防止 AI 混淆發言。
 - **CharEditView (角色編輯)**：5 個 Tab 切換，包含基本資訊、個性背景、說話方式、關係規範、AI 參數，必須確保 modal CSS 存在以正常顯示彈窗。自動功能區含「生理期關心」toggle（`char.cycleCare`，預設 false，P59）。
 - **MeView (我的設定)**：玩家自身資料；含「作息 / 行程」區塊（`workTime`/`workPlace`/`restTime`，P63）與「生理期追蹤」區塊（主開關、最近經期開始日、週期長度、經期天數，即時預覽推算階段，P59），資料寫入 `me_settings`。儲存成功後 toast 提示再導頁（P64）。
@@ -303,6 +304,14 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P67（2026-06-05）時間感知 Bug 修正 + 聊天日期分隔線 + 卡片間距修正
+
+- **時間感知 Bug**（`chatEngine.js` `buildAIChatSetup`）：`lastMsg` 改取 `allMsgs[length-2]`，修正跨天/長時間間隔無法觸發時間流逝提示的問題（根因：`allMsgs` 末位是剛送出的使用者訊息，`Date.now() - lastMsg.createdAt` 幾乎為 0）。
+- **聊天日期分隔線**（`ChatRoomView.vue`）：新增 `showDateSep(i)` / `fmtDateSep(ts)` 函式，在訊息列表相鄰訊息跨日時自動插入「M 月 D 日　星期X」分隔標籤；新增 `.chat-date-sep` scoped CSS。
+- **日記／夢境卡片間距**（`DiaryView.vue`、`DreamView.vue`）：`<div v-else>` wrapper 補 `display:flex;flex-direction:column;gap:12px/10px`，修正 `.diary-list` / `.dream-list` 的 `gap` 因多一層 wrapper 而無法套用至卡片之間的問題。
+
+---
 
 ### P66（2026-06-03）Bug 修正 + 作息主動訊息 + 時間流逝感知
 
