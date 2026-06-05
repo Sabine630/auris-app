@@ -18,6 +18,7 @@
 9. [CSS 樣式系統](#9-css-樣式系統)
 10. [維護注意事項](#10-維護注意事項)
 11. [新增頁面標準流程](#11-新增頁面標準流程)
+12. [版本更新紀錄](#12-版本更新紀錄)
 
 ---
 
@@ -75,13 +76,13 @@ graph TD
 
 | 資料表 | keyPath | 索引 | 說明 |
 |--------|---------|------|------|
-| `characters` | `id` | `worldId` | 角色完整設定 |
-| `messages` | `id` | `charId`, `createdAt` | 單人聊天訊息 |
+| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62） |
+| `messages` | `id` | `charId`, `createdAt` | 單人聊天訊息（軟欄位：`image` 圖片 base64 P65、`reaction` 表情 P62） |
 | `memories` | `id` | `charId` | Heart Voice 心聲記錄 |
 | `moments` | `id` | `charId`, `createdAt` | 貼文（含 likes/comments） |
 | `diary` | `id` | `charId`, `date` | 日記（`date` 格式：YYYY-MM-DD） |
 | `dreams` | `id` | `charId` | 夢境 |
-| `worlds` | `id` | — | 多世界（待開發） |
+| `worlds` | `id` | — | 世界書詞條庫（P65）；多世界系統 `worldId` 索引預留 |
 | `groups` | `id` | — | 群組設定 |
 | `group_messages` | `id` | `groupId`, `createdAt` | 群組訊息 |
 | `notifications` | `id` | `charId`, `createdAt` | 通知記錄 |
@@ -97,7 +98,7 @@ graph TD
 | `api_model` | 模型名稱字串 |
 | `api_base` | 自訂 API 位址（空 = 用預設） |
 | `theme` | 主題名稱（`cream` / `warm` / `dark` / `gray` / `ocean` / `matcha`） |
-| `me_settings` | 使用者自身設定物件（名字、年齡、個性等）；含生理期欄位 `cycleEnabled` / `lastPeriodStart` / `cycleLength` / `periodLength`（P59，全本地）；含玩家作息欄位 `workTime` / `workPlace` / `restTime`（P63） |
+| `me_settings` | 使用者自身設定物件（名字、年齡、個性等）；玩家頭像 `avatar`（emoji 或圖片 base64，P62）；生理期欄位 `cycleEnabled` / `lastPeriodStart` / `cycleLength` / `periodLength`（P59，全本地）；玩家作息欄位 `workTime` / `workPlace` / `restTime`（P63） |
 | `onboarding_done` | `true` = 已完成新手引導 |
 | `last_auto_gen_date` | 最後一次自動生成日期（`YYYY-MM-DD`），防重複觸發 |
 | `last_seen_announcement` | 最後看過的更新公告版本（P53），用於決定是否彈出公告 |
@@ -155,9 +156,13 @@ AI 內容與對話生成邏輯：
   - `generateAIResponseStream` — 一對一串流回覆，完成後觸發 Heart Voice
   - `generateGroupAIResponseStream` — 群組串流回覆，支援 `onStart`（切換動畫）與 `onChunk`（逐字更新）
   - `generateProactiveMessageStream` — 主動訊息串流，配合背景計時器使用；**P56 起**：主動訊息落地後會寫入 `notifications`（`type: 'chat'`），通知中心可查
-  - `summarizeToMemory` — 將近期對話濃縮為 `chat_memories` 條目
+  - `summarizeToMemory` — 將近期對話濃縮為 `chat_memories` 條目；**P62 起**：可由 `ChatRoomView.maybeAutoSummarize()` 在達 `autoSumEvery` 門檻時背景自動觸發
   - `generateHeartVoice` — 機率性生成說不出口的心聲，寫入 `memories` 並發出 `new-heart-voice` 事件與通知
   - `generateCycleCareMessage` — 生理期主動關心（P59），非串流生成關心訊息 → 存 assistant 訊息 + `unreadCount++` + `type:'chat'` 通知
+  - `generateScheduleMessage` — 作息時段主動訊息（P66），由 `App.vue` 每 5 分鐘掃 `scheduleTriggers`，命中時段且當天未發過才觸發
+  - **世界書注入**（P65）：`buildAIChatSetup` 掃描近 10 則訊息，命中詞條名稱／別名才把對應 `worlds` 詞條注入 system prompt（`worldCtx`），不觸發不佔 token
+  - **圖片識別**（P65）：`sendUserMessage` 加 `image` 參數、`generateAIResponseStream` 加 `imageBase64`，`buildImgHistory()` 依 provider 轉成 Anthropic／OpenAI／Vertex 各自的圖片 content 格式
+  - **角色作息注入**（P62）：`buildAIChatSetup` 組 `scheduleCtx`（角色 `workTime`/`workPlace`/`restTime`，接在 `timeCtx` 後），請角色依現在時間推測自身狀態；與 P63 的玩家作息 `playerScheduleCtx` 互補
   - **生理期被動體貼**（P59）：`buildAIChatSetup` 在角色 `cycleCare` 開啟且階段為 period/pms 時，將 `cycleCareContext()` 注入 system prompt（其餘階段為空字串）
   - **玩家作息注入**（P63）：`buildAIChatSetup` 新增 `playerScheduleCtx`，讀 `me_settings.workTime`/`workPlace`/`restTime`，告知角色對方當前可能狀態（上班中／休息中），讓主動訊息語氣符合情境
   - **時間間隔 Bug 修正**（P67）：`buildAIChatSetup` 計算「距上次對話間隔」時，`allMsgs` 末位是剛送出的使用者訊息（時間差近 0），改用 `allMsgs[length-2]` 作為比較基準，正確偵測跨天間隔並注入時間流逝提示。
@@ -212,6 +217,10 @@ globalStore = {
 | `/onboarding` | `onboarding` | ❌ 隱藏 |
 | `/char-manage` | `char-manage` | ❌ 隱藏 |
 | `/char-edit/:id?` | `char-edit` | ❌ 隱藏 |
+| `/worlds` | `worlds` | ❌ 隱藏（設定頁進入，P65） |
+| `/worlds/edit/:id?` | `worlds-edit` | ❌ 隱藏（P65） |
+
+> 共 23 條路由。
 
 ---
 
@@ -237,7 +246,7 @@ globalStore = {
 
 ### 關鍵 View 說明
 
-- **ChatRoomView (單人聊天)**：串流逐字輸出（`generateAIResponseStream`）、長按訊息選單（複製／編輯重傳／重新生成）、記憶抽屜（AI 總結、手動新增、編輯、toggle、刪除）、背景主動訊息計時器（`scheduleProactive`）、auto-interrupt 打斷模式。**P67 起**：訊息列表在跨日邊界自動插入「M 月 D 日　星期X」分隔標籤（`showDateSep()` / `fmtDateSep()`）。
+- **ChatRoomView (單人聊天)**：串流逐字輸出（`generateAIResponseStream`）、長按訊息選單（複製／編輯重傳／重新生成）、記憶抽屜（AI 總結、手動新增、編輯、toggle、刪除）、背景主動訊息計時器（`scheduleProactive`）、auto-interrupt 打斷模式。**P62 起**：玩家訊息帶自訂頭像列、長按可加表情反應（`reaction`）、達門檻自動總結（`maybeAutoSummarize()`）。**P65 起**：相機按鈕傳圖（`compressImage()` 壓 512px）、泡泡圖片渲染與 `viewImage()` 全螢幕預覽。**P67 起**：訊息列表在跨日邊界自動插入「M 月 D 日　星期X」分隔標籤（`showDateSep()` / `fmtDateSep()`）。
 - **GroupRoomView (群組聊天)**：多角色串流輪替回覆，`@點名` 強制指定角色，角色前綴清洗防止 AI 混淆發言。
 - **CharEditView (角色編輯)**：5 個 Tab 切換，包含基本資訊、個性背景、說話方式、關係規範、AI 參數，必須確保 modal CSS 存在以正常顯示彈窗。自動功能區含「生理期關心」toggle（`char.cycleCare`，預設 false，P59）。
 - **MeView (我的設定)**：玩家自身資料；含「作息 / 行程」區塊（`workTime`/`workPlace`/`restTime`，P63）與「生理期追蹤」區塊（主開關、最近經期開始日、週期長度、經期天數，即時預覽推算階段，P59），資料寫入 `me_settings`。儲存成功後 toast 提示再導頁（P64）。
@@ -247,6 +256,7 @@ globalStore = {
 - **DreamView / DreamDetailView**：夢境列表與全文展示。
 - **BlackboxView**：Heart Voice 心聲記錄。
 - **NotificationsView**：顯示貼文／日記／夢境／心聲／主動訊息生成後寫入的通知，點擊跳轉對應頁面。支援 `type`：`post` / `diary` / `dream` / `hv` / `chat`。
+- **WorldsView / WorldEditView (世界書，P65)**：與角色脫鉤的全域詞條庫（`worlds` store）。列表頁支援分類篩選與啟用 toggle；編輯頁設定名稱（觸發關鍵字）、別名、分類、內容、適用角色。對話時由 `buildAIChatSetup` 命中關鍵字才注入 prompt。
 
 ---
 
