@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P60 – P64 更新公告</div>
+      <div class="ann-badge">P65 – P67 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,20 +16,20 @@
               <div class="ann-title">新功能</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">角色與玩家作息設定</div>
-                  <div class="ann-item-desc">在角色設定與「我的設定」填入上班時間、地點、作息習慣後，角色會依現在時間推測你在上班還是休息，主動訊息更有情境感、關心更到位。</div>
+                  <div class="ann-item-title">世界觀設定書（World Book）📖</div>
+                  <div class="ann-item-desc">設定 →「世界書」可建立與角色脫鉤的客觀詞條庫（地點、人物、規則、歷史…）。對話聊到關鍵字時自動餵給 AI 參考，不觸發就不佔額度，世界觀更一致。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">自動總結記憶</div>
-                  <div class="ann-item-desc">角色設定 → 自動功能 → 開啟「自動總結記憶」，每累積到設定則數就自動幫你們的對話建立長期記憶，不再需要手動按總結。</div>
+                  <div class="ann-item-title">傳圖片給角色看 🖼</div>
+                  <div class="ann-item-desc">聊天室輸入框旁新增相機鈕，可傳送圖片給角色，AI 會描述、評論圖片內容（圖片自動壓縮，點泡泡可全螢幕預覽）。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">玩家自訂大頭貼</div>
-                  <div class="ann-item-desc">「我的設定」頁面可上傳大頭貼或選 Emoji，聊天室中玩家的訊息也會顯示你的頭像，對話更有臨場感。</div>
+                  <div class="ann-item-title">作息時段主動訊息 ⏰</div>
+                  <div class="ann-item-desc">角色設定的「作息／行程」可新增自訂時段（例：12:00 提醒你吃午餐），到點角色就會主動敲你，每個時段可單獨開關、當天只發一次。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">訊息表情反應</div>
-                  <div class="ann-item-desc">長按訊息可對任何一則訊息加上表情反應（❤️ 😂 👍 😮 😢 🙏），再點一次可取消。</div>
+                  <div class="ann-item-title">聊天日期分隔線</div>
+                  <div class="ann-item-desc">訊息跨日時自動插入「M 月 D 日　星期X」分隔線，往回翻歷史對話時清楚辨別日期。</div>
                 </div>
               </div>
             </template>
@@ -39,24 +39,24 @@
               <div class="ann-title">修復與強化</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">連線測試更準確</div>
-                  <div class="ann-item-desc">修復位址打錯（如 /v.1）時測試仍顯示「成功」的假陽性問題，現在會明確提示「位址或端點不正確」。</div>
+                  <div class="ann-item-title">角色不再亂改你的名字</div>
+                  <div class="ann-item-desc">修正夫妻／戀人關係下，AI 自作主張幫你冠夫姓或改名的問題；現在會嚴格沿用你設定的稱呼與本名。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">返回鍵修正</div>
-                  <div class="ann-item-desc">聊天室左上角返回鍵現在正確導向聊天列表，不再跳到首頁。</div>
+                  <div class="ann-item-title">跨天時間流逝感知</div>
+                  <div class="ann-item-desc">開啟「時間感」的角色，隔了很久再聊時會意識到「上次對話已過一段時間」，不再像沒中斷過一樣接著舊話題講。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">未讀標示自動消失</div>
-                  <div class="ann-item-desc">進入聊天室後，返回列表時未讀紅點會即時清除，不再需要重開 App。</div>
+                  <div class="ann-item-title">時間感知更準確</div>
+                  <div class="ann-item-desc">修正時間間隔計算的 bug（原本永遠偵測不到跨天），現在角色對「現在幾點、過了多久」的判斷更可靠。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">儲存成功提示</div>
-                  <div class="ann-item-desc">角色設定與我的設定儲存後，現在會先出現「已儲存」提示再跳頁。</div>
+                  <div class="ann-item-title">貼文留言顯示你的頭像</div>
+                  <div class="ann-item-desc">在貼文留言時，頭像改為顯示你自訂的大頭貼（emoji 或圖片），不再是固定的預設圖示。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">串流空回應提示</div>
-                  <div class="ann-item-desc">代理回傳空回應時，改為顯示明確提示，不再靜默消失讓你以為卡住了。</div>
+                  <div class="ann-item-title">日記／夢境卡片間距修正</div>
+                  <div class="ann-item-desc">修正日記與夢境列表卡片擠在一起、間距不正確的小問題。</div>
                 </div>
               </div>
             </template>
@@ -90,7 +90,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P64</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P67</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
