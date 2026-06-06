@@ -1,7 +1,7 @@
 <template>
   <div class="page active" id="pg-me">
     <div class="ph">
-      <div class="ph-back" @click="$router.push('/settings')"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
+      <div class="ph-back" @click="$router.back()"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
       <div class="ph-title">我的設定</div>
       <div class="ph-act" @click="saveMe">儲存</div>
     </div>
@@ -33,7 +33,7 @@
         <div v-for="e in EMOJIS" :key="e" class="emoji-opt" :class="{ sel: me.avatar === e }" @click="pickEmoji(e)">{{ e }}</div>
       </div>
 
-      <div class="sec-label" style="margin-top:8px">你在故事世界裡的身份</div>
+      <div class="sec-label" style="margin-top:8px">基本資訊</div>
       <div class="form-group">
         <div class="form-row">
           <div class="form-label">你希望被叫什麼</div>
@@ -48,13 +48,19 @@
           <div class="form-label">職業 / 身份</div>
           <input class="form-input" v-model="me.job" type="text" placeholder="例：大學生、插畫師、咖啡師…">
         </div>
+      </div>
+
+      <div class="sec-label">個性描述</div>
+      <div class="form-group">
         <div class="form-row">
-          <div class="form-label">個性簡述</div>
+          <div class="form-label">你的個性（長期）</div>
           <textarea class="form-input" v-model="me.persona" rows="3" placeholder="你是什麼樣的人？這會影響角色怎麼對待你。例：外表大方但內心容易緊張，喜歡被照顧卻不擅長開口要求…"></textarea>
+          <div class="form-hint">描述你不常改變的性格特質</div>
         </div>
         <div class="form-row">
-          <div class="form-label">其他備註</div>
-          <textarea class="form-input" v-model="me.note" rows="2" placeholder="其他想讓所有角色知道的事…"></textarea>
+          <div class="form-label">補充說明（彈性）</div>
+          <textarea class="form-input" v-model="me.note" rows="2" placeholder="目前的心情、特殊情境、想讓所有角色知道的其他事…"></textarea>
+          <div class="form-hint">隨時可以更新，用來告訴角色你目前的狀態或特殊情境</div>
         </div>
       </div>
 
@@ -89,7 +95,7 @@
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">開啟週期追蹤</div>
-            <div class="toggle-desc">資料只存在你的裝置本地、不會上傳。開啟後，再到個別角色的編輯頁打開「生理期關心」，該角色才會在經期前後體貼你、主動傳關心訊息。</div>
+            <div class="toggle-desc">資料只存在你的裝置本地、不會上傳。開啟後，再到個別角色的設定（進階設定 Tab → 生理期關心）打開，該角色才會在經期前後體貼你、主動傳關心訊息。</div>
           </div>
           <div class="toggle" :class="{ on: me.cycleEnabled }" @click="me.cycleEnabled = !me.cycleEnabled"><div class="toggle-knob"></div></div>
         </div>
@@ -198,7 +204,6 @@ function onAvFileChange(e) {
 async function saveMe() {
   await setSetting('me_settings', JSON.parse(JSON.stringify(me.value)));
   window.toast_('已儲存');
-  router.push('/settings');
 }
 </script>
 

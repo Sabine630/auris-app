@@ -1,7 +1,7 @@
 <template>
   <div class="page active" id="pg-api">
     <div class="ph">
-      <div class="ph-back" @click="$router.push('/settings')"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
+      <div class="ph-back" @click="$router.back()"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
       <div class="ph-title">API 設定</div>
       <div class="ph-act" @click="saveApi">儲存</div>
     </div>

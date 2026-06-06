@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-06（P69）
+> 最後更新：2026-06-06（P72）
 
 ---
 
@@ -314,6 +314,26 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P72（2026-06-06）角色設定重整・自訂紀念日・MeView 分組・關係主頁多入口
+
+- **CharEditView Tab 重整**：Tab 3「關係與規範」→「關係設定」；Tab 4「回覆設定」→「進階設定」。行為規範（isAI、taboo、extra）從 Tab 3 移至 Tab 4。scheduleTriggers 從 Tab 1 移至 Tab 4。
+- **關係主頁快捷入口**（`CharEditView.vue` Tab 3 頂部）：isEdit 模式下顯示「查看關係主頁 →」連結；`CharManageView.vue` 角色卡新增「關係」按鈕。
+- **自訂紀念日**（`CharEditView.vue`）：Tab 3 新增 `anniversaries` 動態陣列（label + date），取代硬編碼 meetDate UI；onMounted 自動遷移舊 meetDate 資料至 anniversaries。`RelationView.vue` 的 upcoming computed 同步顯示自訂紀念日。
+- **MeView 分組重構**（`MeView.vue`）：從單一長表單改為「基本資訊 / 個性描述 / 生日 / 作息 / 生理期追蹤」五個語意分組；persona/note 標籤釐清為長期 vs. 彈性；cycleCare 提示更新指向「進階設定 Tab」。
+- **HomeView**：公告按鈕版號更新至 P72。
+
+---
+
+### P71（2026-06-06）導航重構
+
+- **全域 router.back()**：所有頁面返回按鈕從硬編碼路由改為 `$router.back()`，確保「從哪來回哪去」的正確行為（20+ 個 view）。
+- **儲存留原頁**：`CharEditView`、`MeView`、`WorldEditView` 儲存後不跳頁，顯示 toast 提示。新建項目首次儲存後以 `router.replace` 更新路由，修正 ID 重複建立與 createdAt 重複寫入的 bug。
+- **首頁清理**：移除首頁「設定」區塊（我的設定＋系統設定磚塊，底部導航已提供）。首頁「新增角色」直連 `/char-edit`。
+- **設定頁重整**（`SettingsView.vue`）：頂部改為個人資訊卡（頭像＋名字，點擊進入我的設定）；角色管理改為多人圖示；移除清單中的我的設定列。
+- **BottomNav 優化**（`BottomNav.vue`）：`我的` 標籤改為`設定`；設定 tab 高亮範圍擴大至 `me`、`worlds`、`worlds-edit` 路由。
+
+---
 
 ### P69（2026-06-06）生日紀念日系統 + 關係主頁
 

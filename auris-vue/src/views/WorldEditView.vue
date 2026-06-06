@@ -1,7 +1,7 @@
 <template>
   <div class="page active" id="pg-world-edit">
     <div class="ph">
-      <div class="ph-back" @click="$router.push('/worlds')"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
+      <div class="ph-back" @click="$router.back()"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
       <div class="ph-title">{{ isEdit ? '編輯詞條' : '新增詞條' }}</div>
       <div class="ph-act" @click="save">儲存</div>
     </div>
@@ -141,10 +141,11 @@ function toggleChar(id) {
 async function save() {
   if (!form.value.name.trim()) { window.toast_('請填入詞條名稱'); return; }
   if (!form.value.content.trim()) { window.toast_('請填入詞條內容'); return; }
-  const id = isEdit.value ? route.params.id : 'world_' + Date.now();
+  const id = form.value.id || (isEdit.value ? route.params.id : 'world_' + Date.now());
+  form.value.id = id;
   await dbPut('worlds', { ...form.value, id, name: form.value.name.trim(), content: form.value.content.trim() });
   window.toast_('已儲存');
-  router.push('/worlds');
+  if (!isEdit.value) router.replace('/worlds/edit/' + id);
 }
 
 function confirmDelete() { showDel.value = true; }

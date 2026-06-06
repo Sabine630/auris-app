@@ -5,13 +5,13 @@
       <div class="h-name">你的 <em>世界</em></div>
       <div class="h-ann-btn" @click="openAnnouncement">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;flex-shrink:0"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-        P65–P67 更新公告
+        P72 更新公告
       </div>
     </div>
 
     <!-- Character bar -->
     <div class="h-chars anim" style="animation-delay:.05s">
-      <div class="h-char-all" @click="$router.push('/settings')">
+      <div class="h-char-all" @click="$router.push('/char-edit')">
         <div class="h-char-all-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg></div>
         <div class="h-char-all-name">新增角色</div>
       </div>
@@ -54,7 +54,7 @@
     </div>
 
     <div class="h-sec">角色生活</div>
-    <div class="tg">
+    <div class="tg" style="margin-bottom:24px">
       <div class="tile anim" style="animation-delay:.07s" @click="$router.push('/blackbox')">
         <div class="t-ic"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></div>
         <div class="t-name">心聲</div><div class="t-sub">那些說不出口的</div>
@@ -75,17 +75,6 @@
       </div>
     </div>
 
-    <div class="h-sec">設定</div>
-    <div class="tg tg3" style="margin-bottom:24px">
-      <div class="tile anim" style="animation-delay:.07s;min-height:76px" @click="$router.push('/me')">
-        <div class="t-ic"><svg viewBox="0 0 24 24" style="width:22px;height:22px"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-        <div class="t-name" style="font-size:11px">我的設定</div>
-      </div>
-      <div class="tile anim" style="animation-delay:.10s;min-height:76px" @click="$router.push('/settings')">
-        <div class="t-ic"><svg viewBox="0 0 24 24" style="width:22px;height:22px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></div>
-        <div class="t-name" style="font-size:11px">系統設定</div>
-      </div>
-    </div>
   </div>
 </template>
 

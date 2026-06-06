@@ -1,7 +1,7 @@
 <template>
   <div class="page active" id="pg-blackbox">
     <div class="ph">
-      <div class="ph-back" @click="$router.push('/')"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
+      <div class="ph-back" @click="$router.back()"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
       <div class="ph-title">心聲</div>
       <div class="ph-act" style="font-size:11px;color:var(--text-3)">{{ filteredMemories.length ? `${filteredMemories.length} 則` : '' }}</div>
     </div>

@@ -1,32 +1,31 @@
 <template>
   <div class="page active" id="pg-settings">
     <div class="ph">
-      <div class="ph-back" @click="$router.push('/')">
+      <div class="ph-back" @click="$router.back()">
         <svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回
       </div>
       <div class="ph-title">設定</div>
       <div></div>
     </div>
     
-    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:28px 24px 20px">
-      <div style="width:68px;height:68px;border-radius:20px;background:linear-gradient(135deg,var(--rose),#e8b09e);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(201,136,122,0.28)">
-        <svg width="30" height="30" viewBox="0 0 24 24" style="stroke:#fff;fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round"><path d="M3 18v-1a5 5 0 015-5h8a5 5 0 015 5v1"/><circle cx="12" cy="7" r="4"/></svg>
+    <!-- 我的資訊卡 -->
+    <div class="me-card" @click="$router.push('/me')">
+      <div class="me-card-av">
+        <img v-if="meAvatar && meAvatar.startsWith('data:')" :src="meAvatar" style="width:100%;height:100%;object-fit:cover;border-radius:14px">
+        <span v-else>{{ meAvatar || '🙂' }}</span>
       </div>
-      <div style="font-family:var(--font-serif);font-size:20px;font-style:italic;color:var(--text)">Auris</div>
-      <div style="font-size:12px;font-weight:300;color:var(--text-3)">你說，他在聽</div>
+      <div class="me-card-info">
+        <div class="me-card-name">{{ meName || '設定你的名字' }}</div>
+        <div class="me-card-sub">編輯個人資料 ›</div>
+      </div>
     </div>
 
     <div class="sg-label">角色與世界</div>
     <div class="sg">
       <div class="sr" @click="$router.push('/char-manage')">
-        <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
         <div class="sr-text">角色管理</div>
         <div class="sr-val">{{ globalStore.characters.length > 0 ? `${globalStore.characters.length} 個角色` : '尚未建立' }}</div><div class="sr-chev">›</div>
-      </div>
-      <div class="sr" @click="$router.push('/me')">
-        <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-        <div class="sr-text">我的設定</div>
-        <div class="sr-val">未設定</div><div class="sr-chev">›</div>
       </div>
       <div class="sr" @click="$toast('多世界模式 — Phase 4')">
         <div class="sr-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg></div>
@@ -86,10 +85,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P70
+        Auris · P72
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P70 首頁改版・黑盒子改名心聲・世界書 & 我的設定入口
+        P72 角色設定重整・自訂紀念日・MeView 分組・關係主頁多入口
       </div>
     </div>
   </div>
@@ -110,9 +109,14 @@ const themes = [
 ];
 
 const apiKey = ref('');
+const meName = ref('');
+const meAvatar = ref('');
 
 onMounted(async () => {
   apiKey.value = (await getSetting('api_key')) || '';
+  const me = await getSetting('me_settings');
+  meName.value = me?.name || '';
+  meAvatar.value = me?.avatar || '🙂';
 });
 
 async function applyTheme(id) {
@@ -182,3 +186,47 @@ function importData() {
   input.click();
 }
 </script>
+
+<style scoped>
+.me-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 16px 16px 8px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border-radius: 16px;
+  border: .5px solid var(--border);
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.me-card:active { opacity: .7; }
+.me-card-av {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--rose-pale, rgba(201,136,122,.12));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.me-card-info { flex: 1; min-width: 0; }
+.me-card-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.me-card-sub {
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--rose);
+  letter-spacing: .02em;
+}
+</style>

@@ -1,7 +1,7 @@
 <template>
   <div class="page active" id="pg-group-create">
     <div class="ph">
-      <div class="ph-back" @click="$router.push('/group-list')"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
+      <div class="ph-back" @click="$router.back()"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
       <div class="ph-title">建立群組</div>
       <div class="ph-act" @click="createGroup" style="color:var(--rose)">建立</div>
     </div>

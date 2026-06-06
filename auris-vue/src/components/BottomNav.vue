@@ -18,11 +18,11 @@
       </div>
       <div class="ni-label">貼文</div>
     </div>
-    <div class="ni" :class="{ active: route.name === 'settings' }" @click="router.push('/settings')">
+    <div class="ni" :class="{ active: isSettingsActive }" @click="router.push('/settings')">
       <div class="ni-icon">
         <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       </div>
-      <div class="ni-label">我的</div>
+      <div class="ni-label">設定</div>
     </div>
   </nav>
 </template>
@@ -40,5 +40,8 @@ const isChatActive = computed(() =>
 );
 const isMomentsActive = computed(() =>
   ['moments', 'post-detail'].includes(route.name)
+);
+const isSettingsActive = computed(() =>
+  ['settings', 'me', 'worlds', 'worlds-edit'].includes(route.name)
 );
 </script>

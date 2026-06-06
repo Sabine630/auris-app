@@ -137,6 +137,13 @@ const upcoming = computed(() => {
     const d = daysUntilAnnual(c.meetDate.slice(5));
     if (d !== null && d <= 90) items.push({ icon: '🌸', label: '相識紀念日', date: c.meetDate.slice(5), daysLeft: d });
   }
+  if (c.anniversaries && c.anniversaries.length) {
+    for (const ann of c.anniversaries) {
+      if (!ann.date || !ann.label) continue;
+      const d = daysUntilAnnual(ann.date.slice(5));
+      if (d !== null && d <= 90) items.push({ icon: '🗓️', label: ann.label, date: ann.date.slice(5), daysLeft: d });
+    }
+  }
 
   return items.sort((a, b) => a.daysLeft - b.daysLeft);
 });

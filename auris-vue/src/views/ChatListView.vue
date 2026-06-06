@@ -1,7 +1,7 @@
 <template>
   <div class="page active" id="pg-chat-list" @click="closeMenus">
     <div class="ph">
-      <div class="ph-back" v-if="!manageMode" @click="$router.push('/')"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
+      <div class="ph-back" v-if="!manageMode" @click="$router.back()"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
       <div class="ph-back" v-else @click="manageMode = false"><span style="color:var(--rose)">✕ 取消</span></div>
       
       <div class="ph-title">{{ manageMode ? `已選 ${selectedChats.length} 個` : '聊天' }}</div>

@@ -1,7 +1,7 @@
 <template>
   <div class="page active" id="pg-char-manage">
     <div class="ph">
-      <div class="ph-back" @click="$router.push('/settings')"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
+      <div class="ph-back" @click="$router.back()"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
       <div class="ph-title">角色管理</div>
       <div class="ph-act" @click="$router.push('/char-edit')">＋ 新增</div>
     </div>
@@ -28,6 +28,7 @@
         </div>
         <div class="char-btns">
           <button class="char-chat-btn" @click="$router.push('/chat/' + c.id)">聊天</button>
+          <button class="char-rel-btn" @click="$router.push('/relation/' + c.id)">關係</button>
           <button class="char-edit-btn" @click="$router.push('/char-edit/' + c.id)">編輯</button>
           <button class="char-del-btn" @click="deleteCharacter(c)">刪除</button>
         </div>
@@ -112,6 +113,21 @@ async function confirmDelete() {
 </script>
 
 <style scoped>
+.char-rel-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rose);
+  border: .5px solid var(--rose);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all .15s;
+}
+.char-rel-btn:active {
+  background: var(--rose);
+  color: #fff;
+}
 .char-del-btn {
   padding: 6px 12px;
   border-radius: 8px;

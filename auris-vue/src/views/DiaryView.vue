@@ -1,7 +1,7 @@
 <template>
   <div class="page active" id="pg-diary">
     <div class="ph">
-      <div class="ph-back" @click="$router.push('/')"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
+      <div class="ph-back" @click="$router.back()"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
       <div class="ph-title">日記</div>
       <div class="ph-act" @click="showGenPanel = !showGenPanel" style="font-size:12px;color:var(--rose)">＋ 生成</div>
     </div>

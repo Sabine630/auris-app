@@ -2,7 +2,7 @@
   <div class="page active" id="pg-char-edit" style="display:flex;flex-direction:column;z-index:999">
     <!-- 頁首 -->
     <div class="ph">
-      <div class="ph-back" @click="$router.push('/char-manage')"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
+      <div class="ph-back" @click="$router.back()"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
       <div class="ph-title">{{ isEdit ? '編輯角色' : '新增角色' }}</div>
       <div class="ph-act" @click="saveChar">儲存</div>
     </div>
@@ -12,8 +12,8 @@
       <div class="tab-item" :class="{ active: curTab === 0 }" @click="curTab = 0">基本資訊</div>
       <div class="tab-item" :class="{ active: curTab === 1 }" @click="curTab = 1">個性背景</div>
       <div class="tab-item" :class="{ active: curTab === 2 }" @click="curTab = 2">說話方式</div>
-      <div class="tab-item" :class="{ active: curTab === 3 }" @click="curTab = 3">關係與規範</div>
-      <div class="tab-item" :class="{ active: curTab === 4 }" @click="curTab = 4">回覆設定</div>
+      <div class="tab-item" :class="{ active: curTab === 3 }" @click="curTab = 3">關係設定</div>
+      <div class="tab-item" :class="{ active: curTab === 4 }" @click="curTab = 4">進階設定</div>
     </div>
 
     <!-- Tab 內容滾動區 -->
@@ -146,17 +146,6 @@
             <textarea class="form-input" rows="2" v-model="char.restTime" placeholder="例：通常凌晨1點睡、早上8點起；週末會睡到中午…"></textarea>
             <div class="form-hint">搭配「時間感」開啟時，角色會依現在時間推測自己在上班、通勤還是睡覺，主動訊息更有情境感</div>
           </div>
-          <div class="form-row">
-            <div class="form-label">主動訊息時段</div>
-            <div class="form-hint" style="margin-bottom:8px">設定後角色會在指定時間主動傳訊，每個時段每天只發一次</div>
-            <div v-for="(t, i) in char.scheduleTriggers" :key="i" style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-              <input type="time" v-model="t.time" class="form-input" style="width:100px;flex-shrink:0">
-              <input type="text" v-model="t.desc" class="form-input" placeholder="例：提醒我吃午餐、叫我起床…" style="flex:1">
-              <div class="toggle" :class="{ on: t.enabled }" @click="t.enabled = !t.enabled" style="flex-shrink:0"><div class="toggle-knob"></div></div>
-              <div @click="char.scheduleTriggers.splice(i, 1)" style="cursor:pointer;color:var(--text-3);font-size:18px;line-height:1;flex-shrink:0">×</div>
-            </div>
-            <div class="form-hint" style="cursor:pointer;color:var(--accent);margin-top:4px" @click="char.scheduleTriggers.push({ time: '12:00', desc: '', enabled: true })">＋ 新增時段</div>
-          </div>
         </div>
       </div>
 
@@ -205,8 +194,12 @@
         </div>
       </div>
 
-      <!-- ── Tab 3：關係與規範 ── -->
+      <!-- ── Tab 3：關係設定 ── -->
       <div class="tab-panel" :class="{ active: curTab === 3 }">
+        <div v-if="isEdit" style="margin:16px 16px 0;padding:12px 14px;background:var(--surface);border-radius:12px;border:.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer" @click="$router.push('/relation/' + charId)">
+          <div style="font-size:13px;font-weight:400;color:var(--text)">查看關係主頁</div>
+          <div style="font-size:13px;color:var(--rose)">›</div>
+        </div>
         <div class="sec-label" style="margin-top:8px">與你的關係</div>
         <div class="form-group">
           <div class="form-row">
@@ -234,13 +227,20 @@
             <input class="form-input" type="date" v-model="char.birthday" style="color-scheme:var(--color-scheme,light)">
           </div>
           <div class="form-row">
-            <div class="form-label">相識日</div>
-            <input class="form-input" type="date" v-model="char.meetDate" style="color-scheme:var(--color-scheme,light)">
-          </div>
-          <div class="form-row">
             <div class="form-label">在一起的日期</div>
             <input class="form-input" type="date" v-model="char.togetherDate" style="color-scheme:var(--color-scheme,light)">
+            <div class="form-hint">用於計算「在一起 X 天」</div>
           </div>
+        </div>
+
+        <div class="sec-label">自訂紀念日</div>
+        <div class="form-group">
+          <div v-for="(ann, i) in char.anniversaries" :key="ann.id" style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+            <input type="text" v-model="ann.label" class="form-input" placeholder="例：認識、訂婚、結婚…" style="flex:1">
+            <input type="date" v-model="ann.date" class="form-input" style="width:auto;flex-shrink:0;color-scheme:var(--color-scheme,light)">
+            <div @click="removeAnniversary(i)" style="cursor:pointer;color:var(--text-3);font-size:18px;line-height:1;flex-shrink:0">×</div>
+          </div>
+          <div class="form-hint" style="cursor:pointer;color:var(--accent);margin-top:4px" @click="addAnniversary">＋ 新增紀念日</div>
         </div>
 
         <div class="sec-label">在這段關係中——你是誰</div>
@@ -270,29 +270,9 @@
           </div>
         </div>
 
-        <div class="sec-label">行為規範</div>
-        <div class="form-group">
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="toggle-name">角色知道自己是 AI</div>
-              <div class="toggle-desc">關閉時角色完全沉浸人設，不承認是程式</div>
-            </div>
-            <div class="toggle" :class="{ on: char.isAI }" @click="char.isAI = !char.isAI"><div class="toggle-knob"></div></div>
-          </div>
-        </div>
-        <div class="form-group">
-          <div class="form-row">
-            <div class="form-label">禁止話題</div>
-            <textarea class="form-input" rows="2" v-model="char.taboo" placeholder="例：不談前任、不討論政治…"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-label">補充指令 <span style="font-size:11px;color:var(--text-3);font-weight:300">進階</span></div>
-            <textarea class="form-input" rows="3" v-model="char.extra" placeholder="直接給 AI 的額外 prompt 指令…"></textarea>
-          </div>
-        </div>
       </div>
 
-      <!-- ── Tab 4：回覆設定 ── -->
+      <!-- ── Tab 4：進階設定 ── -->
       <div class="tab-panel" :class="{ active: curTab === 4 }">
         <div class="sec-label" style="margin-top:8px">回覆行為</div>
         <div class="form-group">
@@ -406,12 +386,47 @@
         </div>
 
         <div class="sec-label">語言</div>
-        <div class="form-group" style="margin-bottom:0">
+        <div class="form-group">
           <div class="form-row">
             <div class="form-label">角色輸出語言</div>
             <div class="opt-group">
               <div v-for="o in LANGS" :key="o.v" class="opt-btn" :class="{ sel: char.lang === o.v }" @click="char.lang = o.v">{{ o.l }}</div>
             </div>
+          </div>
+        </div>
+
+        <div class="sec-label">主動訊息時段</div>
+        <div class="form-group">
+          <div class="form-row">
+            <div class="form-hint" style="margin-bottom:8px">設定後角色會在指定時間主動傳訊，每個時段每天只發一次</div>
+            <div v-for="(t, i) in char.scheduleTriggers" :key="i" style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+              <input type="time" v-model="t.time" class="form-input" style="width:100px;flex-shrink:0">
+              <input type="text" v-model="t.desc" class="form-input" placeholder="例：提醒我吃午餐、叫我起床…" style="flex:1">
+              <div class="toggle" :class="{ on: t.enabled }" @click="t.enabled = !t.enabled" style="flex-shrink:0"><div class="toggle-knob"></div></div>
+              <div @click="char.scheduleTriggers.splice(i, 1)" style="cursor:pointer;color:var(--text-3);font-size:18px;line-height:1;flex-shrink:0">×</div>
+            </div>
+            <div class="form-hint" style="cursor:pointer;color:var(--accent);margin-top:4px" @click="char.scheduleTriggers.push({ time: '12:00', desc: '', enabled: true })">＋ 新增時段</div>
+          </div>
+        </div>
+
+        <div class="sec-label">行為規範</div>
+        <div class="form-group">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-name">角色知道自己是 AI</div>
+              <div class="toggle-desc">關閉時角色完全沉浸人設，不承認是程式</div>
+            </div>
+            <div class="toggle" :class="{ on: char.isAI }" @click="char.isAI = !char.isAI"><div class="toggle-knob"></div></div>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <div class="form-row">
+            <div class="form-label">禁止話題</div>
+            <textarea class="form-input" rows="2" v-model="char.taboo" placeholder="例：不談前任、不討論政治…"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-label">補充指令 <span style="font-size:11px;color:var(--text-3);font-weight:300">進階</span></div>
+            <textarea class="form-input" rows="3" v-model="char.extra" placeholder="直接給 AI 的額外 prompt 指令…"></textarea>
           </div>
         </div>
       </div>
@@ -502,6 +517,8 @@ const char = ref({
   workPlace: '',
   restTime: '',
   scheduleTriggers: [],
+  anniversaries: [],
+  meetDate: '',
   style: 'casual',
   talkative: 'mid',
   call: '',
@@ -549,11 +566,24 @@ onMounted(async () => {
     if (c) {
       char.value = { ...char.value, ...c };
       if (!c.stories) char.value.stories = JSON.parse(JSON.stringify(DEFAULT_STORIES));
+      if (!char.value.anniversaries) char.value.anniversaries = [];
+      // migrate legacy meetDate into anniversaries
+      if (char.value.meetDate && char.value.anniversaries.length === 0) {
+        char.value.anniversaries.push({ id: 'ann_meet_' + Date.now(), label: '認識紀念日', date: char.value.meetDate });
+      }
     }
   } else {
     char.value.id = 'char_' + Date.now();
   }
 });
+
+function addAnniversary() {
+  char.value.anniversaries.push({ id: 'ann_' + Date.now(), label: '', date: '' });
+}
+
+function removeAnniversary(i) {
+  char.value.anniversaries.splice(i, 1);
+}
 
 function toggleTag(t) {
   const idx = char.value.tags.indexOf(t);
@@ -639,14 +669,15 @@ async function saveChar() {
     return;
   }
 
+  const wasNew = !isEdit.value;
   char.value.updatedAt = Date.now();
-  if (!isEdit.value) char.value.createdAt = Date.now();
+  if (wasNew && !char.value.createdAt) char.value.createdAt = Date.now();
   if (!char.value.worldId) char.value.worldId = 'main';
 
   await dbPut('characters', JSON.parse(JSON.stringify(char.value)));
   await globalStore.loadCharacters();
   window.toast_('角色已儲存');
-  router.push('/char-manage');
+  if (wasNew) router.replace('/char-edit/' + char.value.id);
 }
 
 async function doDeleteChar() {
