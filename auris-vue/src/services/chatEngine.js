@@ -63,27 +63,29 @@ function getHolidaySeasonCtx() {
 // 個人紀念日感知：回傳今天與角色/玩家生日、相識日、在一起紀念日相關的提示字串
 function getPersonalDateCtx(char, me) {
   const n = new Date();
-  const today = `${String(n.getMonth() + 1).padStart(2, ‘0’)}-${String(n.getDate()).padStart(2, ‘0’)}`;
+  const mm = String(n.getMonth() + 1).padStart(2, '0');
+  const dd = String(n.getDate()).padStart(2, '0');
+  const today = mm + '-' + dd;
   const parts = [];
 
   function mmdd(dateStr) {
     if (!dateStr) return null;
-    return dateStr.slice(5); // ‘YYYY-MM-DD’ → ‘MM-DD’
+    return dateStr.slice(5);
   }
 
-  if (mmdd(char.birthday) === today) parts.push(`今天是【${char.name}】的生日🎂`);
-  if (mmdd(me?.birthday) === today) parts.push(‘今天是【對方】的生日🎂，請特別祝福、表達心意’);
-  if (mmdd(char.meetDate) === today) parts.push(`今天是你們的相識紀念日🌸`);
+  if (mmdd(char.birthday) === today) parts.push('今天是「' + char.name + '」的生日🎂');
+  if (mmdd(me && me.birthday) === today) parts.push('今天是「對方」的生日🎂，請特別祝福、表達心意');
+  if (mmdd(char.meetDate) === today) parts.push('今天是你們的相識紀念日🌸');
   if (mmdd(char.togetherDate) === today) {
     const start = new Date(char.togetherDate);
     const days = Math.floor((n - start) / 86400000);
-    parts.push(`今天是你們在一起的紀念日❤️（第 ${days} 天）`);
+    parts.push('今天是你們在一起的紀念日❤️（第 ' + days + ' 天）');
   }
 
-  return parts.length ? `\n【紀念日】${parts.join(‘；’)}` : ‘’;
+  return parts.length ? ('\n【紀念日】' + parts.join('；')) : '';
 }
 
-const CLEAN_END_RE = /[。！？！?.…」』）)」”’”]/;
+const CLEAN_END_RE = /[。！？！?.…」』）)」”'”]/;
 
 // ── Shared SSE stream parser ───────────────────────────────────────────────
 async function parseSSEStream(response, provider, onChunk) {
