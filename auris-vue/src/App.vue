@@ -52,7 +52,7 @@ import { getCyclePhase } from './services/cycle.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
-const ANNOUNCEMENT_VERSION = 'P68';
+const ANNOUNCEMENT_VERSION = 'P73';
 const showAnnouncement = ref(false);
 
 // ── 全域 confirm modal ─────────────────────────────────────────────────────

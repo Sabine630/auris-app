@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P65 – P67 更新公告</div>
+      <div class="ann-badge">P68 – P73 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,47 +16,43 @@
               <div class="ann-title">新功能</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">世界觀設定書（World Book）📖</div>
-                  <div class="ann-item-desc">設定 →「世界書」可建立與角色脫鉤的客觀詞條庫（地點、人物、規則、歷史…）。對話聊到關鍵字時自動餵給 AI 參考，不觸發就不佔額度，世界觀更一致。</div>
+                  <div class="ann-item-title">關係主頁 💑</div>
+                  <div class="ann-item-desc">每個角色都有專屬關係主頁：在一起計數器、生日倒數、重要日子倒數，一眼掌握你們的關係時間軸。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">傳圖片給角色看 🖼</div>
-                  <div class="ann-item-desc">聊天室輸入框旁新增相機鈕，可傳送圖片給角色，AI 會描述、評論圖片內容（圖片自動壓縮，點泡泡可全螢幕預覽）。</div>
+                  <div class="ann-item-title">自訂紀念日</div>
+                  <div class="ann-item-desc">角色設定 → 關係設定，可自由新增任意紀念日（認識、訂婚、第一次約會…），關係主頁自動顯示倒數。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">作息時段主動訊息 ⏰</div>
-                  <div class="ann-item-desc">角色設定的「作息／行程」可新增自訂時段（例：12:00 提醒你吃午餐），到點角色就會主動敲你，每個時段可單獨開關、當天只發一次。</div>
+                  <div class="ann-item-title">心聲管理刪除 🗑</div>
+                  <div class="ann-item-desc">心聲頁面新增「管理」模式，可單選或全選批量刪除不想留的心聲，獨立於聊天記錄管理。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">聊天日期分隔線</div>
-                  <div class="ann-item-desc">訊息跨日時自動插入「M 月 D 日　星期X」分隔線，往回翻歷史對話時清楚辨別日期。</div>
+                  <div class="ann-item-title">語音輸入</div>
+                  <div class="ann-item-desc">聊天室輸入框新增麥克風鍵，說話即可轉文字，免打字也能輕鬆聊天。</div>
                 </div>
               </div>
             </template>
 
-            <!-- 第二頁：修復與強化 -->
+            <!-- 第二頁：介面優化 -->
             <template v-else-if="page === 1">
-              <div class="ann-title">修復與強化</div>
+              <div class="ann-title">介面優化</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">角色不再亂改你的名字</div>
-                  <div class="ann-item-desc">修正夫妻／戀人關係下，AI 自作主張幫你冠夫姓或改名的問題；現在會嚴格沿用你設定的稱呼與本名。</div>
+                  <div class="ann-item-title">首頁全新磚塊佈局</div>
+                  <div class="ann-item-desc">首頁改為分區磚塊設計（對話 / 角色生活 / 設定），功能一目瞭然，心聲、通知、群組、世界書、設定等入口全整合進來。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">跨天時間流逝感知</div>
-                  <div class="ann-item-desc">開啟「時間感」的角色，隔了很久再聊時會意識到「上次對話已過一段時間」，不再像沒中斷過一樣接著舊話題講。</div>
+                  <div class="ann-item-title">導航全面重構</div>
+                  <div class="ann-item-desc">所有頁面加入統一的「返回」按鈕，儲存後留在原頁不再跳走，操作流程更直覺。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">時間感知更準確</div>
-                  <div class="ann-item-desc">修正時間間隔計算的 bug（原本永遠偵測不到跨天），現在角色對「現在幾點、過了多久」的判斷更可靠。</div>
+                  <div class="ann-item-title">角色卡新設計</div>
+                  <div class="ann-item-desc">角色管理卡片改為上下兩層：上層是頭像＋資訊＋聊天主按鈕，下層是輕量的關係、編輯、刪除操作列，不再擠成一列。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">貼文留言顯示你的頭像</div>
-                  <div class="ann-item-desc">在貼文留言時，頭像改為顯示你自訂的大頭貼（emoji 或圖片），不再是固定的預設圖示。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">日記／夢境卡片間距修正</div>
-                  <div class="ann-item-desc">修正日記與夢境列表卡片擠在一起、間距不正確的小問題。</div>
+                  <div class="ann-item-title">季節 & 節日感知</div>
+                  <div class="ann-item-desc">角色會感知當下季節與台灣節日（農曆春節、中秋、聖誕等），對話中自然融入時節氛圍。</div>
                 </div>
               </div>
             </template>
@@ -90,7 +86,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P67</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P73</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
