@@ -342,6 +342,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .form-label-badge{font-size:10px;color:var(--rose);background:var(--rose-pale);padding:1px 6px;border-radius:6px;letter-spacing:.04em;text-transform:none;font-weight:300}
 .form-input{font-family:var(--font);font-size:14px;font-weight:300;color:var(--text);background:transparent;border:none;outline:none;width:100%;resize:none;line-height:1.55;word-break:break-all;overflow-wrap:break-word;-webkit-user-select:text;user-select:text}
 .form-input::placeholder{color:var(--text-3)}
+.form-input[type="date"]{text-align:left;width:auto;min-width:0}
 .form-input-row{display:flex;align-items:center;gap:8px;overflow:hidden}
 .form-counter{font-size:11px;color:var(--text-3);flex-shrink:0}
 .form-hint{font-size:12px;font-weight:300;color:var(--text-3);margin-top:5px;line-height:1.6}
