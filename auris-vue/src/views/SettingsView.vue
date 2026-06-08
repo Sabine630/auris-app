@@ -85,10 +85,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P72
+        Auris · P73
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P72 角色設定重整・自訂紀念日・MeView 分組・關係主頁多入口
+        P73 心聲管理刪除・角色卡 UI 重設計・首頁副標題簡化
       </div>
     </div>
   </div>

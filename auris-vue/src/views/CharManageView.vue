@@ -15,22 +15,36 @@
       
       <div v-for="c in globalStore.characters" :key="c.id" class="char-card">
         <div class="char-card-bar"></div>
-        <div class="char-av">
-          <img v-if="c.avatar && c.avatar.startsWith('data:')" :src="c.avatar" style="width:100%;height:100%;object-fit:cover;border-radius:13px">
-          <span v-else>{{ c.avatar || '🌸' }}</span>
-        </div>
-        <div class="char-info">
-          <div class="char-name">{{ c.name }}</div>
-          <div class="char-tagline">{{ c.tagline || '尚未設定介紹' }}</div>
-          <div v-if="c.tags && c.tags.length" class="char-tags">
-            <span v-for="t in c.tags" :key="t" class="char-tag">{{ t }}</span>
+        <div class="char-card-top">
+          <div class="char-av">
+            <img v-if="c.avatar && c.avatar.startsWith('data:')" :src="c.avatar" style="width:100%;height:100%;object-fit:cover;border-radius:13px">
+            <span v-else>{{ c.avatar || '🌸' }}</span>
           </div>
-        </div>
-        <div class="char-btns">
+          <div class="char-info">
+            <div class="char-name">{{ c.name }}</div>
+            <div class="char-tagline">{{ c.tagline || '尚未設定介紹' }}</div>
+            <div v-if="c.tags && c.tags.length" class="char-tags">
+              <span v-for="t in c.tags" :key="t" class="char-tag">{{ t }}</span>
+            </div>
+          </div>
           <button class="char-chat-btn" @click="$router.push('/chat/' + c.id)">聊天</button>
-          <button class="char-rel-btn" @click="$router.push('/relation/' + c.id)">關係</button>
-          <button class="char-edit-btn" @click="$router.push('/char-edit/' + c.id)">編輯</button>
-          <button class="char-del-btn" @click="deleteCharacter(c)">刪除</button>
+        </div>
+        <div class="char-card-divider"></div>
+        <div class="char-card-actions">
+          <button class="char-act-btn" @click="$router.push('/relation/' + c.id)">
+            <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            關係
+          </button>
+          <div class="char-act-sep"></div>
+          <button class="char-act-btn" @click="$router.push('/char-edit/' + c.id)">
+            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            編輯
+          </button>
+          <div class="char-act-sep"></div>
+          <button class="char-act-btn danger" @click="deleteCharacter(c)">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+            刪除
+          </button>
         </div>
       </div>
     </div>
@@ -112,35 +126,3 @@ async function confirmDelete() {
 }
 </script>
 
-<style scoped>
-.char-rel-btn {
-  padding: 6px 12px;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--rose);
-  border: .5px solid var(--rose);
-  font-size: 12px;
-  font-weight: 400;
-  cursor: pointer;
-  transition: all .15s;
-}
-.char-rel-btn:active {
-  background: var(--rose);
-  color: #fff;
-}
-.char-del-btn {
-  padding: 6px 12px;
-  border-radius: 8px;
-  background: transparent;
-  color: #e74c3c;
-  border: .5px solid #e74c3c;
-  font-size: 12px;
-  font-weight: 400;
-  cursor: pointer;
-  transition: all .15s;
-}
-.char-del-btn:active {
-  background: #e74c3c;
-  color: #fff;
-}
-</style>
