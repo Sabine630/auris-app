@@ -29,15 +29,23 @@
       </button>
     </div>
 
+    <!-- 角色篩選 -->
+    <div class="diary-filter" v-if="dreams.length > 0">
+      <div class="diary-chip" :class="{ sel: filterCharId === 'all' }" @click="filterCharId = 'all'">全部</div>
+      <div v-for="c in globalStore.characters" :key="c.id" class="diary-chip" :class="{ sel: filterCharId === c.id }" @click="filterCharId = c.id">
+        {{ c.name }}
+      </div>
+    </div>
+
     <!-- 夢境列表 -->
     <div class="dream-list">
-      <div v-if="dreams.length === 0 && globalStore.characters.length > 0" class="bb-empty" style="padding-top:32px">
+      <div v-if="filteredDreams.length === 0 && globalStore.characters.length > 0" class="bb-empty" style="padding-top:32px">
         <div class="bb-empty-ic"><svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div>
-        <div class="bb-empty-ttl">還沒有夢境紀錄</div>
+        <div class="bb-empty-ttl">{{ dreams.length === 0 ? '還沒有夢境紀錄' : '這個角色還沒有夢境' }}</div>
         <div class="bb-empty-sub">選擇角色，讓他告訴你<br>他今晚夢見了什麼</div>
       </div>
       <div v-else style="display:flex;flex-direction:column;gap:10px">
-        <div v-for="d in sortedDreams" :key="d.id" class="dream-entry" @click="$router.push('/dream/' + d.id)">
+        <div v-for="d in filteredDreams" :key="d.id" class="dream-entry" @click="$router.push('/dream/' + d.id)">
           <div class="dream-entry-top">
             <div class="dream-entry-av">
               <img v-if="getAvatar(d.charId) && getAvatar(d.charId).startsWith('data:')" :src="getAvatar(d.charId)" style="width:100%;height:100%;object-fit:cover;border-radius:10px">
@@ -55,18 +63,32 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { globalStore } from '../store/index.js';
 import { dbAll } from '../services/db.js';
 import { generateDream } from '../services/contentEngine.js';
 
+const route = useRoute();
 const dreams = ref([]);
 const selectedCharId = ref(null);
+const filterCharId = ref('all');
 const isGenerating = ref(false);
 
-const sortedDreams = computed(() => [...dreams.value].sort((a, b) => b.createdAt - a.createdAt));
+const filteredDreams = computed(() => {
+  let list = [...dreams.value];
+  if (filterCharId.value !== 'all') {
+    list = list.filter(d => d.charId === filterCharId.value);
+  }
+  return list.sort((a, b) => b.createdAt - a.createdAt);
+});
 
 onMounted(async () => {
   await globalStore.loadCharacters();
+  // 從聊天室「他的夢境」帶 ?char= 進來時，預選該角色（含生成對象）
+  if (route.query.char && globalStore.characters.some(c => c.id === route.query.char)) {
+    filterCharId.value = route.query.char;
+    selectedCharId.value = route.query.char;
+  }
   dreams.value = await dbAll('dreams');
   if (globalStore.characters.length > 0 && !selectedCharId.value) {
     selectedCharId.value = globalStore.characters[0].id;

@@ -138,12 +138,36 @@
           </svg>
           <span>關係主頁</span>
         </div>
-        <div class="menu-item" @click="clearChat">
+        <div class="menu-item" @click="goDiary">
           <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
-            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+            <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M8 7h8M8 11h5"/>
           </svg>
-          <span>清除聊天記錄</span>
+          <span>他的日記</span>
         </div>
+        <div class="menu-item" @click="goDream">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+          <span>他的夢境</span>
+        </div>
+        <div class="menu-item" @click="openDataMenu">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
+            <path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/>
+          </svg>
+          <span>聊天記錄管理</span>
+          <span style="margin-left:auto;color:var(--text-3)">›</span>
+        </div>
+      </div>
+      <div style="padding:0 16px 16px">
+        <button @click="showMenu = false" style="width:100%;padding:12px;border-radius:12px;background:var(--surface);color:var(--text-3);border:.5px solid var(--border);font-size:13px;font-weight:400;cursor:pointer">取消</button>
+      </div>
+    </div>
+
+    <!-- 聊天記錄管理（二層選單：低頻資料操作收在這） -->
+    <div class="menu-overlay" v-if="showDataMenu" @click="showDataMenu = false"></div>
+    <div class="bottom-menu" :style="{ display: showDataMenu ? 'block' : 'none' }">
+      <div style="padding:16px;border-bottom:.5px solid var(--border);text-align:center;font-weight:500">聊天記錄管理</div>
+      <div style="padding:8px 0">
         <div class="menu-item" @click="exportChat">
           <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -156,9 +180,15 @@
           </svg>
           <span>匯入聊天記錄</span>
         </div>
+        <div class="menu-item" @click="clearChat">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--red);stroke-width:1.5;fill:none">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+          </svg>
+          <span style="color:var(--red)">清除聊天記錄</span>
+        </div>
       </div>
       <div style="padding:0 16px 16px">
-        <button @click="showMenu = false" style="width:100%;padding:12px;border-radius:12px;background:var(--surface);color:var(--text-3);border:.5px solid var(--border);font-size:13px;font-weight:400;cursor:pointer">取消</button>
+        <button @click="showDataMenu = false" style="width:100%;padding:12px;border-radius:12px;background:var(--surface);color:var(--text-3);border:.5px solid var(--border);font-size:13px;font-weight:400;cursor:pointer">返回</button>
       </div>
     </div>
 
@@ -293,6 +323,7 @@ const character = ref(null);
 const inputContent = ref('');
 const isTyping = ref(false);
 const showMenu = ref(false);
+const showDataMenu = ref(false);
 const showClearConfirm = ref(false);
 
 const scrollArea = ref(null);
@@ -761,8 +792,23 @@ function goRelation() {
   router.push('/relation/' + charId);
 }
 
-function clearChat() {
+function goDiary() {
   showMenu.value = false;
+  router.push({ path: '/diary', query: { char: charId } });
+}
+
+function goDream() {
+  showMenu.value = false;
+  router.push({ path: '/dream', query: { char: charId } });
+}
+
+function openDataMenu() {
+  showMenu.value = false;
+  showDataMenu.value = true;
+}
+
+function clearChat() {
+  showDataMenu.value = false;
   showClearConfirm.value = true;
 }
 
@@ -776,7 +822,7 @@ async function confirmClearChat() {
 }
 
 function exportChat() {
-  showMenu.value = false;
+  showDataMenu.value = false;
   const exportable = messages.value.filter(m => m.type !== 'hv');
   if (!exportable.length) {
     window.toast_('目前沒有聊天記錄可以匯出');
@@ -799,7 +845,7 @@ function exportChat() {
 }
 
 function triggerImportChat() {
-  showMenu.value = false;
+  showDataMenu.value = false;
   document.getElementById('chat-import-input').click();
 }
 

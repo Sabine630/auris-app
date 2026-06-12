@@ -61,10 +61,12 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { globalStore } from '../store/index.js';
 import { dbAll, dbIdx } from '../services/db.js';
 import { generateDiary } from '../services/contentEngine.js';
 
+const route = useRoute();
 const diaryList = ref([]);
 const filterCharId = ref('all');
 const showGenPanel = ref(false);
@@ -88,6 +90,10 @@ const filteredDiary = computed(() => {
 
 onMounted(async () => {
   await globalStore.loadCharacters();
+  // 從聊天室「他的日記」帶 ?char= 進來時，預選該角色
+  if (route.query.char && globalStore.characters.some(c => c.id === route.query.char)) {
+    filterCharId.value = route.query.char;
+  }
   await loadDiary();
 });
 

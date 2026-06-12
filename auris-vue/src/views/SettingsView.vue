@@ -29,7 +29,7 @@
       </div>
       <div class="sr" @click="$toast('多世界模式 — Phase 4')">
         <div class="sr-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg></div>
-        <div class="sr-text">多世界模式</div><div class="sr-val">主世界</div><div class="sr-chev">›</div>
+        <div class="sr-text">多世界模式</div><div class="sr-val"><span style="padding:3px 9px;background:var(--rose-light);color:var(--rose);border-radius:10px;font-size:10px;font-weight:400;letter-spacing:.04em">即將推出</span></div>
       </div>
       <div class="sr" @click="$router.push('/worlds')">
         <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg></div>
@@ -85,10 +85,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P75
+        Auris · P76
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P75 首頁 Widget 化・最近對話・每日一問卡片・活磁磚
+        P76 聊天室日記夢境捷徑・選單瘦身・夢境角色篩選
       </div>
     </div>
   </div>
