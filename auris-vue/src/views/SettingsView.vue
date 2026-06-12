@@ -85,10 +85,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P74
+        Auris · P75
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P74 角色匯出匯入・聊天記錄 JSON・我想你・每日一問
+        P75 首頁 Widget 化・最近對話・每日一問卡片・活磁磚
       </div>
     </div>
   </div>

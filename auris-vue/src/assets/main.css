@@ -86,7 +86,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 [data-theme="dark"] .dream-entry-av,[data-theme="dark"] .diary-card-av,[data-theme="dark"] .post-av,
 [data-theme="dark"] .dream-char-btn-av,[data-theme="dark"] .gc-av,[data-theme="dark"] .group-av-a,
 [data-theme="dark"] .char-av,[data-theme="dark"] .chat-hd-av,[data-theme="dark"] .dream-detail-av,
-[data-theme="dark"] .diary-detail-av,[data-theme="dark"] .comment-av{background:rgba(212,144,128,0.15)}
+[data-theme="dark"] .diary-detail-av,[data-theme="dark"] .comment-av,[data-theme="dark"] .wc-av{background:rgba(212,144,128,0.15)}
 [data-theme="dark"] .char-tag{background:rgba(212,144,128,0.12);color:#d49080}
 [data-theme="dark"] .post-tag{background:rgba(212,144,128,0.12)}
 [data-theme="dark"] .bb-chip.sel,[data-theme="dark"] .moments-chip.sel,
@@ -152,6 +152,8 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   .tile{padding:12px;min-height:80px}
   .t-name{font-size:12px}
   .t-sub{font-size:11px}
+  .wg{margin:0 12px 8px}
+  .sc-row{gap:6px;padding:0 12px}
   .h-name{font-size:26px}
   .h-top{padding:16px 18px 0}
   .ph{padding:0 14px}
@@ -265,6 +267,47 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .h-world-name{font-weight:300;font-size:12px;color:var(--rose);letter-spacing:.05em;flex:1}
 .h-divider{height:.5px;background:var(--border);margin:16px 24px 0}
 .h-sec{padding:14px 24px 10px;font-weight:300;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-3)}
+
+/* ═══ 首頁 Widget（P75）═══ */
+.h-sec-row{display:flex;align-items:center;justify-content:space-between}
+.h-sec-more{padding:14px 24px 10px;font-size:11px;font-weight:300;color:var(--rose);letter-spacing:.04em;cursor:pointer}
+.wg{margin:0 16px 10px;background:var(--surface);border:.5px solid var(--border);border-radius:14px;box-shadow:var(--sh);position:relative;overflow:hidden}
+/* 最近對話 widget */
+.wg-chat{padding:4px 0}
+.wc-row{display:flex;align-items:center;gap:11px;padding:9px 15px;cursor:pointer;transition:opacity .15s}
+.wc-row:active{opacity:.6}
+.wc-row + .wc-row{border-top:.5px solid var(--border)}
+.wc-av{width:42px;height:42px;border-radius:11px;background:var(--rose-pale);display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0;position:relative}
+.wc-av-dot{position:absolute;top:-2px;right:-2px;width:9px;height:9px;background:var(--rose);border-radius:50%;border:2px solid var(--surface)}
+.wc-body{flex:1;min-width:0}
+.wc-name{font-size:13px;font-weight:400;color:var(--text);margin-bottom:2px}
+.wc-snippet{font-size:12px;font-weight:300;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wc-snippet.unread{color:var(--text);font-weight:400}
+.wc-time{font-size:10px;font-weight:300;color:var(--text-3);flex-shrink:0;align-self:flex-start;margin-top:3px}
+.wc-empty{padding:18px 15px;font-size:12px;font-weight:300;color:var(--text-3);text-align:center;letter-spacing:.04em;cursor:pointer}
+/* 每日一問 widget */
+.wg-q{padding:14px 16px 13px;cursor:pointer;transition:transform .15s}
+.wg-q:active{transform:scale(.98)}
+.wq-bar{position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--rose),#e8b4a8)}
+.wq-label{font-size:10px;font-weight:300;letter-spacing:.16em;text-transform:uppercase;color:var(--rose);margin-bottom:7px;display:flex;align-items:center;gap:5px}
+.wq-label svg{width:12px;height:12px;stroke:var(--rose);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.wq-text{font-size:14px;font-weight:300;color:var(--text);line-height:1.55;margin-bottom:8px}
+.wq-status{font-size:11px;font-weight:300;color:var(--text-3)}
+.wq-status em{font-style:normal;color:var(--rose)}
+/* 角色生活活磁磚（沿用 .tile 外觀） */
+.t-hd{display:flex;align-items:center;gap:6px}
+.t-hd svg{width:15px;height:15px;stroke:var(--text-3);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.t-hd .t-name{font-size:12px;font-weight:400;color:var(--text-2);letter-spacing:.03em}
+.t-live{font-weight:300;font-size:12px;color:var(--text);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex:1}
+.t-live em{font-style:normal;color:var(--rose)}
+.tile.t-empty .t-live{color:var(--text-3)}
+.t-meta{font-weight:300;font-size:10.5px;color:var(--text-3);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 低頻入口小捷徑列 */
+.sc-row{display:flex;gap:8px;padding:0 16px;margin-bottom:24px}
+.sc{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 0;background:var(--surface2);border:.5px solid var(--border);border-radius:11px;cursor:pointer;transition:transform .15s}
+.sc:active{transform:scale(.96)}
+.sc svg{width:14px;height:14px;stroke:var(--text-2);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.sc span{font-size:11.5px;font-weight:300;color:var(--text-2);letter-spacing:.03em}
 
 /* ═══ 卡片 ═══ */
 .tg{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px}
