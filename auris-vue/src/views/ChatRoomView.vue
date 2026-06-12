@@ -107,6 +107,7 @@
     <!-- Input Area -->
     <div class="chat-ia">
       <input type="file" ref="fileInputRef" accept="image/*" style="display:none" @change="handleImageFile" />
+      <input type="file" id="chat-import-input" accept=".json" style="display:none" @change="importChat" />
       <button class="chat-img-btn" @click="pickImage" :disabled="isTyping" title="傳送圖片">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
       </button>
@@ -148,6 +149,12 @@
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
           <span>匯出聊天記錄</span>
+        </div>
+        <div class="menu-item" @click="triggerImportChat">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10" transform="scale(1,-1) translate(0,-24)"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>匯入聊天記錄</span>
         </div>
       </div>
       <div style="padding:0 16px 16px">
@@ -770,28 +777,58 @@ async function confirmClearChat() {
 
 function exportChat() {
   showMenu.value = false;
-  if (!messages.value.length) {
-    // TODO(security): Use custom modal instead of alert in production
+  const exportable = messages.value.filter(m => m.type !== 'hv');
+  if (!exportable.length) {
     window.toast_('目前沒有聊天記錄可以匯出');
     return;
   }
-  
-  const lines = messages.value
-    .filter(m => m.type !== 'hv')
-    .map(m => {
-      const time = new Date(m.createdAt).toLocaleString('zh-TW');
-      const name = m.role === 'user' ? '我' : cName.value;
-      return `[${time}] ${name}：${m.content}`;
-    });
-  
-  const text = `聊天記錄 — ${cName.value}\n${'─'.repeat(30)}\n${lines.join('\n')}`;
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const payload = {
+    aurisChatExportVersion: 1,
+    exportDate: Date.now(),
+    charName: cName.value,
+    messages: exportable,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `chat_${cName.value}_${new Date().toISOString().slice(0,10)}.txt`;
+  a.download = `chat_${cName.value}_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  window.toast_('已匯出聊天記錄（JSON）');
+}
+
+function triggerImportChat() {
+  showMenu.value = false;
+  document.getElementById('chat-import-input').click();
+}
+
+async function importChat(e) {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const json = JSON.parse(text);
+    if (!json || json.aurisChatExportVersion !== 1 || !Array.isArray(json.messages)) {
+      window.toast_('格式錯誤，請選擇正確的聊天記錄備份檔');
+      return;
+    }
+    const base = Date.now();
+    let count = 0;
+    for (let i = 0; i < json.messages.length; i++) {
+      const m = json.messages[i];
+      if (!m || !m.role || !m.content) continue;
+      await dbPut('messages', { ...m, id: `msg_import_${base}_${i}`, charId });
+      count++;
+    }
+    const allMsgs = await dbIdx('messages', 'charId', charId);
+    allMsgs.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    messages.value = allMsgs;
+    window.toast_(`已匯入 ${count} 則訊息`);
+  } catch {
+    window.toast_('匯入失敗，檔案損毀或格式錯誤');
+  }
 }
 
 // ── Long Press Handlers ──

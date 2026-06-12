@@ -832,3 +832,79 @@ export async function summarizeToMemory(charId, recentMsgs, count = 20) {
   await dbPut('chat_memories', mem);
   return mem;
 }
+
+// ── 「我想你」輕觸（背景生成，非串流）────────────────────────────────────
+// 由 App.vue 的 runMissYou 在開 app 時隨機觸發（每角色每天最多一次，40% 機率）。
+// 需開啟角色的 missYouEnabled，且有至少 5 則對話記錄。
+export async function generateMissYouMessage(charId) {
+  const allMsgs = await dbIdx('messages', 'charId', charId);
+  allMsgs.sort((a, b) => a.createdAt - b.createdAt);
+  const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
+
+  const missYouPrompt = finalSystemPrompt + '\n\n【我想你】你突然想到對方了，想傳一個很短、很自然的訊息。不是因為有事要說，就是想到他／她了。語氣要像真實的人，直接說你想說的，簡短（一兩句就好），有溫度但不刻意煽情。不要用問句作結。';
+
+  const missHistory = history.length
+    ? (history[history.length - 1].role === 'user'
+        ? history
+        : [...history, { role: 'user', content: '（對方沒說話）' }])
+    : [{ role: 'user', content: '（對方現在沒說話，你突然想到他）' }];
+
+  let text = '';
+  try {
+    text = await sendLLMRequest(
+      [{ role: 'system', content: missYouPrompt }, ...missHistory],
+      { max_tokens: 120, temperature: 0.9 }
+    );
+  } catch (e) {
+    console.error('generateMissYouMessage failed:', e);
+    return null;
+  }
+  if (!text || !text.trim()) return null;
+
+  const c = await dbGet('characters', charId);
+  const msg = { id: 'msg_' + Date.now() + '_miss', charId, role: 'assistant', content: text.trim(), createdAt: Date.now() };
+  await dbPut('messages', msg);
+  c.unreadCount = (c.unreadCount || 0) + 1;
+  c.hasUnread = true;
+  await dbPut('characters', JSON.parse(JSON.stringify(c)));
+  await dbPut('notifications', { id: 'notif_miss_' + Date.now(), charId, type: 'chat', targetId: charId, text: '突然想到你了', read: false, createdAt: Date.now() });
+  return msg;
+}
+
+// ── 每日一問（背景生成，非串流）──────────────────────────────────────────
+// 由 App.vue 的 runDailyQuestions 在開 app 時觸發（每角色每天一次）。
+// 需開啟角色的 dailyQuestionEnabled，且有至少 3 則對話記錄。
+export async function generateDailyQuestion(charId) {
+  const allMsgs = await dbIdx('messages', 'charId', charId);
+  allMsgs.sort((a, b) => a.createdAt - b.createdAt);
+  const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
+
+  const dqPrompt = finalSystemPrompt + '\n\n【每日一問】今天你想主動問對方一個問題——關於他／她最近的生活、心情、想法、或你們共同感興趣的話題。問題要真誠、自然，像真的想了解對方的人會問的，不要太制式或像問卷。可以先說一點引子再問，整體簡短（三句以內）。';
+
+  const dqHistory = history.length
+    ? (history[history.length - 1].role === 'user'
+        ? history
+        : [...history, { role: 'user', content: '（沉默中）' }])
+    : [{ role: 'user', content: '（今天還沒聊天，你想主動問對方一個問題）' }];
+
+  let text = '';
+  try {
+    text = await sendLLMRequest(
+      [{ role: 'system', content: dqPrompt }, ...dqHistory],
+      { max_tokens: 200, temperature: 0.85 }
+    );
+  } catch (e) {
+    console.error('generateDailyQuestion failed:', e);
+    return null;
+  }
+  if (!text || !text.trim()) return null;
+
+  const c = await dbGet('characters', charId);
+  const msg = { id: 'msg_' + Date.now() + '_dq', charId, role: 'assistant', content: text.trim(), createdAt: Date.now() };
+  await dbPut('messages', msg);
+  c.unreadCount = (c.unreadCount || 0) + 1;
+  c.hasUnread = true;
+  await dbPut('characters', JSON.parse(JSON.stringify(c)));
+  await dbPut('notifications', { id: 'notif_dq_' + Date.now(), charId, type: 'chat', targetId: charId, text: '今天想問你一個問題', read: false, createdAt: Date.now() });
+  return msg;
+}

@@ -370,6 +370,20 @@
           </div>
           <div class="toggle-row">
             <div class="toggle-info">
+              <div class="toggle-name">我想你</div>
+              <div class="toggle-desc">角色偶爾會主動傳一則短訊息告訴你「突然想到你了」，每天最多一次，觸發有隨機性</div>
+            </div>
+            <div class="toggle" :class="{ on: char.missYouEnabled }" @click="char.missYouEnabled = !char.missYouEnabled"><div class="toggle-knob"></div></div>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-name">每日一問</div>
+              <div class="toggle-desc">角色每天主動向你提出一個問題，了解你的生活或想法，每天一次</div>
+            </div>
+            <div class="toggle" :class="{ on: char.dailyQuestionEnabled }" @click="char.dailyQuestionEnabled = !char.dailyQuestionEnabled"><div class="toggle-knob"></div></div>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
               <div class="toggle-name">自動總結記憶</div>
               <div class="toggle-desc">對話累積到一定則數時，自動讓 AI 濃縮成長期記憶，不必手動按總結</div>
             </div>
@@ -546,6 +560,8 @@ const char = ref({
   autoDiary: false,
   autoPost: false,
   cycleCare: false,
+  missYouEnabled: false,
+  dailyQuestionEnabled: false,
   autoSummarize: false,
   autoSumEvery: 30,
   lang: 'zh-tw'

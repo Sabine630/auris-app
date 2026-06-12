@@ -107,3 +107,58 @@ export async function importAllData(jsonData) {
     await setSetting('api_key', preservedKey);
   }
 }
+
+// ── 單角色匯出（含聊天記錄、記憶、日記、夢境、貼文）────────────────────────
+export async function exportCharacterData(charId) {
+  const char = await dbGet('characters', charId);
+  if (!char) throw new Error('找不到角色');
+  const [messages, memories, chatMems, moments, diary, dreams] = await Promise.all([
+    dbIdx('messages', 'charId', charId),
+    dbIdx('memories', 'charId', charId),
+    dbIdx('chat_memories', 'charId', charId),
+    dbIdx('moments', 'charId', charId),
+    dbIdx('diary', 'charId', charId),
+    dbIdx('dreams', 'charId', charId),
+  ]);
+  return {
+    aurisCharExportVersion: 1,
+    exportDate: Date.now(),
+    character: char,
+    messages,
+    memories,
+    chatMems,
+    moments,
+    diary,
+    dreams,
+  };
+}
+
+// ── 單角色匯入（以新 ID 寫入，不覆蓋現有角色）─────────────────────────────
+export async function importCharacterData(jsonData) {
+  if (!jsonData || jsonData.aurisCharExportVersion !== 1 || !jsonData.character) {
+    throw new Error('無效的角色備份格式');
+  }
+  const base = Date.now();
+  const newCharId = 'char_' + base;
+
+  // 寫入角色（換新 ID，名稱後加「(匯入)」避免混淆）
+  const char = { ...jsonData.character, id: newCharId, name: (jsonData.character.name || '未命名') + '（匯入）' };
+  await dbPut('characters', char);
+
+  // 重新對應 charId 並賦予新 ID，用 index 確保同毫秒不衝突
+  const remapAndInsert = async (records, store, prefix) => {
+    if (!Array.isArray(records)) return;
+    for (let i = 0; i < records.length; i++) {
+      await dbPut(store, { ...records[i], id: `${prefix}_${base}_${i}`, charId: newCharId });
+    }
+  };
+
+  await remapAndInsert(jsonData.messages,  'messages',      'msg');
+  await remapAndInsert(jsonData.memories,  'memories',      'mem');
+  await remapAndInsert(jsonData.chatMems,  'chat_memories', 'cmem');
+  await remapAndInsert(jsonData.moments,   'moments',       'mmt');
+  await remapAndInsert(jsonData.diary,     'diary',         'diary');
+  await remapAndInsert(jsonData.dreams,    'dreams',        'dream');
+
+  return newCharId;
+}

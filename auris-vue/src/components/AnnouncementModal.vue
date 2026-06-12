@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P68 – P73 更新公告</div>
+      <div class="ann-badge">P74 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,43 +16,39 @@
               <div class="ann-title">新功能</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">關係主頁 💑</div>
-                  <div class="ann-item-desc">每個角色都有專屬關係主頁：在一起計數器、生日倒數、重要日子倒數，一眼掌握你們的關係時間軸。</div>
+                  <div class="ann-item-title">角色匯出 / 匯入 📦</div>
+                  <div class="ann-item-desc">角色管理頁可單獨匯出一個角色（含聊天記錄、記憶、日記、夢境、貼文），換裝置或分享給朋友都方便。頁頭「匯入」可還原匯出的角色。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">自訂紀念日</div>
-                  <div class="ann-item-desc">角色設定 → 關係設定，可自由新增任意紀念日（認識、訂婚、第一次約會…），關係主頁自動顯示倒數。</div>
+                  <div class="ann-item-title">聊天記錄 JSON 匯出 / 匯入</div>
+                  <div class="ann-item-desc">聊天室選單的「匯出聊天記錄」改為 JSON 格式，資料更完整，同時新增「匯入聊天記錄」，可把備份的對話合併回來。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">心聲管理刪除 🗑</div>
-                  <div class="ann-item-desc">心聲頁面新增「管理」模式，可單選或全選批量刪除不想留的心聲，獨立於聊天記錄管理。</div>
+                  <div class="ann-item-title">「我想你」輕觸 💭</div>
+                  <div class="ann-item-desc">角色設定可開啟「我想你」，角色會在你開 app 時偶爾傳一則短短的訊息告訴你「突然想到你了」，每天最多一次，隨機觸發。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">語音輸入</div>
-                  <div class="ann-item-desc">聊天室輸入框新增麥克風鍵，說話即可轉文字，免打字也能輕鬆聊天。</div>
+                  <div class="ann-item-title">每日一問 ❓</div>
+                  <div class="ann-item-desc">角色設定可開啟「每日一問」，角色每天主動向你提出一個問題，了解你的生活或想法，讓互動不只是你問我答。</div>
                 </div>
               </div>
             </template>
 
-            <!-- 第二頁：介面優化 -->
+            <!-- 第二頁：使用方式 -->
             <template v-else-if="page === 1">
-              <div class="ann-title">介面優化</div>
+              <div class="ann-title">使用方式</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">首頁全新磚塊佈局</div>
-                  <div class="ann-item-desc">首頁改為分區磚塊設計（對話 / 角色生活 / 設定），功能一目瞭然，心聲、通知、群組、世界書、設定等入口全整合進來。</div>
+                  <div class="ann-item-title">開啟「我想你」與「每日一問」</div>
+                  <div class="ann-item-desc">角色設定 → 互動設定區塊，找到對應開關即可開啟。需有一定的對話記錄才會觸發（「我想你」≥ 5 則，「每日一問」≥ 3 則）。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">導航全面重構</div>
-                  <div class="ann-item-desc">所有頁面加入統一的「返回」按鈕，儲存後留在原頁不再跳走，操作流程更直覺。</div>
+                  <div class="ann-item-title">匯出單一角色</div>
+                  <div class="ann-item-desc">角色管理 → 角色卡下方操作列 → 「匯出」，下載 .json 備份檔。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">角色卡新設計</div>
-                  <div class="ann-item-desc">角色管理卡片改為上下兩層：上層是頭像＋資訊＋聊天主按鈕，下層是輕量的關係、編輯、刪除操作列，不再擠成一列。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">季節 & 節日感知</div>
-                  <div class="ann-item-desc">角色會感知當下季節與台灣節日（農曆春節、中秋、聖誕等），對話中自然融入時節氛圍。</div>
+                  <div class="ann-item-title">匯入角色</div>
+                  <div class="ann-item-desc">角色管理 → 頁頭「匯入」→ 選擇備份 .json 檔。匯入後角色名稱會加上「（匯入）」以便區分，再進角色設定改名即可。</div>
                 </div>
               </div>
             </template>
@@ -86,7 +82,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P73</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P74</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">

@@ -85,10 +85,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P73
+        Auris · P74
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P73 心聲管理刪除・角色卡 UI 重設計・首頁副標題簡化
+        P74 角色匯出匯入・聊天記錄 JSON・我想你・每日一問
       </div>
     </div>
   </div>

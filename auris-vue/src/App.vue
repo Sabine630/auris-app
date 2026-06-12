@@ -47,12 +47,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from './store/index.js';
 import { getSetting, setSetting, dbAll, dbIdx, dbGet } from './services/db.js';
 import { generateDiary, generatePost } from './services/contentEngine.js';
-import { generateCycleCareMessage, generateScheduleMessage } from './services/chatEngine.js';
+import { generateCycleCareMessage, generateScheduleMessage, generateMissYouMessage, generateDailyQuestion } from './services/chatEngine.js';
 import { getCyclePhase } from './services/cycle.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
-const ANNOUNCEMENT_VERSION = 'P73';
+const ANNOUNCEMENT_VERSION = 'P74';
 const showAnnouncement = ref(false);
 
 // ── 全域 confirm modal ─────────────────────────────────────────────────────
@@ -190,6 +190,43 @@ async function runDailyAutoGen() {
   } catch (_) {}
 }
 
+// 「我想你」輕觸：開 app 時對每個開啟 missYouEnabled 的角色，40% 機率觸發，每天最多一次。
+// 需有至少 5 則對話記錄才觸發（避免剛建角色就亂傳）。
+async function runMissYou() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const chars = await dbAll('characters');
+    for (const c of chars) {
+      if (!c.missYouEnabled) continue;
+      const key = `miss_you_${c.id}`;
+      if (await getSetting(key) === today) continue;
+      const msgs = await dbIdx('messages', 'charId', c.id);
+      if (msgs.length < 5) continue;
+      if (Math.random() > 0.4) continue;
+      await setSetting(key, today);
+      try { await generateMissYouMessage(c.id); } catch (_) {}
+    }
+  } catch (_) {}
+}
+
+// 每日一問：開 app 時對每個開啟 dailyQuestionEnabled 的角色，每天觸發一次。
+// 需有至少 3 則對話記錄才觸發。
+async function runDailyQuestions() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const chars = await dbAll('characters');
+    for (const c of chars) {
+      if (!c.dailyQuestionEnabled) continue;
+      const key = `daily_q_${c.id}`;
+      if (await getSetting(key) === today) continue;
+      const msgs = await dbIdx('messages', 'charId', c.id);
+      if (msgs.length < 3) continue;
+      await setSetting(key, today);
+      try { await generateDailyQuestion(c.id); } catch (_) {}
+    }
+  } catch (_) {}
+}
+
 // 生理期主動關心：在「預測經期開始日」與「經期前 2 天」各觸發一次，
 // 讓有開「生理期關心」的角色主動傳一則關心訊息進聊天室。
 // 以 per-char 的日期 setting 去重，同一天不重複傳；兩個觸發日為不同日期，各自只會發一次。
@@ -276,6 +313,10 @@ onMounted(async () => {
 
   // 生理期主動關心（背景靜默執行，P59）
   runCycleCare();
+
+  // 「我想你」輕觸 + 每日一問（背景靜默執行，P74）
+  runMissYou();
+  runDailyQuestions();
 
   // 作息時段主動訊息（每 5 分鐘掃一次）
   runScheduleTriggers();
