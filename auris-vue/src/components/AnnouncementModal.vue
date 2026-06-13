@@ -5,50 +5,54 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P74 更新公告</div>
+      <div class="ann-badge">P74–P76 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
           <div class="ann-page" :key="page">
 
-            <!-- 第一頁：新功能 -->
+            <!-- 第一頁：近期新功能 -->
             <template v-if="page === 0">
-              <div class="ann-title">新功能</div>
+              <div class="ann-title">近期新功能</div>
               <div class="ann-items">
                 <div class="ann-item">
+                  <div class="ann-item-title">首頁全面升級 Widget 🏠</div>
+                  <div class="ann-item-desc">首頁新增「最近對話」與「每日一問」動態卡片，磁磚支援懸浮顯示最新訊息，角色列也可以自由調整順序。</div>
+                </div>
+                <div class="ann-item">
+                  <div class="ann-item-title">聊天室快捷操作 ⚡</div>
+                  <div class="ann-item-desc">聊天室右上角選單二層化，新增日記與夢境一鍵生成捷徑，不必離開對話就能記錄角色的內心世界。</div>
+                </div>
+                <div class="ann-item">
                   <div class="ann-item-title">角色匯出 / 匯入 📦</div>
-                  <div class="ann-item-desc">角色管理頁可單獨匯出一個角色（含聊天記錄、記憶、日記、夢境、貼文），換裝置或分享給朋友都方便。頁頭「匯入」可還原匯出的角色。</div>
+                  <div class="ann-item-desc">角色管理頁可單獨匯出一個角色（含聊天記錄、記憶、日記、夢境、貼文），換裝置或分享給朋友都方便。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">聊天記錄 JSON 匯出 / 匯入</div>
-                  <div class="ann-item-desc">聊天室選單的「匯出聊天記錄」改為 JSON 格式，資料更完整，同時新增「匯入聊天記錄」，可把備份的對話合併回來。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">「我想你」輕觸 💭</div>
-                  <div class="ann-item-desc">角色設定可開啟「我想你」，角色會在你開 app 時偶爾傳一則短短的訊息告訴你「突然想到你了」，每天最多一次，隨機觸發。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">每日一問 ❓</div>
-                  <div class="ann-item-desc">角色設定可開啟「每日一問」，角色每天主動向你提出一個問題，了解你的生活或想法，讓互動不只是你問我答。</div>
+                  <div class="ann-item-title">「我想你」＋ 每日一問 💭</div>
+                  <div class="ann-item-desc">角色設定可分別開啟：「我想你」讓角色偶爾主動說想你；「每日一問」讓角色每天提一個問題了解你的生活。</div>
                 </div>
               </div>
             </template>
 
             <!-- 第二頁：使用方式 -->
             <template v-else-if="page === 1">
-              <div class="ann-title">使用方式</div>
+              <div class="ann-title">怎麼用</div>
               <div class="ann-items">
                 <div class="ann-item">
+                  <div class="ann-item-title">調整首頁角色順序</div>
+                  <div class="ann-item-desc">長按角色列中的頭像，拖曳即可重新排列，放開確認位置。</div>
+                </div>
+                <div class="ann-item">
+                  <div class="ann-item-title">聊天室生成日記 / 夢境</div>
+                  <div class="ann-item-desc">聊天室右上角 ⋯ → 第二層選單，找到「寫今日日記」或「生成夢境」，直接在聊天頁觸發。</div>
+                </div>
+                <div class="ann-item">
                   <div class="ann-item-title">開啟「我想你」與「每日一問」</div>
-                  <div class="ann-item-desc">角色設定 → 互動設定區塊，找到對應開關即可開啟。需有一定的對話記錄才會觸發（「我想你」≥ 5 則，「每日一問」≥ 3 則）。</div>
+                  <div class="ann-item-desc">角色設定 → 進階設定，找到對應開關即可。需有一定對話記錄才會觸發（我想你 ≥ 5 則、每日一問 ≥ 3 則）。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">匯出單一角色</div>
-                  <div class="ann-item-desc">角色管理 → 角色卡下方操作列 → 「匯出」，下載 .json 備份檔。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">匯入角色</div>
-                  <div class="ann-item-desc">角色管理 → 頁頭「匯入」→ 選擇備份 .json 檔。匯入後角色名稱會加上「（匯入）」以便區分，再進角色設定改名即可。</div>
+                  <div class="ann-item-title">匯出 / 匯入角色</div>
+                  <div class="ann-item-desc">角色管理 → 角色卡 → 「匯出」下載備份；頁頭「匯入」還原角色，匯入後名稱會加「（匯入）」可再改名。</div>
                 </div>
               </div>
             </template>
@@ -82,7 +86,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P74</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P76</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
