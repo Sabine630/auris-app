@@ -117,18 +117,18 @@ const form = ref({
   createdAt: Date.now(),
 });
 
-const aliasInput = computed({
-  get: () => (form.value.aliases || []).join('，'),
-  set: (v) => {
-    form.value.aliases = v.split(/[,，]/).map(s => s.trim()).filter(Boolean);
-  }
-});
+// 別名輸入：用純字串 ref，讓使用者自由打半形/全形逗號，
+// 只在儲存時才解析成陣列（不在每次按鍵時拼回去，避免逗號被改寫）。
+const aliasInput = ref('');
 
 onMounted(async () => {
   chars.value = await dbAll('characters');
   if (isEdit.value) {
     const entry = await dbGet('worlds', route.params.id);
-    if (entry) form.value = { ...entry, aliases: entry.aliases || [], charScope: entry.charScope || [] };
+    if (entry) {
+      form.value = { ...entry, aliases: entry.aliases || [], charScope: entry.charScope || [] };
+      aliasInput.value = form.value.aliases.join(', ');
+    }
   }
 });
 
@@ -143,12 +143,13 @@ async function save() {
   if (!form.value.content.trim()) { window.toast_('請填入詞條內容'); return; }
   try {
     const id = form.value.id || (isEdit.value ? route.params.id : 'world_' + Date.now());
+    const aliases = aliasInput.value.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
     const record = {
       ...form.value,
       id,
       name: form.value.name.trim(),
       content: form.value.content.trim(),
-      aliases: [...(form.value.aliases || [])],
+      aliases,
       charScope: [...(form.value.charScope || [])],
     };
     await dbPut('worlds', record);
