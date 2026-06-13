@@ -21,7 +21,29 @@
         </svg>
         <span v-if="enabledMemCount" class="mem-badge">{{ enabledMemCount }}</span>
       </div>
+      <div class="chat-hd-search" @click="openSearch" title="搜尋對話">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>
+        </svg>
+      </div>
       <div class="chat-hd-more" @click="showMenu = true">⋯</div>
+    </div>
+
+    <!-- 全文搜尋列 -->
+    <div class="chat-search" v-if="searchOpen">
+      <svg class="chat-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>
+      </svg>
+      <input class="chat-search-in" ref="searchInput" v-model="searchQuery" @input="runSearch"
+        @keyup.enter="prevMatch" placeholder="搜尋這段對話…" />
+      <span class="chat-search-count">{{ searchQuery.trim() ? (searchMatchIds.length ? (searchIdx + 1) + '/' + searchMatchIds.length : '0') : '' }}</span>
+      <div class="chat-search-nav" :class="{ dis: searchMatchIds.length < 2 }" @click="prevMatch" title="上一則">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+      </div>
+      <div class="chat-search-nav" :class="{ dis: searchMatchIds.length < 2 }" @click="nextMatch" title="下一則">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="chat-search-close" @click="closeSearch">取消</div>
     </div>
 
     <!-- Scroll Area -->
@@ -149,6 +171,12 @@
             <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
           </svg>
           <span>他的夢境</span>
+        </div>
+        <div class="menu-item" @click="goTogether">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
+            <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+          </svg>
+          <span>我們的願望・備忘</span>
         </div>
         <div class="menu-item" @click="openDataMenu">
           <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
@@ -325,6 +353,13 @@ const isTyping = ref(false);
 const showMenu = ref(false);
 const showDataMenu = ref(false);
 const showClearConfirm = ref(false);
+
+// 全文搜尋
+const searchOpen = ref(false);
+const searchQuery = ref('');
+const searchMatchIds = ref([]);
+const searchIdx = ref(0);
+const searchInput = ref(null);
 
 const scrollArea = ref(null);
 const chatInp = ref(null);
@@ -802,6 +837,66 @@ function goDream() {
   router.push({ path: '/dream', query: { char: charId } });
 }
 
+function goTogether() {
+  showMenu.value = false;
+  router.push('/together/' + charId);
+}
+
+// ── 全文搜尋 ──────────────────────────────────────────────
+function openSearch() {
+  showMenu.value = false;
+  searchOpen.value = true;
+  nextTick(() => searchInput.value?.focus());
+}
+
+function closeSearch() {
+  searchOpen.value = false;
+  searchQuery.value = '';
+  searchMatchIds.value = [];
+  searchIdx.value = 0;
+}
+
+function runSearch() {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) { searchMatchIds.value = []; searchIdx.value = 0; return; }
+  const ids = messages.value
+    .filter(m => m.content && m.content.toLowerCase().includes(q))
+    .map(m => m.id);
+  searchMatchIds.value = ids;
+  if (ids.length) {
+    searchIdx.value = ids.length - 1;   // 從最新的命中開始（最靠近目前底部）
+    scrollToMatch();
+  } else {
+    searchIdx.value = 0;
+  }
+}
+
+function prevMatch() {
+  const n = searchMatchIds.value.length;
+  if (n < 2) { if (n === 1) scrollToMatch(); return; }
+  searchIdx.value = (searchIdx.value - 1 + n) % n;
+  scrollToMatch();
+}
+
+function nextMatch() {
+  const n = searchMatchIds.value.length;
+  if (n < 2) { if (n === 1) scrollToMatch(); return; }
+  searchIdx.value = (searchIdx.value + 1) % n;
+  scrollToMatch();
+}
+
+function scrollToMatch() {
+  const id = searchMatchIds.value[searchIdx.value];
+  if (id == null) return;
+  nextTick(() => {
+    const el = scrollArea.value?.querySelector(`[data-msg-id="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('search-hit');
+    setTimeout(() => el.classList.remove('search-hit'), 1600);
+  });
+}
+
 function openDataMenu() {
   showMenu.value = false;
   showDataMenu.value = true;
@@ -1136,6 +1231,57 @@ async function doRegenerate(m) {
   color: var(--text-3);
 }
 .chat-hd-mem svg { width: 20px; height: 20px; }
+
+/* 全文搜尋 */
+.chat-hd-search {
+  width: 32px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-3);
+}
+.chat-hd-search svg { width: 19px; height: 19px; }
+.chat-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-bottom: .5px solid var(--border);
+}
+.chat-search-ic { width: 16px; height: 16px; color: var(--text-3); flex-shrink: 0; }
+.chat-search-in {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  color: var(--text);
+}
+.chat-search-count { font-size: 12px; color: var(--text-3); flex-shrink: 0; min-width: 24px; text-align: right; }
+.chat-search-nav {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text);
+  flex-shrink: 0;
+}
+.chat-search-nav svg { width: 18px; height: 18px; }
+.chat-search-nav.dis { color: var(--text-3); opacity: .35; pointer-events: none; }
+.chat-search-close { font-size: 13px; color: var(--rose); cursor: pointer; flex-shrink: 0; padding-left: 4px; }
+.msg-bubble.search-hit {
+  animation: search-flash 1.6s ease;
+}
+@keyframes search-flash {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  20%, 60% { box-shadow: 0 0 0 2px var(--rose); }
+}
 .mem-badge {
   position: absolute;
   top: 4px;

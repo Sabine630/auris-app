@@ -105,10 +105,13 @@ async function confirmDelete() {
     const stores = [
       { name: 'messages', index: 'charId' },
       { name: 'memories', index: 'charId' },
+      { name: 'chat_memories', index: 'charId' },
       { name: 'moments', index: 'charId' },
       { name: 'diary', index: 'charId' },
       { name: 'dreams', index: 'charId' },
       { name: 'notifications', index: 'charId' },
+      { name: 'wishes', index: 'charId' },
+      { name: 'notes', index: 'charId' },
     ];
 
     for (const store of stores) {

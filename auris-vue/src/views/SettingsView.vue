@@ -85,10 +85,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P76
+        Auris · P77
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P76 聊天室日記夢境捷徑・選單瘦身・夢境角色篩選
+        P77 聊天全文搜尋・共同願望清單與備忘錄
       </div>
     </div>
   </div>

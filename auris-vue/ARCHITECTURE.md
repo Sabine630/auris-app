@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-12（P76）
+> 最後更新：2026-06-14（P77）
 
 ---
 
@@ -40,7 +40,7 @@ graph TD
         Chat[chatEngine.js<br/>聊天 AI 生成]
     end
     
-    DB --> IndexedDB[(IndexedDB: auris<br/>v5)]
+    DB --> IndexedDB[(IndexedDB: auris<br/>v6)]
 ```
 
 ---
@@ -72,7 +72,7 @@ graph TD
 
 ## 3. IndexedDB 資料庫
 
-**資料庫名稱**：`auris`　**版本**：v5
+**資料庫名稱**：`auris`　**版本**：v6
 
 | 資料表 | keyPath | 索引 | 說明 |
 |--------|---------|------|------|
@@ -87,6 +87,8 @@ graph TD
 | `group_messages` | `id` | `groupId`, `createdAt` | 群組訊息 |
 | `notifications` | `id` | `charId`, `createdAt` | 通知記錄 |
 | `chat_memories` | `id` | `charId` | 長期記憶條目（P48）|
+| `wishes` | `id` | `charId` | 共同願望清單項目（P77）；schema：`{ id, charId, text, done, createdAt }` |
+| `notes` | `id` | `charId` | 共同備忘錄項目（P77）；schema 同 `wishes` |
 | `settings` | `key` | — | 系統設定（key-value） |
 
 ### Settings 常用 key
@@ -219,8 +221,10 @@ globalStore = {
 | `/char-edit/:id?` | `char-edit` | ❌ 隱藏 |
 | `/worlds` | `worlds` | ❌ 隱藏（設定頁進入，P65） |
 | `/worlds/edit/:id?` | `worlds-edit` | ❌ 隱藏（P65） |
+| `/relation/:id` | `relation` | ❌ 隱藏（聊天室選單進入，P71） |
+| `/together/:id` | `together` | ❌ 隱藏（關係主頁／聊天室選單進入，P77；共同願望清單・備忘錄） |
 
-> 共 23 條路由。
+> 共 25 條路由。
 
 ---
 
@@ -298,7 +302,7 @@ globalStore = {
 
 ## 10. 維護注意事項
 
-1. **刪除關聯資料**：在刪除角色時，必須同步清除所有帶有該 `charId` 的資料表：`messages`, `memories`, `chat_memories`, `moments`, `diary`, `dreams`, `notifications`。
+1. **刪除關聯資料**：在刪除角色時，必須同步清除所有帶有該 `charId` 的資料表：`messages`, `memories`, `chat_memories`, `moments`, `diary`, `dreams`, `notifications`, `wishes`, `notes`（見 `CharManageView.confirmDelete`）。
 2. **新增設定項目**：直接透過 `setSetting('new_key', value)` 新增即可，不需修改資料庫結構。
 3. **空狀態原則**：遇到尚未開發或空列表時，按鈕一律使用 `.empty-cta` 而非 `.btn-primary`，且未完成的功能應掛上 `@click="$toast('尚在開發，敬請期待')"`。
 
@@ -314,6 +318,15 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P77（2026-06-14）聊天全文搜尋・共同願望清單與備忘錄
+
+- **聊天全文搜尋**（`ChatRoomView.vue`）：header 新增搜尋圖示開啟搜尋列（`searchOpen`）。`runSearch()` 以小寫子字串比對 `messages` 內容，存命中訊息 id 至 `searchMatchIds`，顯示 `序號/總數`；`prevMatch()`／`nextMatch()` 環狀導覽，`scrollToMatch()` 以 `data-msg-id` 定位 `scrollIntoView({block:'center'})` 並加 `.search-hit` 閃爍 1.6s。從最新命中開始，純前端無 DB 異動。
+- **共同願望清單・備忘錄**（新建 `views/TogetherView.vue`，路由 `/together/:id`）：每角色一份，雙分頁（`wishes` / `notes`）共用同一套清單邏輯——`storeName` / `listRef` 依 `tab` 切換。項目可勾選 `done`（已完成置底＋刪除線）、可刪除；新增輸入框 Enter 即送。
+- **IndexedDB v5 → v6**（`db.js`）：新增 `wishes`、`notes` 兩資料表（keyPath `id`、索引 `charId`，schema `{ id, charId, text, done, createdAt }`），以 `if (!contains)` 守衛保留舊資料。`ALL_STORES`、`exportCharacterData`／`importCharacterData` 一併納入。
+- **入口**（`RelationView.vue` + `ChatRoomView.vue`）：關係主頁新增「我們的願望清單・備忘錄」卡片（`goTogether`）；聊天室 ⋯ 選單新增「我們的願望・備忘」捷徑。
+- **刪除連動修復**（`CharManageView.vue`）：`confirmDelete` 的清除清單補上先前遺漏的 `chat_memories`，並新增 `wishes`、`notes`，避免刪角色後殘留孤兒資料。
+- **收錄**：先前已上線但未獨立記版的兩筆世界書修復（儲存無反應補 try/catch、別名欄位半形逗號不再轉全形）。
 
 ### P76（2026-06-12）操作簡化：聊天室捷徑・選單二層化・夢境篩選
 

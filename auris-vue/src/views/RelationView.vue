@@ -43,6 +43,18 @@
         </div>
       </div>
 
+      <!-- 我們的（願望清單・備忘錄入口） -->
+      <div class="rel-section rel-entry-section">
+        <div class="rel-entry-card" @click="goTogether">
+          <div class="rel-entry-ic">💝</div>
+          <div class="rel-entry-info">
+            <div class="rel-entry-label">我們的願望清單・備忘錄</div>
+            <div class="rel-entry-sub">記下想一起做的事、約定與計畫</div>
+          </div>
+          <div class="rel-entry-arrow">›</div>
+        </div>
+      </div>
+
       <!-- 即將到來的重要日子 -->
       <div v-if="upcoming.length" class="rel-section">
         <div class="rel-section-title">即將到來</div>
@@ -65,11 +77,16 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, getSetting } from '../services/db.js';
 
 const route = useRoute();
+const router = useRouter();
 const charId = route.params.id;
+
+function goTogether() {
+  router.push('/together/' + charId);
+}
 
 const char = ref(null);
 const msgCount = ref(0);
@@ -242,4 +259,22 @@ const upcoming = computed(() => {
   white-space: nowrap;
 }
 .rel-upcoming-days.today { color: var(--rose); }
+
+.rel-entry-section { margin-bottom: 20px; }
+.rel-entry-card {
+  background: var(--card);
+  border-radius: 14px;
+  border: .5px solid var(--border);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+}
+.rel-entry-card:active { background: var(--surface); }
+.rel-entry-ic { font-size: 24px; flex-shrink: 0; }
+.rel-entry-info { flex: 1; min-width: 0; }
+.rel-entry-label { font-size: 14px; font-weight: 500; color: var(--text); }
+.rel-entry-sub { font-size: 11px; color: var(--text-3); font-weight: 300; margin-top: 3px; }
+.rel-entry-arrow { font-size: 20px; color: var(--text-3); flex-shrink: 0; }
 </style>

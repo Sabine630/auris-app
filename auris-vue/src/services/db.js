@@ -2,7 +2,7 @@ let db = null;
 
 export function initDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('auris', 5);
+    const r = indexedDB.open('auris', 6);
     r.onupgradeneeded = (e) => {
       const d = e.target.result;
       [
@@ -17,6 +17,8 @@ export function initDB() {
         ['group_messages', [['groupId', 'groupId'], ['createdAt', 'createdAt']]],
         ['notifications', [['charId', 'charId'], ['createdAt', 'createdAt']]],
         ['chat_memories', [['charId', 'charId']]],
+        ['wishes', [['charId', 'charId']]],
+        ['notes', [['charId', 'charId']]],
       ].forEach(([name, idx]) => {
         if (!d.objectStoreNames.contains(name)) {
           const os = d.createObjectStore(name, { keyPath: 'id' });
@@ -46,7 +48,7 @@ export const dbClear = (s) => new Promise((r, j) => { const tx = db.transaction(
 export const getSetting = async (k) => { const r = await dbGet('settings', k); return r ? r.value : null; };
 export const setSetting = (k, v) => dbPut('settings', { key: k, value: v });
 
-const ALL_STORES = ['characters', 'messages', 'memories', 'moments', 'diary', 'dreams', 'worlds', 'groups', 'group_messages', 'notifications', 'chat_memories', 'settings'];
+const ALL_STORES = ['characters', 'messages', 'memories', 'moments', 'diary', 'dreams', 'worlds', 'groups', 'group_messages', 'notifications', 'chat_memories', 'wishes', 'notes', 'settings'];
 
 export async function exportAllData() {
   const data = {};
@@ -112,13 +114,15 @@ export async function importAllData(jsonData) {
 export async function exportCharacterData(charId) {
   const char = await dbGet('characters', charId);
   if (!char) throw new Error('找不到角色');
-  const [messages, memories, chatMems, moments, diary, dreams] = await Promise.all([
+  const [messages, memories, chatMems, moments, diary, dreams, wishes, notes] = await Promise.all([
     dbIdx('messages', 'charId', charId),
     dbIdx('memories', 'charId', charId),
     dbIdx('chat_memories', 'charId', charId),
     dbIdx('moments', 'charId', charId),
     dbIdx('diary', 'charId', charId),
     dbIdx('dreams', 'charId', charId),
+    dbIdx('wishes', 'charId', charId),
+    dbIdx('notes', 'charId', charId),
   ]);
   return {
     aurisCharExportVersion: 1,
@@ -130,6 +134,8 @@ export async function exportCharacterData(charId) {
     moments,
     diary,
     dreams,
+    wishes,
+    notes,
   };
 }
 
@@ -159,6 +165,8 @@ export async function importCharacterData(jsonData) {
   await remapAndInsert(jsonData.moments,   'moments',       'mmt');
   await remapAndInsert(jsonData.diary,     'diary',         'diary');
   await remapAndInsert(jsonData.dreams,    'dreams',        'dream');
+  await remapAndInsert(jsonData.wishes,    'wishes',        'wish');
+  await remapAndInsert(jsonData.notes,     'notes',         'note');
 
   return newCharId;
 }
