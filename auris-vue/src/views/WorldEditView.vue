@@ -118,7 +118,7 @@ const form = ref({
 });
 
 const aliasInput = computed({
-  get: () => form.value.aliases.join('，'),
+  get: () => (form.value.aliases || []).join('，'),
   set: (v) => {
     form.value.aliases = v.split(/[,，]/).map(s => s.trim()).filter(Boolean);
   }
@@ -128,7 +128,7 @@ onMounted(async () => {
   chars.value = await dbAll('characters');
   if (isEdit.value) {
     const entry = await dbGet('worlds', route.params.id);
-    if (entry) form.value = { ...entry };
+    if (entry) form.value = { ...entry, aliases: entry.aliases || [], charScope: entry.charScope || [] };
   }
 });
 
@@ -141,11 +141,23 @@ function toggleChar(id) {
 async function save() {
   if (!form.value.name.trim()) { window.toast_('請填入詞條名稱'); return; }
   if (!form.value.content.trim()) { window.toast_('請填入詞條內容'); return; }
-  const id = form.value.id || (isEdit.value ? route.params.id : 'world_' + Date.now());
-  form.value.id = id;
-  await dbPut('worlds', { ...form.value, id, name: form.value.name.trim(), content: form.value.content.trim() });
-  window.toast_('已儲存');
-  if (!isEdit.value) router.replace('/worlds/edit/' + id);
+  try {
+    const id = form.value.id || (isEdit.value ? route.params.id : 'world_' + Date.now());
+    const record = {
+      ...form.value,
+      id,
+      name: form.value.name.trim(),
+      content: form.value.content.trim(),
+      aliases: [...(form.value.aliases || [])],
+      charScope: [...(form.value.charScope || [])],
+    };
+    await dbPut('worlds', record);
+    form.value.id = id;
+    window.toast_('已儲存');
+    if (!isEdit.value) router.replace('/worlds/edit/' + id);
+  } catch (err) {
+    window.toast_('儲存失敗：' + (err?.message || err));
+  }
 }
 
 function confirmDelete() { showDel.value = true; }
