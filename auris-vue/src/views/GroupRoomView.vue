@@ -20,7 +20,7 @@
         <template v-for="(m, i) in messages" :key="m.id">
           <!-- User Message -->
           <div v-if="m.charId === 'user'" class="msg me" :class="{'msg-cont': isCont(i)}">
-            <div class="msg-bubble" v-html="formatContent(m.content)"></div>
+            <div class="msg-bubble" v-html="formatContent(m.content, globalStore.chatFormatStyle)"></div>
             <div v-if="!isCont(i)" class="msg-time">{{ fmtT(m.createdAt) }}</div>
           </div>
 
@@ -33,12 +33,12 @@
               </div>
               <div class="msg them">
                 <div style="font-size:11px;color:var(--text-3);margin-bottom:2px;margin-left:4px">{{ getName(m.charId) }}</div>
-                <div class="msg-bubble" :class="{ streaming: m.isStreaming }" v-html="formatContent(m.content)"></div>
+                <div class="msg-bubble" :class="{ streaming: m.isStreaming }" v-html="formatContent(m.content, globalStore.chatFormatStyle)"></div>
                 <div class="msg-time">{{ fmtT(m.createdAt) }}</div>
               </div>
             </div>
             <div v-else class="msg-cont them">
-              <div class="msg-bubble" :class="{ streaming: m.isStreaming }" v-html="formatContent(m.content)"></div>
+              <div class="msg-bubble" :class="{ streaming: m.isStreaming }" v-html="formatContent(m.content, globalStore.chatFormatStyle)"></div>
             </div>
           </template>
         </template>
@@ -145,6 +145,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbPut, dbAll } from '../services/db.js';
 import { sendGroupMessage, generateGroupAIResponseStream } from '../services/chatEngine.js';
 import { formatContent } from '../services/format.js';
+import { globalStore } from '../store/index.js';
 
 const route = useRoute();
 const router = useRouter();

@@ -33,9 +33,13 @@ export async function generatePost(charId) {
   const storyCtx = c.stories?.filter(s => s.content).map(s => `【${s.title}】${s.content}`).join('\n') || '';
 
   const me = await getSetting('me_settings') || {};
+  const youName = (c.overrideMe && c.you_name) ? c.you_name : (me.name || '');
+  const youLine = youName
+    ? `【對方資訊】對方本名是「${youName}」${c.call ? `，你習慣稱呼對方為「${c.call}」` : ''}。若貼文提到對方，請用此稱呼。\n`
+    : '';
   const msgs = await dbIdx('messages', 'charId', charId);
   msgs.sort((a, b) => b.createdAt - a.createdAt);
-  const recentChat = buildRecentChat(msgs, c.name, me.name || '對方', 6, 50);
+  const recentChat = buildRecentChat(msgs, c.name, youName || '對方', 6, 50);
 
   const prompt = `你是「${c.name}」。請根據以下設定，寫一則短篇社群貼文（類似 IG 或 Twitter），分享你此刻的想法或生活片段。
 【個性】${c.persona || ''}
@@ -43,7 +47,7 @@ ${storyCtx ? `【背景】${storyCtx}` : ''}
 ${c.status ? `【近況】${c.status}` : ''}
 ${c.hobby ? `【喜好】${c.hobby}` : ''}
 【說話風格】${styleMap[c.style] || '輕鬆自然'}
-${recentChat ? `【最近與對方的對話】\n${recentChat}\n貼文可以若有似無地反映這段互動，或完全無關也行。` : ''}
+${youLine}${recentChat ? `【最近與對方的對話】\n${recentChat}\n貼文可以若有似無地反映這段互動，或完全無關也行。` : ''}
 
 【格式要求】
 1. 直接輸出貼文內容，不要加引號，長度約 60~200 字，要有具體的事件、感受或想法，不要只寫一句話。
@@ -112,10 +116,14 @@ export async function generateDiary(charId) {
   if (!c) throw new Error('找不到角色');
 
   const me = await getSetting('me_settings') || {};
+  const youName = (c.overrideMe && c.you_name) ? c.you_name : (me.name || '');
+  const youLine = youName
+    ? `對方本名是「${youName}」${c.call ? `，你習慣稱呼對方為「${c.call}」` : ''}。若日記提到對方，請用此稱呼。\n`
+    : '';
 
   const msgs = await dbIdx('messages', 'charId', charId);
   msgs.sort((a, b) => b.createdAt - a.createdAt);
-  const recentChat = buildRecentChat(msgs, c.name, me.name || '你', 8, 60);
+  const recentChat = buildRecentChat(msgs, c.name, youName || '你', 8, 60);
 
   const n = new Date();
   const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -123,7 +131,7 @@ export async function generateDiary(charId) {
 
   const sysPrompt = `你是「${c.name}」。個性：${c.persona || ''}。
 今天是 ${n.getFullYear()}年${n.getMonth() + 1}月${n.getDate()}日，星期${weekdays[n.getDay()]}。
-${recentChat ? `今天和對方的對話內容：\n${recentChat}\n` : ''}
+${youLine}${recentChat ? `今天和對方的對話內容：\n${recentChat}\n` : ''}
 請以角色的第一人稱，用繁體中文寫今天的日記。
 
 【日記品質要求】
@@ -170,12 +178,16 @@ export async function generateDream(charId) {
   if (!c) throw new Error('找不到角色');
 
   const me = await getSetting('me_settings') || {};
+  const youName = (c.overrideMe && c.you_name) ? c.you_name : (me.name || '');
+  const youLine = youName
+    ? `對方本名是「${youName}」${c.call ? `，你習慣稱呼對方為「${c.call}」` : ''}。若夢境提到對方，請用此稱呼。\n`
+    : '';
   const msgs = await dbIdx('messages', 'charId', charId);
   msgs.sort((a, b) => b.createdAt - a.createdAt);
-  const recentChat = buildRecentChat(msgs, c.name, me.name || '對方', 8, 50);
+  const recentChat = buildRecentChat(msgs, c.name, youName || '對方', 8, 50);
 
   const prompt = `你是「${c.name}」，個性：${c.persona || ''}。
-${recentChat ? `最近和對方的對話：\n${recentChat}\n夢境可以若有似無地折射這段互動，也可以完全無關。` : ''}
+${youLine}${recentChat ? `最近和對方的對話：\n${recentChat}\n夢境可以若有似無地折射這段互動，也可以完全無關。` : ''}
 
 請用第一人稱，寫一段完整、飄渺、詩意的夢境敘述。夢境可以與最近的話題有若有似無的關聯，也可以完全陌生的意象。
 

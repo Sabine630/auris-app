@@ -7,10 +7,12 @@ export const globalStore = reactive({
   settings: {},
   chatListData: [],
   keyboardOffset: 0,
+  chatFormatStyle: false,
 
   async init() {
     await initDB();
     this.theme = await getSetting('theme') || 'cream';
+    this.chatFormatStyle = !!(await getSetting('chat_format_style'));
     this.characters = await dbAll('characters');
     
     // Setup generic tracking of visual viewport for keyboard avoidance

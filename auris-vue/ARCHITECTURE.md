@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-14（P77）
+> 最後更新：2026-06-15（P78）
 
 ---
 
@@ -183,6 +183,7 @@ globalStore = {
   theme: 'cream',          // 當前主題，綁到 App.vue data-theme
   characters: [],          // 所有角色陣列，各頁面共用
   keyboardOffset: 0,       // 鍵盤高度（px），用於 BottomNav 隱藏判斷
+  chatFormatStyle: false,  // 聊天動作排版開關（chat_format_style），控制 *斜體*／「」上色
 
   init()             // App.vue onMounted 呼叫
   loadCharacters()   // 重新從 DB 載入 characters（各 View onMounted 呼叫）
@@ -318,6 +319,16 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P78（2026-06-15）主動訊息修復・內容吃名字・每日一問標籤・聊天動作排版
+
+- **主動訊息共用 helper**（`chatEngine.js`）：新增 `buildProactiveHistory(history, task)`，把主動任務指令放到對話**最尾端（最新近）**、並維持 user/assistant 交替（最後一則為 user 時併入，避免連續同角色被 Gemini/Anthropic 退件）。套用至 5 個函式：`generateScheduleMessage`、`generateDailyQuestion`、`generateMissYouMessage`、`generateCycleCareMessage`、`generateProactiveMessageStream`。解決「設定提醒卻順著舊話題回」的問題（指令被前文壓過、新近度不足）。
+- **貼文／日記／夢境注入名字**（`contentEngine.js`）：三者加入「對方本名是『XXX』（暱稱）」，支援 `overrideMe`/`you_name` 與 `c.call`；措辭「若提到才用」不強制提名。先前僅把名字當聊天記錄標籤、未明確告知角色。
+- **每日一問標籤**：`generateDailyQuestion` 產出的訊息加 `kind: 'dailyQuestion'`；`ChatRoomView.vue` 一般/連續版面皆於 bubble 上方顯示 `.dq-label`「☀️ 每日一問」。
+- **聊天動作排版（全域開關）**：
+  - `format.js` 的 `formatContent(str, enableRich=false)` 新增第二參數——`enableRich` 時於 HTML escape **之後**把 `*動作*`→`<em class="msg-action">`、`「對話」`→`<span class="msg-quote">`（純文字解析，不破壞 XSS 防線）。
+  - 設定鍵 `chat_format_style`（`SettingsView.vue`「聊天 → 動作排版」toggle）；`globalStore.chatFormatStyle` 於 init 載入、toggle 時同步。
+  - 顯示僅 `ChatRoomView.vue`／`GroupRoomView.vue` 傳 `globalStore.chatFormatStyle`（貼文/日記不受影響）；生成由 `buildAIChatSetup` 的 `formatCtx` 與群組 setup 的格式規則注入。關閉時畫面零變化。
 
 ### P77（2026-06-14）聊天全文搜尋・共同願望清單與備忘錄
 

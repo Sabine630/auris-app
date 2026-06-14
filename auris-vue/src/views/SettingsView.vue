@@ -63,6 +63,17 @@
       </div>
     </div>
 
+    <div class="sg-label">聊天</div>
+    <div class="sg">
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">動作排版</div>
+          <div class="toggle-desc">開啟後，角色會用 *星號* 表示動作／場景（顯示成斜體旁白），「」表示對話。對所有角色生效。</div>
+        </div>
+        <div class="toggle" :class="{ on: chatFormatStyle }" @click="toggleFormatStyle"><div class="toggle-knob"></div></div>
+      </div>
+    </div>
+
     <div class="sg-label">資料</div>
     <div class="sg" style="margin-bottom:32px">
       <div class="sr" @click="exportData">
@@ -85,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P77
+        Auris · P78
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P77 聊天全文搜尋・共同願望清單與備忘錄
+        P78 主動訊息修復・貼文日記吃名字・每日一問標籤・動作排版
       </div>
     </div>
   </div>
@@ -111,13 +122,21 @@ const themes = [
 const apiKey = ref('');
 const meName = ref('');
 const meAvatar = ref('');
+const chatFormatStyle = ref(false);
 
 onMounted(async () => {
   apiKey.value = (await getSetting('api_key')) || '';
   const me = await getSetting('me_settings');
   meName.value = me?.name || '';
   meAvatar.value = me?.avatar || '🙂';
+  chatFormatStyle.value = !!(await getSetting('chat_format_style'));
 });
+
+async function toggleFormatStyle() {
+  chatFormatStyle.value = !chatFormatStyle.value;
+  globalStore.chatFormatStyle = chatFormatStyle.value;
+  await setSetting('chat_format_style', chatFormatStyle.value);
+}
 
 async function applyTheme(id) {
   globalStore.theme = id;

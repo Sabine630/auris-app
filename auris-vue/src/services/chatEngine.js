@@ -143,6 +143,7 @@ async function buildAIChatSetup(charId, allMsgs) {
 
   const c = await dbGet('characters', charId);
   const me = await getSetting('me_settings') || {};
+  const formatStyle = await getSetting('chat_format_style');
   const provider = await getSetting('api_provider') || 'openai';
   const model = await getSetting('api_model') || getDefModel(provider);
   const base = (await getSetting('api_base') || getDefBase(provider)).replace(/\/$/, '');
@@ -230,6 +231,11 @@ async function buildAIChatSetup(charId, allMsgs) {
 
   const storyCtx = c.stories?.filter(s => s.content).map(s => `【${s.title}】${s.content}`).join('\n') || '';
 
+  // 動作排版（全域開關）：請角色用 *星號* 包動作／場景敘述、用「」包對話，前端會渲染成斜體旁白與上色。
+  const formatCtx = formatStyle
+    ? '\n【排版規則】把動作、表情、場景等敘述用半形星號 *像這樣* 包起來（會顯示成斜體旁白），角色說出口的話用「」括住。例：*他笑了笑*「好啊，那走吧。」自然運用即可，不要每句都硬套。'
+    : '';
+
   let lang = '繁體中文';
   if (c.lang === 'zh-cn') lang = '簡體中文';
   if (c.lang === 'ja') lang = '日文';
@@ -255,7 +261,7 @@ ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}
 ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
-${timeCtx}${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${worldCtx}${memCtx}
+${timeCtx}${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${worldCtx}${memCtx}${formatCtx}
 【回覆品質要求】
 ・每則訊息至少 50～150 字，要有具體內容，不能只是「嗯」「好啊」「哈哈」等空洞回應
 ・要回應對方說的具體內容，展現你真的在聽、在意
@@ -371,17 +377,33 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
   return { msg, truncated };
 }
 
+// ── 主動訊息共用工具 ───────────────────────────────────────────────────────
+// 把「現在該主動傳訊」的指令放到對話最尾端（最新近的一則），模型才會確實執行主動任務，
+// 而不是順著上面的舊話題回。同時維持 user/assistant 交替（Gemini/Anthropic 會拒絕連續同角色）：
+// 若最後一則是 user（對方留言還沒回），就把指令併進那則 user，而不是再補一則 user。
+// task：本次主動訊息的具體任務（例：「你之前設定要提醒對方：『喝水』，現在時間到了。」）
+function buildProactiveHistory(history, task) {
+  const instr = `（這不是對方傳來的訊息，而是給你的系統提示：${task}`
+    + `請你現在主動傳一則訊息，用你自己的角色口吻與說話風格，自然、簡短、有溫度，`
+    + `不要接續上面的舊話題、不要等對方先開口、也不要把這段提示原文寫進訊息。）`;
+  if (!history.length) return [{ role: 'user', content: instr }];
+  const out = history.slice();
+  const last = out[out.length - 1];
+  if (last.role === 'user') {
+    out[out.length - 1] = { ...last, content: last.content + '\n\n' + instr };
+  } else {
+    out.push({ role: 'user', content: instr });
+  }
+  return out;
+}
+
 // ── 1-on-1 Proactive Message: Streaming ──────────────────────────────────
 export async function generateProactiveMessageStream(charId, allMsgs, { onChunk, signal }) {
   const { c, provider, model, base, apiKey, history, finalSystemPrompt } = await buildAIChatSetup(charId, allMsgs);
 
   const proactivePrompt = finalSystemPrompt + '\n\n【主動訊息】你突然想起對方，主動傳個訊息。不是回覆任何問題，是你自己有什麼想說——可能是分享一件事、想問問近況、或只是想到他/她了。語氣自然，像真人突然想說話一樣，直接說你想說的。';
 
-  const proactiveHistory = history.length
-    ? (history[history.length - 1].role === 'user'
-        ? history
-        : [...history, { role: 'user', content: '（沉默中）' }])
-    : [{ role: 'user', content: '（對方沒說話，你突然有什麼想說）' }];
+  const proactiveHistory = buildProactiveHistory(history, '你突然想起對方，想主動傳個訊息——分享一件事、問問近況、或只是想到他／她了。');
 
   const fetchOpts = signal ? { signal } : {};
   let fullText = '';
@@ -451,13 +473,7 @@ export async function generateCycleCareMessage(charId, trigger) {
     : `你想到對方今天生理期大概來了（第 ${ph.dayNum} 天），有點心疼，想關心對方。`;
   const carePrompt = finalSystemPrompt + `\n\n【主動關心】${careGoal}請主動傳一則訊息關心對方，自然、簡短、有溫度，像真的在意對方的人會說的話（例如提醒保暖、喝熱水、好好休息、想吃什麼幫忙準備之類）。要完全符合你的角色個性與說話風格。不要像衛教文章、不要長篇大論、不要解釋你為什麼會知道。直接說你想說的。`;
 
-  // 沿用主動訊息的歷史處理：最後一則是 assistant（或無歷史）時補一個使用者佔位，
-  // 以滿足 Anthropic 等需 user 結尾的格式要求。
-  const careHistory = history.length
-    ? (history[history.length - 1].role === 'user'
-        ? history
-        : [...history, { role: 'user', content: '（沉默中）' }])
-    : [{ role: 'user', content: '（對方沒說話，你突然很想關心對方）' }];
+  const careHistory = buildProactiveHistory(history, `${careGoal}你想主動傳訊關心對方。`);
 
   let text = '';
   try {
@@ -490,11 +506,7 @@ export async function generateScheduleMessage(charId, triggerDesc) {
   const goal = `你設定的提醒事項是：「${triggerDesc}」。現在時間到了，請主動傳一則訊息給對方，自然、簡短、有溫度，完全符合你的角色個性與說話風格，像真的在意對方的人會說的話。不要像通知或系統提示，直接用你自己的方式說。`;
   const schedPrompt = finalSystemPrompt + `\n\n【主動訊息】${goal}`;
 
-  const schedHistory = history.length
-    ? (history[history.length - 1].role === 'user'
-        ? history
-        : [...history, { role: 'user', content: '（沉默中）' }])
-    : [{ role: 'user', content: '（對方沒說話，你有件事想提醒對方）' }];
+  const schedHistory = buildProactiveHistory(history, `你之前設定要在這個時間主動提醒對方：「${triggerDesc}」，現在時間到了。`);
 
   let text = '';
   try {
@@ -598,6 +610,7 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
   if (!c) return null;
 
   const me = await getSetting('me_settings') || {};
+  const formatStyle = await getSetting('chat_format_style');
   const apiKey = await getSetting('api_key');
   if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
   const provider = await getSetting('api_provider') || 'openai';
@@ -624,7 +637,8 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
     '2. 【絕對禁止】在回覆開頭加上任何「' + c.name + '：」「我：」之類的名字前綴，直接從第一句內容開始。\n' +
     '3. 【絕對禁止】幫使用者' + (me.name || '') + '說話、或自己創造一段「使用者：xxx」的對話。你只能扮演' + c.name + '一個人。\n' +
     '4. 【絕對禁止】輸出多個角色的對話片段。即使要回應其他角色說過的話，也只用' + c.name + '的口吻單獨講一段。\n' +
-    '5. 若使用者直接問你，要先正面回答自己的想法。直接輸出訊息內容本身。';
+    '5. 若使用者直接問你，要先正面回答自己的想法。直接輸出訊息內容本身。' +
+    (formatStyle ? '\n6. 把動作／表情／場景敘述用半形星號 *像這樣* 包起來，說出口的話用「」括住。' : '');
 
   const rawHistory = allMsgs.slice(-12).map(m => {
     if (m.charId === 'user') return { role: 'user', content: m.content };
@@ -843,11 +857,7 @@ export async function generateMissYouMessage(charId) {
 
   const missYouPrompt = finalSystemPrompt + '\n\n【我想你】你突然想到對方了，想傳一個很短、很自然的訊息。不是因為有事要說，就是想到他／她了。語氣要像真實的人，直接說你想說的，簡短（一兩句就好），有溫度但不刻意煽情。不要用問句作結。';
 
-  const missHistory = history.length
-    ? (history[history.length - 1].role === 'user'
-        ? history
-        : [...history, { role: 'user', content: '（對方沒說話）' }])
-    : [{ role: 'user', content: '（對方現在沒說話，你突然想到他）' }];
+  const missHistory = buildProactiveHistory(history, '你突然想到對方了，想傳一個很短、很自然的訊息給他／她，不是因為有事，就是單純想到了。');
 
   let text = '';
   try {
@@ -881,11 +891,7 @@ export async function generateDailyQuestion(charId) {
 
   const dqPrompt = finalSystemPrompt + '\n\n【每日一問】今天你想主動問對方一個問題——關於他／她最近的生活、心情、想法、或你們共同感興趣的話題。問題要真誠、自然，像真的想了解對方的人會問的，不要太制式或像問卷。可以先說一點引子再問，整體簡短（三句以內）。';
 
-  const dqHistory = history.length
-    ? (history[history.length - 1].role === 'user'
-        ? history
-        : [...history, { role: 'user', content: '（沉默中）' }])
-    : [{ role: 'user', content: '（今天還沒聊天，你想主動問對方一個問題）' }];
+  const dqHistory = buildProactiveHistory(history, '今天你想主動問對方一個問題——關於他／她最近的生活、心情、想法、或你們共同感興趣的話題，問得真誠自然、不要像問卷。');
 
   let text = '';
   try {
@@ -900,7 +906,7 @@ export async function generateDailyQuestion(charId) {
   if (!text || !text.trim()) return null;
 
   const c = await dbGet('characters', charId);
-  const msg = { id: 'msg_' + Date.now() + '_dq', charId, role: 'assistant', content: text.trim(), createdAt: Date.now() };
+  const msg = { id: 'msg_' + Date.now() + '_dq', charId, role: 'assistant', content: text.trim(), kind: 'dailyQuestion', createdAt: Date.now() };
   await dbPut('messages', msg);
   c.unreadCount = (c.unreadCount || 0) + 1;
   c.hasUnread = true;
