@@ -397,6 +397,20 @@ function buildProactiveHistory(history, task) {
   return out;
 }
 
+// 所有「角色主動發起」訊息的內部標記值（純邏輯判斷用，不渲染成標籤）。
+// 派發器靠它判斷「上一則是不是還沒回的主動開場白」，避免一次堆好幾則。
+export const PROACTIVE_KINDS = new Set(['proactive', 'cycleCare', 'schedule', 'missYou', 'dailyQuestion']);
+
+// 該角色最新一則「真實對話」訊息（排除 heart voice）是否為一則尚未回覆的主動訊息。
+// 用於派發前的防堆疊閘門：上一則主動開場白還沒被回，就先不要再丟新的。
+export async function hasUnrepliedProactive(charId) {
+  const msgs = await dbIdx('messages', 'charId', charId);
+  if (!msgs.length) return false;
+  msgs.sort((a, b) => b.createdAt - a.createdAt);
+  const last = msgs.find(m => m.type !== 'hv');
+  return !!(last && last.role === 'assistant' && PROACTIVE_KINDS.has(last.kind));
+}
+
 // ── 1-on-1 Proactive Message: Streaming ──────────────────────────────────
 export async function generateProactiveMessageStream(charId, allMsgs, { onChunk, signal }) {
   const { c, provider, model, base, apiKey, history, finalSystemPrompt } = await buildAIChatSetup(charId, allMsgs);
@@ -447,7 +461,7 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
 
   let msg = null;
   if (fullText.trim()) {
-    msg = { id: 'msg_' + Date.now() + '_pro', charId, role: 'assistant', content: fullText.trim(), createdAt: Date.now() };
+    msg = { id: 'msg_' + Date.now() + '_pro', charId, role: 'assistant', content: fullText.trim(), kind: 'proactive', createdAt: Date.now() };
     await dbPut('messages', msg);
   }
   return { msg, truncated };
@@ -487,7 +501,7 @@ export async function generateCycleCareMessage(charId, trigger) {
   }
   if (!text || !text.trim()) return null;
 
-  const msg = { id: 'msg_' + Date.now() + '_care', charId, role: 'assistant', content: text.trim(), createdAt: Date.now() };
+  const msg = { id: 'msg_' + Date.now() + '_care', charId, role: 'assistant', content: text.trim(), kind: 'cycleCare', createdAt: Date.now() };
   await dbPut('messages', msg);
   c.unreadCount = (c.unreadCount || 0) + 1;
   c.hasUnread = true;
@@ -521,7 +535,7 @@ export async function generateScheduleMessage(charId, triggerDesc) {
   if (!text || !text.trim()) return null;
 
   const c = await dbGet('characters', charId);
-  const msg = { id: 'msg_' + Date.now() + '_sched', charId, role: 'assistant', content: text.trim(), createdAt: Date.now() };
+  const msg = { id: 'msg_' + Date.now() + '_sched', charId, role: 'assistant', content: text.trim(), kind: 'schedule', createdAt: Date.now() };
   await dbPut('messages', msg);
   c.unreadCount = (c.unreadCount || 0) + 1;
   c.hasUnread = true;
@@ -872,7 +886,7 @@ export async function generateMissYouMessage(charId) {
   if (!text || !text.trim()) return null;
 
   const c = await dbGet('characters', charId);
-  const msg = { id: 'msg_' + Date.now() + '_miss', charId, role: 'assistant', content: text.trim(), createdAt: Date.now() };
+  const msg = { id: 'msg_' + Date.now() + '_miss', charId, role: 'assistant', content: text.trim(), kind: 'missYou', createdAt: Date.now() };
   await dbPut('messages', msg);
   c.unreadCount = (c.unreadCount || 0) + 1;
   c.hasUnread = true;

@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-15（P78）
+> 最後更新：2026-06-15（P79）
 
 ---
 
@@ -319,6 +319,18 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P79（2026-06-15）主動訊息融入對話・移除標籤・分時段一次一則
+
+- **設計轉向**：Auris 模擬與真人在手機上往來，主動訊息應自然出現在對話裡、**不掛標籤做區分**。撤回 P78 加的「☀️ 每日一問」標籤——刪除 `ChatRoomView.vue` 兩處標籤與 `main.css` 的 `.dq-label`；主動訊息與一般 AI 訊息渲染一致。
+- **`kind` 轉為純內部標記**（`chatEngine.js`）：四個缺 `kind` 的主動訊息產生器補上 `kind`（`proactive`/`cycleCare`/`schedule`/`missYou`），連同既有 `dailyQuestion` **僅供派發邏輯判斷、不再渲染**。message 軟欄位 `kind` 用途由「顯示標籤」改為「主動訊息分類」。新增並匯出 `PROACTIVE_KINDS`（Set）與 `hasUnrepliedProactive(charId)`（最新一則非 hv 訊息為未回覆的主動訊息 → true）。
+- **統一派發器**（`App.vue`）：移除 `runMissYou`／`runDailyQuestions`／`runCycleCare` 三個「開 app 同時全發」的 runner，改為單一 `runProactiveDispatch()`，於開 app＋每 5 分鐘各跑一次，**每角色每輪最多送一則**，過兩道閘門：
+  - `hasUnrepliedProactive(c.id)` → 上一則主動訊息沒回就不疊。
+  - `now - lastProactiveAt(c.id) < PROACTIVE_MIN_GAP_MS`（預設 3 小時，setting `last_proactive_<id>`）→ 未滿間隔就不發。
+  - 候選優先序：生理期關心 → 每日一問 → 我想你；命中即送並寫該型「當天一次」去重 key ＋ `last_proactive`。
+- **作息提醒**（`runScheduleTriggers`）：綁定時鐘時間本就分散，保留獨立 5 分鐘 tick，加上 `hasUnrepliedProactive` 防堆疊閘門、送出後寫 `last_proactive`；**豁免 min-gap**（到點仍準時發），每輪先於 `runProactiveDispatch` 執行。
+- **行為取捨**：主動訊息由「每天保證全發」變為「分時段、盡量送」；只短暫開 app 的日子當天可能只收到優先序最高的一則。
+- **首頁每日一問 widget**（`HomeView.vue`）不變：靠 `_dq` id 後綴判斷、屬主畫面提示，不在對話流內。
 
 ### P78（2026-06-15）主動訊息修復・內容吃名字・每日一問標籤・聊天動作排版
 

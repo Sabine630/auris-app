@@ -47,7 +47,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from './store/index.js';
 import { getSetting, setSetting, dbAll, dbIdx, dbGet } from './services/db.js';
 import { generateDiary, generatePost } from './services/contentEngine.js';
-import { generateCycleCareMessage, generateScheduleMessage, generateMissYouMessage, generateDailyQuestion } from './services/chatEngine.js';
+import { generateCycleCareMessage, generateScheduleMessage, generateMissYouMessage, generateDailyQuestion, hasUnrepliedProactive } from './services/chatEngine.js';
 import { getCyclePhase } from './services/cycle.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
@@ -190,66 +190,67 @@ async function runDailyAutoGen() {
   } catch (_) {}
 }
 
-// 「我想你」輕觸：開 app 時對每個開啟 missYouEnabled 的角色，40% 機率觸發，每天最多一次。
-// 需有至少 5 則對話記錄才觸發（避免剛建角色就亂傳）。
-async function runMissYou() {
-  try {
-    const today = new Date().toISOString().slice(0, 10);
-    const chars = await dbAll('characters');
-    for (const c of chars) {
-      if (!c.missYouEnabled) continue;
-      const key = `miss_you_${c.id}`;
-      if (await getSetting(key) === today) continue;
-      const msgs = await dbIdx('messages', 'charId', c.id);
-      if (msgs.length < 5) continue;
-      if (Math.random() > 0.4) continue;
-      await setSetting(key, today);
-      try { await generateMissYouMessage(c.id); } catch (_) {}
-    }
-  } catch (_) {}
+// 主動訊息之間至少間隔的時間，避免一次冒出好幾則互不相關的開場白（可調）。
+const PROACTIVE_MIN_GAP_MS = 3 * 60 * 60 * 1000; // 3 小時
+
+async function lastProactiveAt(charId) {
+  const v = await getSetting('last_proactive_' + charId);
+  return typeof v === 'number' ? v : 0;
 }
 
-// 每日一問：開 app 時對每個開啟 dailyQuestionEnabled 的角色，每天觸發一次。
-// 需有至少 3 則對話記錄才觸發。
-async function runDailyQuestions() {
+// 統一派發「想你／每日一問／生理期關心」三種環境主動訊息：開 app＋每 5 分鐘各跑一次。
+// 每角色每輪最多送「一則」，並過兩道閘門——上一則主動訊息還沒回就不疊、距上一則未滿間隔就不發，
+// 讓主動訊息像真人一樣分時段到、不再一次砸一堆。各型仍保有「當天一次」的去重 key。
+// 優先序：生理期關心（健康）→ 每日一問 → 我想你（環境問候）。
+async function runProactiveDispatch() {
   try {
     const today = new Date().toISOString().slice(0, 10);
+    const now = Date.now();
+
+    // 生理期觸發判斷（全域，依玩家經期設定）：預測經期開始日 / 經期前 2 天
+    let cycleTrigger = null;
+    try {
+      const me = await getSetting('me_settings');
+      if (me && me.cycleEnabled && me.lastPeriodStart) {
+        const ph = getCyclePhase(me);
+        if (ph) {
+          if (ph.dayInCycle === 0) cycleTrigger = 'period';
+          else if (ph.daysUntilNext === 2) cycleTrigger = 'pms';
+        }
+      }
+    } catch (_) {}
+
     const chars = await dbAll('characters');
     for (const c of chars) {
-      if (!c.dailyQuestionEnabled) continue;
-      const key = `daily_q_${c.id}`;
-      if (await getSetting(key) === today) continue;
+      // 閘門 1：上一則主動訊息還沒回，先不疊
+      if (await hasUnrepliedProactive(c.id)) continue;
+      // 閘門 2：距上一則主動訊息未滿間隔，先不發
+      if (now - (await lastProactiveAt(c.id)) < PROACTIVE_MIN_GAP_MS) continue;
+
       const msgs = await dbIdx('messages', 'charId', c.id);
-      if (msgs.length < 3) continue;
-      await setSetting(key, today);
-      try { await generateDailyQuestion(c.id); } catch (_) {}
-    }
-  } catch (_) {}
-}
 
-// 生理期主動關心：在「預測經期開始日」與「經期前 2 天」各觸發一次，
-// 讓有開「生理期關心」的角色主動傳一則關心訊息進聊天室。
-// 以 per-char 的日期 setting 去重，同一天不重複傳；兩個觸發日為不同日期，各自只會發一次。
-async function runCycleCare() {
-  try {
-    const me = await getSetting('me_settings');
-    if (!me || !me.cycleEnabled || !me.lastPeriodStart) return;
-    const ph = getCyclePhase(me);
-    if (!ph) return;
-
-    let trigger = null;
-    if (ph.dayInCycle === 0) trigger = 'period';      // 預測經期開始日
-    else if (ph.daysUntilNext === 2) trigger = 'pms'; // 經期前 2 天
-    if (!trigger) return;
-
-    const today = new Date().toISOString().slice(0, 10);
-    const chars = await dbAll('characters');
-    for (const c of chars) {
-      if (!c.cycleCare) continue;
-      const key = 'cycle_care_' + c.id;
-      if (await getSetting(key) === today) continue;
-      await setSetting(key, today);
-      try { await generateCycleCareMessage(c.id, trigger); } catch (_) {}
+      // 生理期關心
+      if (cycleTrigger && c.cycleCare && (await getSetting('cycle_care_' + c.id)) !== today) {
+        await setSetting('cycle_care_' + c.id, today);
+        await setSetting('last_proactive_' + c.id, now);
+        try { await generateCycleCareMessage(c.id, cycleTrigger); } catch (_) {}
+        continue;
+      }
+      // 每日一問
+      if (c.dailyQuestionEnabled && msgs.length >= 3 && (await getSetting('daily_q_' + c.id)) !== today) {
+        await setSetting('daily_q_' + c.id, today);
+        await setSetting('last_proactive_' + c.id, now);
+        try { await generateDailyQuestion(c.id); } catch (_) {}
+        continue;
+      }
+      // 我想你（40% 機率；沒中就不寫去重 key，下一輪可再擲）
+      if (c.missYouEnabled && msgs.length >= 5 && (await getSetting('miss_you_' + c.id)) !== today) {
+        if (Math.random() <= 0.4) {
+          await setSetting('miss_you_' + c.id, today);
+          await setSetting('last_proactive_' + c.id, now);
+          try { await generateMissYouMessage(c.id); } catch (_) {}
+        }
+      }
     }
   } catch (_) {}
 }
@@ -263,6 +264,8 @@ async function runScheduleTriggers() {
     const today = now.toISOString().slice(0, 10);
     for (const c of chars) {
       if (!c.scheduleTriggers || !c.scheduleTriggers.length) continue;
+      // 上一則主動訊息還沒回就先不疊（定時提醒不受 min-gap 限制，到點仍會發）
+      if (await hasUnrepliedProactive(c.id)) continue;
       for (const t of c.scheduleTriggers) {
         if (!t.enabled || !t.time || !t.desc) continue;
         // 允許 ±4 分鐘的容差視窗（每 5 分鐘掃一次，避免剛好錯過）
@@ -274,6 +277,7 @@ async function runScheduleTriggers() {
         const sent = await getSetting(key);
         if (sent) continue;
         await setSetting(key, true);
+        await setSetting('last_proactive_' + c.id, Date.now());
         try { await generateScheduleMessage(c.id, t.desc); } catch (_) {}
       }
     }
@@ -311,16 +315,11 @@ onMounted(async () => {
   // Daily auto-generation (runs silently in background, P50)
   runDailyAutoGen();
 
-  // 生理期主動關心（背景靜默執行，P59）
-  runCycleCare();
-
-  // 「我想你」輕觸 + 每日一問（背景靜默執行，P74）
-  runMissYou();
-  runDailyQuestions();
-
-  // 作息時段主動訊息（每 5 分鐘掃一次）
+  // 主動訊息（背景靜默；P79 起改為分時段、一次一則，不再開 app 同時全冒出來）
+  // 定時提醒先跑（到點優先），再跑環境主動訊息派發；之後每 5 分鐘掃一次。
   runScheduleTriggers();
-  schedTimer = setInterval(runScheduleTriggers, 5 * 60 * 1000);
+  runProactiveDispatch();
+  schedTimer = setInterval(() => { runScheduleTriggers(); runProactiveDispatch(); }, 5 * 60 * 1000);
 
   // Prevent iOS Safari swipe-back gesture (left/right edge swipe)
   document.addEventListener('touchstart', (e) => {

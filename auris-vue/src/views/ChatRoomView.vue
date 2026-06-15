@@ -87,14 +87,12 @@
                 <span v-else>{{ cAvatar || '🌸' }}</span>
               </div>
               <div class="msg them">
-                <div v-if="m.kind === 'dailyQuestion'" class="dq-label">☀️ 每日一問</div>
                 <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id, streaming: m.isStreaming }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content, globalStore.chatFormatStyle)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
                 <div v-if="m.reaction" class="msg-reaction" @click="removeReaction(m)">{{ m.reaction }}</div>
                 <div class="msg-time">{{ fmtT(m.createdAt) }}</div>
               </div>
             </div>
             <div v-else class="msg-cont them">
-              <div v-if="m.kind === 'dailyQuestion'" class="dq-label">☀️ 每日一問</div>
               <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id, streaming: m.isStreaming }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content, globalStore.chatFormatStyle)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
               <div v-if="m.reaction" class="msg-reaction msg-reaction-cont" @click="removeReaction(m)">{{ m.reaction }}</div>
             </div>

@@ -96,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P78
+        Auris · P79
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P78 主動訊息修復・貼文日記吃名字・每日一問標籤・動作排版
+        P79 主動訊息融入對話・移除標籤・分時段一次一則不再同時冒出
       </div>
     </div>
   </div>

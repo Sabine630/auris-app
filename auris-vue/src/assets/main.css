@@ -553,16 +553,6 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   letter-spacing:.10em;text-transform:uppercase;
   margin-bottom:3px;
 }
-/* 每日一問標籤：標示這則 AI 訊息是主動的「每日一問」 */
-.dq-label{
-  align-self:flex-start;
-  font-size:10px;font-weight:400;
-  color:var(--rose);
-  background:var(--rose-light);
-  padding:2px 8px;border-radius:9px;
-  letter-spacing:.04em;
-  margin:0 0 4px 4px;
-}
 /* 聊天排版：*動作敘述* 斜體旁白、「對話」上色 */
 .msg-action{
   font-style:italic;
