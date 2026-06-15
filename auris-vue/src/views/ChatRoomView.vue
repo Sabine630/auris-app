@@ -339,7 +339,7 @@
 import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbDel, dbPut, getSetting } from '../services/db.js';
-import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, summarizeToMemory } from '../services/chatEngine.js';
+import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, summarizeToMemory, hasUnrepliedProactive } from '../services/chatEngine.js';
 import { formatContent } from '../services/format.js';
 import { globalStore } from '../store/index.js';
 
@@ -585,7 +585,7 @@ async function saveEditMem(mem) {
 function scheduleProactive() {
   clearTimeout(proactiveTimer);
   const mode = character.value?.replyMode;
-  if (!mode || mode === 'manual') return;
+  if (!mode || mode === 'manual' || character.value?.proactiveMute) return;
 
   const care = character.value?.care || 'sometimes';
   const [min, max] = CARE_INTERVALS[care] || CARE_INTERVALS.sometimes;
@@ -600,6 +600,8 @@ function scheduleProactive() {
 
 async function triggerProactive() {
   if (isTyping.value || isProactiveGenerating.value) { scheduleProactive(); return; }
+  // 背景派發已發過一則還沒回的主動訊息，就先別在聊天室再疊一則（避免兩套系統互疊）
+  try { if (await hasUnrepliedProactive(charId)) { scheduleProactive(); return; } } catch (_) {}
 
   const rawMsgs = messages.value.filter(m => m.type !== 'hv');
   proactiveController = new AbortController();

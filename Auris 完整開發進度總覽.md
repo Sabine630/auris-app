@@ -1,7 +1,7 @@
 ﻿# 🎨 Auris 完整開發進度總覽
 
 **最後更新**：2026-06-15
-**當前版本**：P79（主動訊息融入對話・移除標籤・分時段一次一則）
+**當前版本**：P80（主動訊息健檢：真正融入對話・總開關・勿擾時段・跨角色節流・定時補發）
 **狀態**：上線後持續優化中
 
 ---
@@ -712,7 +712,7 @@ ChatRoomView header 新增搜尋圖示，點開頂部搜尋列。輸入關鍵字
 
 ---
 
-### P79 主動訊息融入對話・移除標籤・分時段一次一則（2026-06-15，當前版本）
+### P79 主動訊息融入對話・移除標籤・分時段一次一則（2026-06-15）
 
 **設計理念**：Auris 模擬與真人在手機上往來，主動訊息應像真實生活般自然出現在對話裡，**不該掛標籤做區分**——真人傳「想你」不會掛牌子，一掛上沉浸感就破。前一版（P78）加的「☀️ 每日一問」標籤方向錯了，本版移除。真正讓使用者「不知道回哪句」的病因是：5 種主動訊息（想你／每日一問／作息提醒／生理期關心／一般主動）在開 app 瞬間**一次平行全冒出來**，幾個不相關的開場白同時砸過來。修法是讓它們像真人一樣**分時段、一次一則**。
 
@@ -737,6 +737,44 @@ ChatRoomView header 新增搜尋圖示，點開頂部搜尋列。輸入關鍵字
 | `assets/main.css` | 移除 `.dq-label` |
 | `App.vue` | 移除 `runMissYou`/`runDailyQuestions`/`runCycleCare`，新增 `runProactiveDispatch`＋`lastProactiveAt`＋`PROACTIVE_MIN_GAP_MS`；`runScheduleTriggers` 加防堆疊閘門；改寫 `onMounted`／interval |
 | `views/SettingsView.vue` | P78 → P79 |
+
+---
+
+### P80 主動訊息健檢：真正融入對話・總開關・勿擾時段・跨角色節流・定時補發（2026-06-15，當前版本）
+
+**背景**：P79 只拿掉了主動訊息的「外觀標籤」，但**內容生成那層沒動**——`buildProactiveHistory` 仍叫 AI「不要接續上面的舊話題」，於是主動訊息一旦落在熱聊中，會自顧自另起話題、跟現場劇情打架（實例：玩家剛說「上車了」，角色卻冒出「還在工作室？要紮營過夜？」）。本版對 5 種自動訊息做一次全面健檢，把「真正融入對話」做到內容層，並補上一批節制與防呆機制。
+
+**① 內容真正融入對話（熱聊／冷場分支）**
+`chatEngine.js` 新增 `isRecentlyActive(allMsgs)`（最後一則非 hv 訊息距今 < 5 分鐘＝熱聊）。`buildProactiveHistory(history, task, active)` 改依 active 分支：**熱聊時**指令改為「承接對方剛剛說的內容、像真人邊聊邊提起，不要硬轉新話題」；**冷場時**才維持原本「另起新話題開場白」。五個產生器（`proactive`/`cycleCare`/`schedule`/`missYou`/`dailyQuestion`）都算出 active 傳入，熱聊時 system prompt 追加 `PROACTIVE_ACTIVE_TAIL`，並把「不是回覆任何問題」等與融入相衝突的絕對句改為冷場限定。
+
+**② 總開關：暫停主動訊息**
+角色新增 `proactiveMute` 欄位（預設 false，向下相容）。開啟後該角色完全不主動——背景派發（想你／每日一問／生理期）、定時提醒、聊天室即時主動全部跳過，但你傳訊時仍正常回覆。解決「設了手動還是一直被主動訊息打擾、沒有總開關」的痛點（不重用 `replyMode` 以免動到既有設定）。
+
+**③ 勿擾時段**
+環境問候（想你／每日一問／生理期關心）在 **23:00–08:00 不發**（`inQuietHours()` 整輪略過）；定時提醒不受限（你設幾點就幾點）。
+
+**④ 跨角色節流：全域每輪最多一則**
+`runProactiveDispatch` 改為命中即 `return`，多角色開 app 時不再每角色各冒一則爆量，改為分散到後續每 5 分鐘的掃描逐一送出。
+
+**⑤ 「我想你」機率正名**
+原本沒中不寫去重 key → 每 5 分鐘重擲 → 「偶爾」實際變「幾乎必發」。改為**每天只擲一次** 40%（無論中不中都寫當天 key），回歸「不一定每天都有」。
+
+**⑥ 生理期關心加門檻**
+比照每日一問，要求對話 ≥ 3 則才發，避免對剛建的陌生角色就冒生理期關心。
+
+**⑦ 定時提醒補發**
+容差視窗由「±4 分鐘」改為「到點前 4 分鐘 ~ 到點後 60 分鐘」。到點當下 app 沒開／在勿擾沒掃到時，之後開 app 仍會在一小時內補發一次（當天去重 key 確保只發一次），但不會遲到太久變怪提醒。
+
+**⑧ 兩套主動系統互不再疊**
+聊天室即時主動 `generateProactiveMessageStream` 發送後寫入 `last_proactive_<id>`，讓背景派發的 3h min-gap 在玩家在場時生效；`triggerProactive` 發送前先查 `hasUnrepliedProactive`，背景已發過未回的主動訊息就不再疊。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/chatEngine.js` | 新增並匯出 `isRecentlyActive`、`PROACTIVE_ACTIVE_WINDOW_MS`；`buildProactiveHistory` 加 active 分支＋`PROACTIVE_ACTIVE_TAIL`；5 個產生器傳入 active、熱聊軟化衝突句；`generateProactiveMessageStream` 發送後寫 `last_proactive` |
+| `App.vue` | `runProactiveDispatch` 加總開關／勿擾時段／全域單則節流／想你每天擲一次／生理期 ≥3 門檻；`runScheduleTriggers` 加總開關＋遲到 60 分鐘內補發；新增 `inQuietHours` |
+| `views/ChatRoomView.vue` | `scheduleProactive` 加 `proactiveMute` 判斷；`triggerProactive` 發送前查 `hasUnrepliedProactive` |
+| `views/CharEditView.vue` | 新增「暫停主動訊息（總開關）」toggle 與 `proactiveMute` 預設；修正「我想你」說明文字 |
+| `views/SettingsView.vue` | P79 → P80 |
 
 ---
 

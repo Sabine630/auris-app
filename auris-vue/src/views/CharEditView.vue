@@ -363,6 +363,13 @@
           </div>
           <div class="toggle-row">
             <div class="toggle-info">
+              <div class="toggle-name">暫停主動訊息（總開關）</div>
+              <div class="toggle-desc">開啟後，這個角色完全不會主動傳訊息（想你、每日一問、生理期關心、定時提醒、聊天室即時主動全部暫停），你傳訊息時仍會正常回覆</div>
+            </div>
+            <div class="toggle" :class="{ on: char.proactiveMute }" @click="char.proactiveMute = !char.proactiveMute"><div class="toggle-knob"></div></div>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
               <div class="toggle-name">生理期關心</div>
               <div class="toggle-desc">讓這個角色知道你的生理期，聊天時體貼帶到，並在經期前後主動傳訊息關心（需先在「我的設定」開啟週期追蹤）</div>
             </div>
@@ -371,7 +378,7 @@
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="toggle-name">我想你</div>
-              <div class="toggle-desc">角色偶爾會主動傳一則短訊息告訴你「突然想到你了」，每天最多一次，觸發有隨機性</div>
+              <div class="toggle-desc">角色偶爾會主動傳一則短訊息告訴你「突然想到你了」，每天最多一次（約 4 成機率，不一定每天都有）</div>
             </div>
             <div class="toggle" :class="{ on: char.missYouEnabled }" @click="char.missYouEnabled = !char.missYouEnabled"><div class="toggle-knob"></div></div>
           </div>
@@ -559,6 +566,7 @@ const char = ref({
   heartVoice: false,
   autoDiary: false,
   autoPost: false,
+  proactiveMute: false,
   cycleCare: false,
   missYouEnabled: false,
   dailyQuestionEnabled: false,

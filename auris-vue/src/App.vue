@@ -198,12 +198,22 @@ async function lastProactiveAt(charId) {
   return typeof v === 'number' ? v : 0;
 }
 
+// 環境主動訊息的勿擾時段：23:00–08:00 不發想你／每日一問／生理期關心（定時提醒不受此限）。
+function inQuietHours() {
+  const h = new Date().getHours();
+  return h >= 23 || h < 8;
+}
+
 // 統一派發「想你／每日一問／生理期關心」三種環境主動訊息：開 app＋每 5 分鐘各跑一次。
-// 每角色每輪最多送「一則」，並過兩道閘門——上一則主動訊息還沒回就不疊、距上一則未滿間隔就不發，
+// 全域每輪最多送「一則」（避免多角色開 app 同時爆量），並過數道閘門——
+// 角色暫停主動訊息、勿擾時段、上一則主動訊息還沒回、距上一則未滿間隔——才會送，
 // 讓主動訊息像真人一樣分時段到、不再一次砸一堆。各型仍保有「當天一次」的去重 key。
 // 優先序：生理期關心（健康）→ 每日一問 → 我想你（環境問候）。
 async function runProactiveDispatch() {
   try {
+    // 勿擾時段直接整輪略過（環境問候不該半夜冒出來）
+    if (inQuietHours()) return;
+
     const today = new Date().toISOString().slice(0, 10);
     const now = Date.now();
 
@@ -222,6 +232,8 @@ async function runProactiveDispatch() {
 
     const chars = await dbAll('characters');
     for (const c of chars) {
+      // 閘門 0：角色已暫停所有主動訊息（總開關）
+      if (c.proactiveMute) continue;
       // 閘門 1：上一則主動訊息還沒回，先不疊
       if (await hasUnrepliedProactive(c.id)) continue;
       // 閘門 2：距上一則主動訊息未滿間隔，先不發
@@ -229,26 +241,27 @@ async function runProactiveDispatch() {
 
       const msgs = await dbIdx('messages', 'charId', c.id);
 
-      // 生理期關心
-      if (cycleTrigger && c.cycleCare && (await getSetting('cycle_care_' + c.id)) !== today) {
+      // 生理期關心（需有基本對話量，避免對剛建的陌生角色就發）
+      if (cycleTrigger && c.cycleCare && msgs.length >= 3 && (await getSetting('cycle_care_' + c.id)) !== today) {
         await setSetting('cycle_care_' + c.id, today);
         await setSetting('last_proactive_' + c.id, now);
         try { await generateCycleCareMessage(c.id, cycleTrigger); } catch (_) {}
-        continue;
+        return; // 全域每輪最多一則
       }
       // 每日一問
       if (c.dailyQuestionEnabled && msgs.length >= 3 && (await getSetting('daily_q_' + c.id)) !== today) {
         await setSetting('daily_q_' + c.id, today);
         await setSetting('last_proactive_' + c.id, now);
         try { await generateDailyQuestion(c.id); } catch (_) {}
-        continue;
+        return; // 全域每輪最多一則
       }
-      // 我想你（40% 機率；沒中就不寫去重 key，下一輪可再擲）
+      // 我想你（每天只擲一次 40% 機率：擲過就寫 key，當天不再重擲，避免「偶爾」變成「幾乎必發」）
       if (c.missYouEnabled && msgs.length >= 5 && (await getSetting('miss_you_' + c.id)) !== today) {
+        await setSetting('miss_you_' + c.id, today);
         if (Math.random() <= 0.4) {
-          await setSetting('miss_you_' + c.id, today);
           await setSetting('last_proactive_' + c.id, now);
           try { await generateMissYouMessage(c.id); } catch (_) {}
+          return; // 全域每輪最多一則
         }
       }
     }
@@ -264,15 +277,20 @@ async function runScheduleTriggers() {
     const today = now.toISOString().slice(0, 10);
     for (const c of chars) {
       if (!c.scheduleTriggers || !c.scheduleTriggers.length) continue;
+      // 角色已暫停所有主動訊息（總開關）
+      if (c.proactiveMute) continue;
       // 上一則主動訊息還沒回就先不疊（定時提醒不受 min-gap 限制，到點仍會發）
       if (await hasUnrepliedProactive(c.id)) continue;
       for (const t of c.scheduleTriggers) {
         if (!t.enabled || !t.time || !t.desc) continue;
-        // 允許 ±4 分鐘的容差視窗（每 5 分鐘掃一次，避免剛好錯過）
+        // 容差視窗：到點前 4 分鐘 ~ 到點後 60 分鐘內都算「該發」。
+        // 往後放寬到 60 分鐘是為了補發——若到點當下 app 沒開／在勿擾沒掃到，
+        // 之後開 app 仍會在一小時內補上，但不會遲到太久變成怪提醒（當天去重 key 確保只發一次）。
         const [th, tm] = t.time.split(':').map(Number);
         const triggerMins = th * 60 + tm;
         const nowMins = now.getHours() * 60 + now.getMinutes();
-        if (Math.abs(nowMins - triggerMins) > 4) continue;
+        const lateBy = nowMins - triggerMins;
+        if (lateBy < -4 || lateBy > 60) continue;
         const key = `sched_sent_${c.id}_${t.time}_${today}`;
         const sent = await getSetting(key);
         if (sent) continue;

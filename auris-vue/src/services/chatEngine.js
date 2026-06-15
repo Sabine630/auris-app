@@ -1,4 +1,4 @@
-import { dbGet, dbPut, dbIdx, dbAll, getSetting } from './db.js';
+import { dbGet, dbPut, dbIdx, dbAll, getSetting, setSetting } from './db.js';
 import { fetchWithTimeout, sendLLMRequest, getVertexToken } from './api.js';
 import { getCyclePhase, cycleCareContext } from './cycle.js';
 
@@ -380,12 +380,36 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
 // ── 主動訊息共用工具 ───────────────────────────────────────────────────────
 // 把「現在該主動傳訊」的指令放到對話最尾端（最新近的一則），模型才會確實執行主動任務，
 // 而不是順著上面的舊話題回。同時維持 user/assistant 交替（Gemini/Anthropic 會拒絕連續同角色）：
+// 最後一則「真實對話」訊息（排除 heart voice）距今未滿此時間，視為「使用者還在熱聊」。
+// 熱聊中主動訊息要順著對話穿插；冷場才另起新話題開場白（P80）。
+export const PROACTIVE_ACTIVE_WINDOW_MS = 5 * 60 * 1000; // 5 分鐘
+
+export function isRecentlyActive(allMsgs) {
+  let latest = 0;
+  for (const m of allMsgs || []) {
+    if (m.type === 'hv') continue;
+    if (m.createdAt > latest) latest = m.createdAt;
+  }
+  return latest > 0 && (Date.now() - latest) < PROACTIVE_ACTIVE_WINDOW_MS;
+}
+
+// 熱聊中要附加在主動訊息 system prompt 後的提醒：別自顧自講、順著當下對話帶進來。
+const PROACTIVE_ACTIVE_TAIL = '\n\n（補充：對方此刻正在跟你聊天，上面是你們最近的對話。'
+  + '請順著當下的對話與情境，自然地把這份心意接進去說——要承接對方剛剛說的內容，'
+  + '不要無視剛才聊的話、也不要硬起一個不相干的新話題。）';
+
 // 若最後一則是 user（對方留言還沒回），就把指令併進那則 user，而不是再補一則 user。
 // task：本次主動訊息的具體任務（例：「你之前設定要提醒對方：『喝水』，現在時間到了。」）
-function buildProactiveHistory(history, task) {
-  const instr = `（這不是對方傳來的訊息，而是給你的系統提示：${task}`
-    + `請你現在主動傳一則訊息，用你自己的角色口吻與說話風格，自然、簡短、有溫度，`
-    + `不要接續上面的舊話題、不要等對方先開口、也不要把這段提示原文寫進訊息。）`;
+// active：對方是否還在熱聊——熱聊時要承接對話自然帶進去，冷場時才另起新話題開場白。
+function buildProactiveHistory(history, task, active) {
+  const instr = active
+    ? `（這不是對方傳來的訊息，而是給你的系統提示：${task}`
+      + `對方正在跟你聊天，上面是你們最近的對話。請順著現在的對話與情境，把這個念頭自然地接進去——`
+      + `承接對方剛剛說的內容、像真人邊聊邊提起，不要無視剛才的對話、也不要硬轉成不相干的開場白，`
+      + `更不要把這段提示原文寫進訊息。）`
+    : `（這不是對方傳來的訊息，而是給你的系統提示：${task}`
+      + `請你現在主動傳一則訊息，用你自己的角色口吻與說話風格，自然、簡短、有溫度，`
+      + `不要接續上面的舊話題、不要等對方先開口、也不要把這段提示原文寫進訊息。）`;
   if (!history.length) return [{ role: 'user', content: instr }];
   const out = history.slice();
   const last = out[out.length - 1];
@@ -415,9 +439,13 @@ export async function hasUnrepliedProactive(charId) {
 export async function generateProactiveMessageStream(charId, allMsgs, { onChunk, signal }) {
   const { c, provider, model, base, apiKey, history, finalSystemPrompt } = await buildAIChatSetup(charId, allMsgs);
 
-  const proactivePrompt = finalSystemPrompt + '\n\n【主動訊息】你突然想起對方，主動傳個訊息。不是回覆任何問題，是你自己有什麼想說——可能是分享一件事、想問問近況、或只是想到他/她了。語氣自然，像真人突然想說話一樣，直接說你想說的。';
+  const active = isRecentlyActive(allMsgs);
+  const proactivePrompt = finalSystemPrompt
+    + (active
+      ? '\n\n【主動訊息】你想主動再說點什麼。順著你們現在的對話與情境自然地接下去，承接對方剛剛說的內容，像真人邊聊邊補一句，語氣自然。'
+      : '\n\n【主動訊息】你突然想起對方，主動傳個訊息。不是回覆任何問題，是你自己有什麼想說——可能是分享一件事、想問問近況、或只是想到他/她了。語氣自然，像真人突然想說話一樣，直接說你想說的。');
 
-  const proactiveHistory = buildProactiveHistory(history, '你突然想起對方，想主動傳個訊息——分享一件事、問問近況、或只是想到他／她了。');
+  const proactiveHistory = buildProactiveHistory(history, '你想主動再說點什麼——分享一件事、問問近況、或只是想到他／她了。', active);
 
   const fetchOpts = signal ? { signal } : {};
   let fullText = '';
@@ -463,6 +491,8 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
   if (fullText.trim()) {
     msg = { id: 'msg_' + Date.now() + '_pro', charId, role: 'assistant', content: fullText.trim(), kind: 'proactive', createdAt: Date.now() };
     await dbPut('messages', msg);
+    // 聊天室即時主動也計入「上一則主動訊息時間」，讓背景派發的 3h min-gap 不會在你在場時又疊一則
+    try { await setSetting('last_proactive_' + charId, Date.now()); } catch (_) {}
   }
   return { msg, truncated };
 }
@@ -482,12 +512,13 @@ export async function generateCycleCareMessage(charId, trigger) {
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
   const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
 
+  const active = isRecentlyActive(allMsgs);
   const careGoal = trigger === 'pms'
     ? `你算了一下，對方的生理期大概再過 ${ph.daysUntilNext} 天就要來了，有點擔心對方這幾天身體和心情。`
     : `你想到對方今天生理期大概來了（第 ${ph.dayNum} 天），有點心疼，想關心對方。`;
-  const carePrompt = finalSystemPrompt + `\n\n【主動關心】${careGoal}請主動傳一則訊息關心對方，自然、簡短、有溫度，像真的在意對方的人會說的話（例如提醒保暖、喝熱水、好好休息、想吃什麼幫忙準備之類）。要完全符合你的角色個性與說話風格。不要像衛教文章、不要長篇大論、不要解釋你為什麼會知道。直接說你想說的。`;
+  const carePrompt = finalSystemPrompt + `\n\n【主動關心】${careGoal}請主動傳一則訊息關心對方，自然、簡短、有溫度，像真的在意對方的人會說的話（例如提醒保暖、喝熱水、好好休息、想吃什麼幫忙準備之類）。要完全符合你的角色個性與說話風格。不要像衛教文章、不要長篇大論、不要解釋你為什麼會知道。直接說你想說的。` + (active ? PROACTIVE_ACTIVE_TAIL : '');
 
-  const careHistory = buildProactiveHistory(history, `${careGoal}你想主動傳訊關心對方。`);
+  const careHistory = buildProactiveHistory(history, `${careGoal}你想主動傳訊關心對方。`, active);
 
   let text = '';
   try {
@@ -517,10 +548,11 @@ export async function generateScheduleMessage(charId, triggerDesc) {
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
   const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
 
+  const active = isRecentlyActive(allMsgs);
   const goal = `你設定的提醒事項是：「${triggerDesc}」。現在時間到了，請主動傳一則訊息給對方，自然、簡短、有溫度，完全符合你的角色個性與說話風格，像真的在意對方的人會說的話。不要像通知或系統提示，直接用你自己的方式說。`;
-  const schedPrompt = finalSystemPrompt + `\n\n【主動訊息】${goal}`;
+  const schedPrompt = finalSystemPrompt + `\n\n【主動訊息】${goal}` + (active ? PROACTIVE_ACTIVE_TAIL : '');
 
-  const schedHistory = buildProactiveHistory(history, `你之前設定要在這個時間主動提醒對方：「${triggerDesc}」，現在時間到了。`);
+  const schedHistory = buildProactiveHistory(history, `你之前設定要在這個時間主動提醒對方：「${triggerDesc}」，現在時間到了。`, active);
 
   let text = '';
   try {
@@ -869,9 +901,13 @@ export async function generateMissYouMessage(charId) {
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
   const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
 
-  const missYouPrompt = finalSystemPrompt + '\n\n【我想你】你突然想到對方了，想傳一個很短、很自然的訊息。不是因為有事要說，就是想到他／她了。語氣要像真實的人，直接說你想說的，簡短（一兩句就好），有溫度但不刻意煽情。不要用問句作結。';
+  const active = isRecentlyActive(allMsgs);
+  const missYouPrompt = finalSystemPrompt
+    + (active
+      ? '\n\n【我想你】你想讓對方知道你正想著他／她。順著你們現在的對話自然帶一句，承接剛剛聊的內容，簡短（一兩句就好），有溫度但不刻意煽情，不要用問句作結。'
+      : '\n\n【我想你】你突然想到對方了，想傳一個很短、很自然的訊息。不是因為有事要說，就是想到他／她了。語氣要像真實的人，直接說你想說的，簡短（一兩句就好），有溫度但不刻意煽情。不要用問句作結。');
 
-  const missHistory = buildProactiveHistory(history, '你突然想到對方了，想傳一個很短、很自然的訊息給他／她，不是因為有事，就是單純想到了。');
+  const missHistory = buildProactiveHistory(history, '你突然想到對方了，想傳一個很短、很自然的訊息給他／她，不是因為有事，就是單純想到了。', active);
 
   let text = '';
   try {
@@ -903,9 +939,10 @@ export async function generateDailyQuestion(charId) {
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
   const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
 
-  const dqPrompt = finalSystemPrompt + '\n\n【每日一問】今天你想主動問對方一個問題——關於他／她最近的生活、心情、想法、或你們共同感興趣的話題。問題要真誠、自然，像真的想了解對方的人會問的，不要太制式或像問卷。可以先說一點引子再問，整體簡短（三句以內）。';
+  const active = isRecentlyActive(allMsgs);
+  const dqPrompt = finalSystemPrompt + '\n\n【每日一問】今天你想主動問對方一個問題——關於他／她最近的生活、心情、想法、或你們共同感興趣的話題。問題要真誠、自然，像真的想了解對方的人會問的，不要太制式或像問卷。可以先說一點引子再問，整體簡短（三句以內）。' + (active ? PROACTIVE_ACTIVE_TAIL : '');
 
-  const dqHistory = buildProactiveHistory(history, '今天你想主動問對方一個問題——關於他／她最近的生活、心情、想法、或你們共同感興趣的話題，問得真誠自然、不要像問卷。');
+  const dqHistory = buildProactiveHistory(history, '今天你想主動問對方一個問題——關於他／她最近的生活、心情、想法、或你們共同感興趣的話題，問得真誠自然、不要像問卷。', active);
 
   let text = '';
   try {

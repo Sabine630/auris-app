@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-15（P79）
+> 最後更新：2026-06-15（P80）
 
 ---
 
@@ -76,7 +76,7 @@ graph TD
 
 | 資料表 | keyPath | 索引 | 說明 |
 |--------|---------|------|------|
-| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62） |
+| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80） |
 | `messages` | `id` | `charId`, `createdAt` | 單人聊天訊息（軟欄位：`image` 圖片 base64 P65、`reaction` 表情 P62） |
 | `memories` | `id` | `charId` | Heart Voice 心聲記錄 |
 | `moments` | `id` | `charId`, `createdAt` | 貼文（含 likes/comments） |
@@ -319,6 +319,19 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P80（2026-06-15）主動訊息健檢：真正融入對話・總開關・勿擾時段・跨角色節流・定時補發
+
+P79 只改了主動訊息的外觀（移除標籤），內容生成層仍叫 AI「不要接續舊話題」，導致主動訊息落在熱聊中會自顧自另起話題、與現場劇情打架。本版對 5 種自動訊息做全面健檢：
+
+- **內容真正融入對話**（`chatEngine.js`）：新增並匯出 `isRecentlyActive(allMsgs)`（最後一則非 hv 訊息距今 < `PROACTIVE_ACTIVE_WINDOW_MS`＝5 分鐘＝熱聊）。`buildProactiveHistory(history, task, active)` 新增第三參數 active：熱聊時指令改為「承接對方剛說的內容自然帶進去」，冷場時才維持「另起新話題開場白」。五個產生器（`generateProactiveMessageStream`/`generateCycleCareMessage`/`generateScheduleMessage`/`generateMissYouMessage`/`generateDailyQuestion`）都算出 active 傳入，熱聊時 system prompt 追加 `PROACTIVE_ACTIVE_TAIL`，相衝突的「不是回覆任何問題」改為冷場限定。
+- **總開關 `proactiveMute`**：`characters` 新軟欄位（預設 false）。開啟後該角色背景派發、定時提醒、聊天室即時主動全部跳過，傳訊仍正常回覆。不重用 `replyMode` 以免動到既有設定。
+- **勿擾時段**（`App.vue` `inQuietHours()`）：環境問候 23:00–08:00 不發；定時提醒不受限。
+- **跨角色節流**：`runProactiveDispatch` 命中即 `return`，全域每輪最多送一則，避免多角色開 app 爆量。
+- **「我想你」每天只擲一次** 40%（無論中不中都寫當天 key），修正「沒中重擲 → 幾乎必發」。
+- **生理期關心加門檻**：對話 ≥ 3 則才發。
+- **定時提醒補發**：容差視窗由「±4 分鐘」改為「到點前 4 分 ~ 到點後 60 分」，補回 app 沒開時錯過的提醒（當天去重 key 確保只一次）。
+- **兩套主動系統互不再疊**：`generateProactiveMessageStream` 發送後寫 `last_proactive_<id>`；`ChatRoomView.triggerProactive` 發送前查 `hasUnrepliedProactive`。
 
 ### P79（2026-06-15）主動訊息融入對話・移除標籤・分時段一次一則
 
