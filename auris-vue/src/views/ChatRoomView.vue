@@ -502,12 +502,15 @@ onMounted(async () => {
 
   // Listen for background Heart Voices
   window.addEventListener('new-heart-voice', onHeartVoice);
+  // 背景派發器寫入主動訊息時，即時把這間聊天室的訊息重撈一次（E）
+  window.addEventListener('new-proactive-msg', onProactiveMsg);
 });
 
 onUnmounted(() => {
   clearTimeout(proactiveTimer);
   proactiveController?.abort();
   window.removeEventListener('new-heart-voice', onHeartVoice);
+  window.removeEventListener('new-proactive-msg', onProactiveMsg);
 });
 
 async function loadMessages() {
@@ -600,6 +603,9 @@ function scheduleProactive() {
 
 async function triggerProactive() {
   if (isTyping.value || isProactiveGenerating.value) { scheduleProactive(); return; }
+  // 勿擾時段（23:00–08:00）不主動打擾，與背景派發規則一致（D）。重排計時器，等過了勿擾時段再說。
+  const h = new Date().getHours();
+  if (h >= 23 || h < 8) { scheduleProactive(); return; }
   // 背景派發已發過一則還沒回的主動訊息，就先別在聊天室再疊一則（避免兩套系統互疊）
   try { if (await hasUnrepliedProactive(charId)) { scheduleProactive(); return; } } catch (_) {}
 
@@ -694,6 +700,13 @@ async function maybeAutoSummarize() {
   } finally {
     isAutoSumming = false;
   }
+}
+
+// 背景派發（想你／每日一問／定時／生理期）寫入訊息後，即時重撈、排序、捲到底（E）。
+// 用 loadMessages 是因為背景訊息已寫進 DB，重撈才能拿到正確的 createdAt 排序，
+// 不會像以前那樣等下次重開房才「插進歷史中間」。
+function onProactiveMsg(e) {
+  if (e.detail?.charId === charId) loadMessages();
 }
 
 function onHeartVoice(e) {

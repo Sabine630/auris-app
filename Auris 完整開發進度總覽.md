@@ -1,7 +1,7 @@
 ﻿# 🎨 Auris 完整開發進度總覽
 
-**最後更新**：2026-06-15
-**當前版本**：P80（主動訊息健檢：真正融入對話・總開關・勿擾時段・跨角色節流・定時補發）
+**最後更新**：2026-06-16
+**當前版本**：P81（主動訊息修復：杜絕競態疊訊息・時段對齊現在・禁場景旁白・聊天室即時同步・內主動勿擾）
 **狀態**：上線後持續優化中
 
 ---
@@ -740,7 +740,7 @@ ChatRoomView header 新增搜尋圖示，點開頂部搜尋列。輸入關鍵字
 
 ---
 
-### P80 主動訊息健檢：真正融入對話・總開關・勿擾時段・跨角色節流・定時補發（2026-06-15，當前版本）
+### P80 主動訊息健檢：真正融入對話・總開關・勿擾時段・跨角色節流・定時補發（2026-06-15）
 
 **背景**：P79 只拿掉了主動訊息的「外觀標籤」，但**內容生成那層沒動**——`buildProactiveHistory` 仍叫 AI「不要接續上面的舊話題」，於是主動訊息一旦落在熱聊中，會自顧自另起話題、跟現場劇情打架（實例：玩家剛說「上車了」，角色卻冒出「還在工作室？要紮營過夜？」）。本版對 5 種自動訊息做一次全面健檢，把「真正融入對話」做到內容層，並補上一批節制與防呆機制。
 
@@ -775,6 +775,34 @@ ChatRoomView header 新增搜尋圖示，點開頂部搜尋列。輸入關鍵字
 | `views/ChatRoomView.vue` | `scheduleProactive` 加 `proactiveMute` 判斷；`triggerProactive` 發送前查 `hasUnrepliedProactive` |
 | `views/CharEditView.vue` | 新增「暫停主動訊息（總開關）」toggle 與 `proactiveMute` 預設；修正「我想你」說明文字 |
 | `views/SettingsView.vue` | P79 → P80 |
+
+---
+
+### P81 主動訊息修復：杜絕競態疊訊息・時段對齊現在・禁場景旁白・聊天室即時同步・內主動勿擾（2026-06-16，當前版本）
+
+**背景**：實測發現主動訊息有三類使用者可見的出包同時發生——(1)早上八點多的訊息卻問「中午有沒有好好吃飯」（時段錯亂）；(2)開 app 時一次冒出兩則互不相關的主動訊息（疊訊息）；(3)訊息開頭出現「隔天早上，手機震動」「早晨，書房裡咖啡剛沏好」這類灰字場景旁白，看起來不像聊天訊息。深入追查後共定位六個獨立成因（A–F），本版一次修齊。
+
+**A／F 杜絕競態疊訊息（根因）**
+`runScheduleTriggers` 與 `runProactiveDispatch` 原本在開 app 時並排呼叫、不互相 await，兩者的防堆疊閘門 `hasUnrepliedProactive` 讀的是 DB 已寫入訊息，但訊息要等 AI 生成完才寫入——於是兩套同時通過閘門、各生一則。改為新增 `runAllProactive()`：加 `proactiveBusy` 派發鎖（同一時間只跑一輪）、序列化「定時先跑完（含寫入）再跑環境」，環境派發本就尊重 `last_proactive_` 的 3 小時間隔，整輪實際最多送一則。另 `runScheduleTriggers` 命中即 `return`（單輪一則，相近時間的多個定時提醒由後續 5 分鐘掃描自然錯開）。
+
+**C 時段對齊現在**
+新增共用 `proactiveTimeAnchor()`（**不依賴角色 timeAware 開關**——主動訊息一定在現實某刻送出）。把當下日期／星期／時段（清晨／早上／中午…）與「問候、用餐話題要對齊現在、不要問已過或未到的時段」強制注入全部 5 個主動生成函式，根治「早上問午餐」。
+
+**B 禁場景旁白**
+動作排版開關鼓勵 AI 用 `＊＊` 包敘述，主動 prompt 又沒禁止 → AI 把「主動傳訊」演成小說場景。新增共用 `PROACTIVE_NO_NARRATION` 尾巴，要求「直接以訊息正文開始，不要寫場景／時間旁白、不要用星號包場景」，接到全部 5 個主動生成函式。
+
+**E 聊天室即時同步**
+背景派發器寫入訊息時，開著的聊天室原本不會更新，要重開房才由 `loadMessages` 撈出、並因 `createdAt` 排序而「插進歷史中間」。四個背景生成器（想你／每日一問／定時／生理期）寫入後 `dispatchEvent('new-proactive-msg')`，`ChatRoomView` 監聽後即時 `loadMessages`（排序＋捲到底），訊息即時出現在最底、順序正確。
+
+**D 聊天室內主動補勿擾時段**
+聊天室內 `triggerProactive` 原本只查 `hasUnrepliedProactive`，不管勿擾時段，與背景規則不一致（自動回覆角色深夜也會主動）。補上 23:00–08:00 不打擾、重排計時器，與背景派發一致。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/chatEngine.js` | 新增 `proactiveTimeAnchor()`、`PROACTIVE_NO_NARRATION`；5 個主動生成函式（`generateProactiveMessageStream`／`generateCycleCareMessage`／`generateScheduleMessage`／`generateMissYouMessage`／`generateDailyQuestion`）prompt 接上時間錨＋禁旁白；4 個背景生成寫入後 dispatch `new-proactive-msg` |
+| `App.vue` | 新增 `runAllProactive()` 派發鎖＋序列化；`runScheduleTriggers` 單輪一則（命中即 return）；onMounted／timer 改用 `runAllProactive` |
+| `views/ChatRoomView.vue` | 監聽 `new-proactive-msg` → `loadMessages`（E）；`triggerProactive` 加 23:00–08:00 勿擾守門（D） |
+| `views/SettingsView.vue` | P80 → P81 |
 
 ---
 

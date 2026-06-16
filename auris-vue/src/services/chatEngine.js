@@ -398,6 +398,34 @@ const PROACTIVE_ACTIVE_TAIL = '\n\n（補充：對方此刻正在跟你聊天，
   + '請順著當下的對話與情境，自然地把這份心意接進去說——要承接對方剛剛說的內容，'
   + '不要無視剛才聊的話、也不要硬起一個不相干的新話題。）';
 
+// 主動訊息共用尾巴：禁止 AI 把「主動傳訊」演成小說場景／時間旁白（B）。
+// 主動訊息是即時送出的一則訊息，不該出現「隔天早上」「手機震動」「書房裡…」這類鋪陳。
+const PROACTIVE_NO_NARRATION = '\n\n（重要：直接以你要傳出的訊息正文開始。不要寫「隔天早上」「手機震動」'
+  + '「書房裡咖啡剛沏好」這類場景旁白、時間旁白或敘事鋪陳，也不要用星號＊＊把場景描述包起來——'
+  + '這是一則此刻即時傳出的訊息，不是小說章節，開頭就直接說你想對對方說的話。）';
+
+// 主動訊息時間錨（C）：不依賴角色的 timeAware 開關——主動訊息一定是在現實的某一刻送出的，
+// 把當下的時段強制餵進去，避免「早上問午餐吃了沒」「半夜說早安」這種時段錯亂。
+function proactiveTimeAnchor() {
+  const n = new Date();
+  const days = ['日', '一', '二', '三', '四', '五', '六'];
+  const h = n.getHours();
+  let period;
+  if (h < 5) period = '深夜';
+  else if (h < 8) period = '清晨';
+  else if (h < 11) period = '早上';
+  else if (h < 13) period = '中午';
+  else if (h < 17) period = '下午';
+  else if (h < 19) period = '傍晚';
+  else if (h < 23) period = '晚上';
+  else period = '深夜';
+  const hh = String(h).padStart(2, '0');
+  const mm = String(n.getMinutes()).padStart(2, '0');
+  return `\n\n【現在時間】現在是 ${n.getMonth() + 1}/${n.getDate()}（星期${days[n.getDay()]}）${period} ${hh}:${mm}。`
+    + `這則訊息是此刻送出的，內容（問候語、提到的時段、用餐——早餐／午餐／晚餐／宵夜）都要對齊現在：`
+    + `${period}就用符合${period}的話，不要問已經過去或還沒到的時段（例如早上別問午餐吃了沒、深夜別說早安）。`;
+}
+
 // 若最後一則是 user（對方留言還沒回），就把指令併進那則 user，而不是再補一則 user。
 // task：本次主動訊息的具體任務（例：「你之前設定要提醒對方：『喝水』，現在時間到了。」）
 // active：對方是否還在熱聊——熱聊時要承接對話自然帶進去，冷場時才另起新話題開場白。
@@ -443,7 +471,8 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
   const proactivePrompt = finalSystemPrompt
     + (active
       ? '\n\n【主動訊息】你想主動再說點什麼。順著你們現在的對話與情境自然地接下去，承接對方剛剛說的內容，像真人邊聊邊補一句，語氣自然。'
-      : '\n\n【主動訊息】你突然想起對方，主動傳個訊息。不是回覆任何問題，是你自己有什麼想說——可能是分享一件事、想問問近況、或只是想到他/她了。語氣自然，像真人突然想說話一樣，直接說你想說的。');
+      : '\n\n【主動訊息】你突然想起對方，主動傳個訊息。不是回覆任何問題，是你自己有什麼想說——可能是分享一件事、想問問近況、或只是想到他/她了。語氣自然，像真人突然想說話一樣，直接說你想說的。')
+    + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
 
   const proactiveHistory = buildProactiveHistory(history, '你想主動再說點什麼——分享一件事、問問近況、或只是想到他／她了。', active);
 
@@ -516,7 +545,7 @@ export async function generateCycleCareMessage(charId, trigger) {
   const careGoal = trigger === 'pms'
     ? `你算了一下，對方的生理期大概再過 ${ph.daysUntilNext} 天就要來了，有點擔心對方這幾天身體和心情。`
     : `你想到對方今天生理期大概來了（第 ${ph.dayNum} 天），有點心疼，想關心對方。`;
-  const carePrompt = finalSystemPrompt + `\n\n【主動關心】${careGoal}請主動傳一則訊息關心對方，自然、簡短、有溫度，像真的在意對方的人會說的話（例如提醒保暖、喝熱水、好好休息、想吃什麼幫忙準備之類）。要完全符合你的角色個性與說話風格。不要像衛教文章、不要長篇大論、不要解釋你為什麼會知道。直接說你想說的。` + (active ? PROACTIVE_ACTIVE_TAIL : '');
+  const carePrompt = finalSystemPrompt + `\n\n【主動關心】${careGoal}請主動傳一則訊息關心對方，自然、簡短、有溫度，像真的在意對方的人會說的話（例如提醒保暖、喝熱水、好好休息、想吃什麼幫忙準備之類）。要完全符合你的角色個性與說話風格。不要像衛教文章、不要長篇大論、不要解釋你為什麼會知道。直接說你想說的。` + (active ? PROACTIVE_ACTIVE_TAIL : '') + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
 
   const careHistory = buildProactiveHistory(history, `${careGoal}你想主動傳訊關心對方。`, active);
 
@@ -538,6 +567,8 @@ export async function generateCycleCareMessage(charId, trigger) {
   c.hasUnread = true;
   await dbPut('characters', JSON.parse(JSON.stringify(c)));
   await dbPut('notifications', { id: 'notif_care_' + Date.now(), charId, type: 'chat', targetId: charId, text: '傳了一則訊息關心你', read: false, createdAt: Date.now() });
+  // 開著的聊天室即時撈出這則背景訊息（E）
+  try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
   return msg;
 }
 
@@ -550,7 +581,7 @@ export async function generateScheduleMessage(charId, triggerDesc) {
 
   const active = isRecentlyActive(allMsgs);
   const goal = `你設定的提醒事項是：「${triggerDesc}」。現在時間到了，請主動傳一則訊息給對方，自然、簡短、有溫度，完全符合你的角色個性與說話風格，像真的在意對方的人會說的話。不要像通知或系統提示，直接用你自己的方式說。`;
-  const schedPrompt = finalSystemPrompt + `\n\n【主動訊息】${goal}` + (active ? PROACTIVE_ACTIVE_TAIL : '');
+  const schedPrompt = finalSystemPrompt + `\n\n【主動訊息】${goal}` + (active ? PROACTIVE_ACTIVE_TAIL : '') + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
 
   const schedHistory = buildProactiveHistory(history, `你之前設定要在這個時間主動提醒對方：「${triggerDesc}」，現在時間到了。`, active);
 
@@ -573,6 +604,8 @@ export async function generateScheduleMessage(charId, triggerDesc) {
   c.hasUnread = true;
   await dbPut('characters', JSON.parse(JSON.stringify(c)));
   await dbPut('notifications', { id: 'notif_sched_' + Date.now(), charId, type: 'chat', targetId: charId, text: '傳了一則訊息給你', read: false, createdAt: Date.now() });
+  // 開著的聊天室即時撈出這則背景訊息（E），避免之後重開才「插進歷史中間」
+  try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
   return msg;
 }
 
@@ -905,7 +938,8 @@ export async function generateMissYouMessage(charId) {
   const missYouPrompt = finalSystemPrompt
     + (active
       ? '\n\n【我想你】你想讓對方知道你正想著他／她。順著你們現在的對話自然帶一句，承接剛剛聊的內容，簡短（一兩句就好），有溫度但不刻意煽情，不要用問句作結。'
-      : '\n\n【我想你】你突然想到對方了，想傳一個很短、很自然的訊息。不是因為有事要說，就是想到他／她了。語氣要像真實的人，直接說你想說的，簡短（一兩句就好），有溫度但不刻意煽情。不要用問句作結。');
+      : '\n\n【我想你】你突然想到對方了，想傳一個很短、很自然的訊息。不是因為有事要說，就是想到他／她了。語氣要像真實的人，直接說你想說的，簡短（一兩句就好），有溫度但不刻意煽情。不要用問句作結。')
+    + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
 
   const missHistory = buildProactiveHistory(history, '你突然想到對方了，想傳一個很短、很自然的訊息給他／她，不是因為有事，就是單純想到了。', active);
 
@@ -928,6 +962,8 @@ export async function generateMissYouMessage(charId) {
   c.hasUnread = true;
   await dbPut('characters', JSON.parse(JSON.stringify(c)));
   await dbPut('notifications', { id: 'notif_miss_' + Date.now(), charId, type: 'chat', targetId: charId, text: '突然想到你了', read: false, createdAt: Date.now() });
+  // 開著的聊天室即時撈出這則背景訊息（E）
+  try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
   return msg;
 }
 
@@ -940,7 +976,7 @@ export async function generateDailyQuestion(charId) {
   const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
 
   const active = isRecentlyActive(allMsgs);
-  const dqPrompt = finalSystemPrompt + '\n\n【每日一問】今天你想主動問對方一個問題——關於他／她最近的生活、心情、想法、或你們共同感興趣的話題。問題要真誠、自然，像真的想了解對方的人會問的，不要太制式或像問卷。可以先說一點引子再問，整體簡短（三句以內）。' + (active ? PROACTIVE_ACTIVE_TAIL : '');
+  const dqPrompt = finalSystemPrompt + '\n\n【每日一問】今天你想主動問對方一個問題——關於他／她最近的生活、心情、想法、或你們共同感興趣的話題。問題要真誠、自然，像真的想了解對方的人會問的，不要太制式或像問卷。可以先說一點引子再問，整體簡短（三句以內）。' + (active ? PROACTIVE_ACTIVE_TAIL : '') + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
 
   const dqHistory = buildProactiveHistory(history, '今天你想主動問對方一個問題——關於他／她最近的生活、心情、想法、或你們共同感興趣的話題，問得真誠自然、不要像問卷。', active);
 
@@ -963,5 +999,7 @@ export async function generateDailyQuestion(charId) {
   c.hasUnread = true;
   await dbPut('characters', JSON.parse(JSON.stringify(c)));
   await dbPut('notifications', { id: 'notif_dq_' + Date.now(), charId, type: 'chat', targetId: charId, text: '今天想問你一個問題', read: false, createdAt: Date.now() });
+  // 開著的聊天室即時撈出這則背景訊息（E）
+  try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
   return msg;
 }

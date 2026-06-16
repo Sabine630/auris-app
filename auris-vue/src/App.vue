@@ -297,9 +297,25 @@ async function runScheduleTriggers() {
         await setSetting(key, true);
         await setSetting('last_proactive_' + c.id, Date.now());
         try { await generateScheduleMessage(c.id, t.desc); } catch (_) {}
+        return; // 本輪只發一則：相近時間的多個定時提醒會在後續 5 分鐘掃描中自然錯開（F）
       }
     }
   } catch (_) {}
+}
+
+// 派發鎖＋序列化：定時、環境兩套派發器同一時刻並行檢查閘門時，會在對方訊息還沒寫進 DB
+// 前都放行而各生一則（競態，A）。改成同一時間只跑一輪、且定時先跑完（含寫入）再跑環境，
+// 環境派發本就尊重 last_proactive_ 的 3 小時間隔，於是整輪實際上最多送出一則主動訊息。
+let proactiveBusy = false;
+async function runAllProactive() {
+  if (proactiveBusy) return;
+  proactiveBusy = true;
+  try {
+    await runScheduleTriggers();
+    await runProactiveDispatch();
+  } finally {
+    proactiveBusy = false;
+  }
 }
 
 let timer;
@@ -334,10 +350,9 @@ onMounted(async () => {
   runDailyAutoGen();
 
   // 主動訊息（背景靜默；P79 起改為分時段、一次一則，不再開 app 同時全冒出來）
-  // 定時提醒先跑（到點優先），再跑環境主動訊息派發；之後每 5 分鐘掃一次。
-  runScheduleTriggers();
-  runProactiveDispatch();
-  schedTimer = setInterval(() => { runScheduleTriggers(); runProactiveDispatch(); }, 5 * 60 * 1000);
+  // P81：用 runAllProactive 序列化＋上鎖，定時先跑完再跑環境，整輪最多一則，杜絕競態疊訊息。
+  runAllProactive();
+  schedTimer = setInterval(runAllProactive, 5 * 60 * 1000);
 
   // Prevent iOS Safari swipe-back gesture (left/right edge swipe)
   document.addEventListener('touchstart', (e) => {

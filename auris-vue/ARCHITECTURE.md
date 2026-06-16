@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-15（P80）
+> 最後更新：2026-06-16（P81）
 
 ---
 
@@ -319,6 +319,22 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P81（2026-06-16）主動訊息修復：杜絕競態疊訊息・時段對齊現在・禁場景旁白・聊天室即時同步・內主動勿擾
+
+修掉一批主動訊息的使用者可見出包（早上問午餐／一次冒兩則／開頭出現場景旁白），共六個獨立成因：
+
+- **A+F 競態疊訊息（根因）**：`App.vue` 新增 `runAllProactive()`——`proactiveBusy` 派發鎖（同一時間只跑一輪）＋序列化「`runScheduleTriggers` 跑完再 `runProactiveDispatch`」。原本兩者並排不 await，`hasUnrepliedProactive` 讀 DB 時對方訊息尚未寫入而雙雙放行。`runScheduleTriggers` 改命中即 `return`（單輪一則）。onMounted／5 分鐘 timer 都改呼叫 `runAllProactive`。
+- **C 時段對齊現在**：`chatEngine.js` 新增 `proactiveTimeAnchor()`，**不依賴 `timeAware`**，強制把當下日期／星期／時段與「用餐、問候要對齊現在」注入全部 5 個主動生成函式。
+- **B 禁場景旁白**：新增 `PROACTIVE_NO_NARRATION` 尾巴（直接以正文開始、不寫場景／時間旁白、不用 `＊＊` 包場景），接到全部 5 個主動生成函式。解決動作排版開關誘導 AI 寫「隔天早上，手機震動」被渲染成灰字旁白。
+- **E 聊天室即時同步**：四個背景生成器（想你／每日一問／定時／生理期）寫入後 `dispatchEvent('new-proactive-msg', {detail:{charId}})`；`ChatRoomView` 監聽 → `loadMessages`（重撈排序＋捲到底）。修掉「背景訊息要重開房才出現、且插進歷史中間」。
+- **D 聊天室內主動補勿擾**：`triggerProactive` 加 23:00–08:00 守門，與背景 `inQuietHours` 一致。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/chatEngine.js` | 新增 `proactiveTimeAnchor()`／`PROACTIVE_NO_NARRATION`；5 個主動生成函式 prompt 接時間錨＋禁旁白；4 個背景生成寫入後 dispatch `new-proactive-msg` |
+| `App.vue` | 新增 `runAllProactive()`（鎖＋序列化）；`runScheduleTriggers` 單輪一則；onMounted／timer 改用 `runAllProactive` |
+| `views/ChatRoomView.vue` | 監聽 `new-proactive-msg`→`loadMessages`；`triggerProactive` 加勿擾守門 |
 
 ### P80（2026-06-15）主動訊息健檢：真正融入對話・總開關・勿擾時段・跨角色節流・定時補發
 
