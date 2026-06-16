@@ -104,7 +104,11 @@ graph TD
 | `onboarding_done` | `true` = 已完成新手引導 |
 | `last_auto_gen_date` | 最後一次自動生成日期（`YYYY-MM-DD`），防重複觸發 |
 | `last_seen_announcement` | 最後看過的更新公告版本（P53），用於決定是否彈出公告 |
+| `chat_format_style` | 聊天動作排版開關（P78），`true` 時 `*動作*` 渲染成斜體旁白、`「對話」`上色 |
 | `cycle_care_<charId>` | 各角色最後一次生理期主動關心的日期（P59），per-char 去重 |
+| `last_proactive_<charId>` | 各角色最後一次主動訊息的時間戳（P79），背景派發的 3 小時 min-gap 依此判斷 |
+| `miss_you_<charId>` / `daily_q_<charId>` | 各角色「我想你」「每日一問」當天已處理的去重 key（日期字串，P74/P79） |
+| `sched_sent_<charId>_<time>_<date>` | 作息時段提醒當天去重 key（P66），同一時段一天只發一次 |
 
 > [!WARNING]
 > **升版注意**：升版（`version` 數字 +1）只能「新增」資料表或索引，不能修改已有結構。修改已有 store 的結構必須刪掉重建，**會清空該 store 的資料**。
@@ -139,7 +143,7 @@ API 請求的底層工具。
 > **Gemini 相容性**：Gemini 不支援 `frequency_penalty` / `presence_penalty`，`sendLLMRequest` 已內部處理。
 
 ### `services/format.js`
-共用文字處理。`formatContent(str)`：escape `&`/`<`/`>` 後將 `\n` 轉 `<br>`，並清洗夾在中文字／標點之間的孤立換行（P56）。全站六個 v-html 渲染點統一引用，避免某處漏 escape 形成 stored XSS（P55 抽出）。
+共用文字處理。`formatContent(str, enableRich = false)`：escape `&`/`<`/`>` 後將 `\n` 轉 `<br>`，並清洗夾在中文字／標點之間的孤立換行（P56）；`enableRich`（P78，聊天室／群組傳入）時於 escape 後把 `*動作*` 轉 `<em class="msg-action">`、`「對話」` 轉 `<span class="msg-quote">`。全站各 v-html 渲染點（6 個檔案：ChatRoomView／GroupRoomView／PostDetailView／DiaryDetailView／DreamDetailView／BlackboxView）統一引用，避免某處漏 escape 形成 stored XSS（P55 抽出）。
 
 ### `services/cycle.js`（P59）
 生理期週期計算，全本地、不上傳。
@@ -162,6 +166,8 @@ AI 內容與對話生成邏輯：
   - `generateHeartVoice` — 機率性生成說不出口的心聲，寫入 `memories` 並發出 `new-heart-voice` 事件與通知
   - `generateCycleCareMessage` — 生理期主動關心（P59），非串流生成關心訊息 → 存 assistant 訊息 + `unreadCount++` + `type:'chat'` 通知
   - `generateScheduleMessage` — 作息時段主動訊息（P66），由 `App.vue` 每 5 分鐘掃 `scheduleTriggers`，命中時段且當天未發過才觸發
+  - `generateMissYouMessage`（P74）／`generateDailyQuestion`（P74）— 「我想你」短訊與「每日一問」，非串流，由 `App.vue` `runProactiveDispatch` 觸發
+  - **主動訊息共用層**（P79–P81）：`isRecentlyActive(allMsgs)`（最後一則非 hv 距今 < 5 分鐘＝熱聊）、`buildProactiveHistory(history, task, active)`（指令放對話最尾端＋熱聊/冷場分支）、`PROACTIVE_KINDS`／`hasUnrepliedProactive(charId)`（防堆疊閘門）、`proactiveTimeAnchor()`（P81，**不依賴 `timeAware`**，強制注入當下時段，杜絕「早上問午餐」）、`PROACTIVE_NO_NARRATION`（P81，禁止主動訊息寫場景旁白）；5 個主動生成函式皆套用。4 個背景生成器寫入訊息後 `dispatchEvent('new-proactive-msg')`，供開著的 `ChatRoomView` 即時 `loadMessages`（P81）
   - **世界書注入**（P65）：`buildAIChatSetup` 掃描近 10 則訊息，命中詞條名稱／別名才把對應 `worlds` 詞條注入 system prompt（`worldCtx`），不觸發不佔 token
   - **圖片識別**（P65）：`sendUserMessage` 加 `image` 參數、`generateAIResponseStream` 加 `imageBase64`，`buildImgHistory()` 依 provider 轉成 Anthropic／OpenAI／Vertex 各自的圖片 content 格式
   - **角色作息注入**（P62）：`buildAIChatSetup` 組 `scheduleCtx`（角色 `workTime`/`workPlace`/`restTime`，接在 `timeCtx` 後），請角色依現在時間推測自身狀態；與 P63 的玩家作息 `playerScheduleCtx` 互補
@@ -253,7 +259,7 @@ globalStore = {
 
 - **ChatRoomView (單人聊天)**：串流逐字輸出（`generateAIResponseStream`）、長按訊息選單（複製／編輯重傳／重新生成）、記憶抽屜（AI 總結、手動新增、編輯、toggle、刪除）、背景主動訊息計時器（`scheduleProactive`）、auto-interrupt 打斷模式。**P62 起**：玩家訊息帶自訂頭像列、長按可加表情反應（`reaction`）、達門檻自動總結（`maybeAutoSummarize()`）。**P65 起**：相機按鈕傳圖（`compressImage()` 壓 512px）、泡泡圖片渲染與 `viewImage()` 全螢幕預覽。**P67 起**：訊息列表在跨日邊界自動插入「M 月 D 日　星期X」分隔標籤（`showDateSep()` / `fmtDateSep()`）。**P76 起**：⋯ 選單重組——加「他的日記」「他的夢境」捷徑（`?char=` 跳轉預選）；清除/匯出/匯入收進「聊天記錄管理」二層選單（`showDataMenu`）。
 - **GroupRoomView (群組聊天)**：多角色串流輪替回覆，`@點名` 強制指定角色，角色前綴清洗防止 AI 混淆發言。
-- **CharEditView (角色編輯)**：5 個 Tab 切換，包含基本資訊、個性背景、說話方式、關係規範、AI 參數，必須確保 modal CSS 存在以正常顯示彈窗。自動功能區含「生理期關心」toggle（`char.cycleCare`，預設 false，P59）。
+- **CharEditView (角色編輯)**：5 個 Tab 切換——基本資訊、個性背景、說話方式、關係設定、進階設定（P72 重整：Tab3「關係與規範」→「關係設定」、Tab4「回覆設定」→「進階設定」，行為規範與 `scheduleTriggers` 移至 Tab4），必須確保 modal CSS 存在以正常顯示彈窗。進階設定含「生理期關心」toggle（`char.cycleCare`，預設 false，P59）、「暫停主動訊息（總開關）」toggle（`char.proactiveMute`，預設 false，P80）與「主動訊息時段」清單（`scheduleTriggers`）。
 - **MeView (我的設定)**：玩家自身資料；含「作息 / 行程」區塊（`workTime`/`workPlace`/`restTime`，P63）與「生理期追蹤」區塊（主開關、最近經期開始日、週期長度、經期天數，即時預覽推算階段，P59），資料寫入 `me_settings`。儲存成功後 toast 提示再導頁（P64）。
 - **HomeView**：快速入口磚牆（對話、貼文、夢境、黑盒子、通知等），角色橫向捲動快選。**P55 起**：通知 tile 動態讀取 `notifications` store 未讀數，有未讀時顯示玫瑰色 badge 與「X 則未讀」文字。**P75 起**：Widget 化——最近對話卡片（每角色最後一句、未讀、相對時間，點列直入聊天室）、每日一問卡片（當日未回答才顯示）、心聲/日記/夢境/通知活磁磚（最新內容節錄＋計數）、角色列依最後對話時間排序、貼文/群組/世界書降為「更多」捷徑列。
 - **MomentsView / PostDetailView**：貼文列表與留言回覆。
