@@ -492,8 +492,9 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .msg-bubble.long-pressing{transform:scale(.97);opacity:.85}
 .msg.me .msg-bubble{background:var(--rose);color:#fff;border-radius:16px 16px 4px 16px}
 .msg.them .msg-bubble{background:var(--surface);color:var(--text);border:.5px solid var(--border);border-radius:4px 16px 16px 16px;box-shadow:var(--sh)}
-/* 連續訊息的泡泡形狀 */
-.msg-cont .msg-bubble{border-radius:4px 16px 16px 4px}
+/* 連續訊息：與第一則同樣的白色對話框，只改圓角做出分組（下緣較尖）。
+   注意容器是 .msg-cont（無 .msg class），配不到 .msg.them .msg-bubble，需在此補齊背景/邊框/陰影。 */
+.msg-cont .msg-bubble{background:var(--surface);color:var(--text);border:.5px solid var(--border);box-shadow:var(--sh);border-radius:4px 16px 16px 4px}
 .msg.me .msg-bubble+.msg-bubble{border-radius:16px 4px 4px 16px}
 
 /* 玩家訊息：頭像靠右、整列靠右對齊 */

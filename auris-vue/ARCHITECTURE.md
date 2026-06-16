@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-16（P81）
+> 最後更新：2026-06-16（P82）
 
 ---
 
@@ -143,7 +143,7 @@ API 請求的底層工具。
 > **Gemini 相容性**：Gemini 不支援 `frequency_penalty` / `presence_penalty`，`sendLLMRequest` 已內部處理。
 
 ### `services/format.js`
-共用文字處理。`formatContent(str, enableRich = false)`：escape `&`/`<`/`>` 後將 `\n` 轉 `<br>`，並清洗夾在中文字／標點之間的孤立換行（P56）；`enableRich`（P78，聊天室／群組傳入）時於 escape 後把 `*動作*` 轉 `<em class="msg-action">`、`「對話」` 轉 `<span class="msg-quote">`。全站各 v-html 渲染點（6 個檔案：ChatRoomView／GroupRoomView／PostDetailView／DiaryDetailView／DreamDetailView／BlackboxView）統一引用，避免某處漏 escape 形成 stored XSS（P55 抽出）。
+共用文字處理。`formatContent(str, enableRich = false)`：escape `&`/`<`/`>` 後將 `\n` 轉 `<br>`，並清洗夾在中文字／標點之間的孤立換行（P56）；`enableRich`（P78，聊天室／群組傳入）時於 escape 後把 `*動作*` 轉 `<em class="msg-action">`、`「對話」` 轉 `<span class="msg-quote">`。全站各 v-html 渲染點（6 個檔案：ChatRoomView／GroupRoomView／PostDetailView／DiaryDetailView／DreamDetailView／BlackboxView）統一引用，避免某處漏 escape 形成 stored XSS（P55 抽出）。另 `splitReply(text, maxSegments)`（P82）依空行把 AI 一次回覆切成多則短訊息（真人連發短泡泡）；無空行回單段。
 
 ### `services/cycle.js`（P59）
 生理期週期計算，全本地、不上傳。
@@ -325,6 +325,24 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P82（2026-06-16）聊天室回覆體驗：連續訊息補對話框・回覆拆多則短泡泡逐段冒出・字數隨個性彈性・正常回覆禁場景旁白・即時主動加冷卻
+
+修掉「同角色連續訊息一則有框一則沒框」的 CSS bug，並一次優化整個回覆體驗（五項）：
+
+- **連續訊息補白框（真正的 bug）**：連續訊息容器 `.msg-cont them` 沒有 `msg` class，配不到白框規則 `.msg.them .msg-bubble`。把背景／邊框／陰影補進 `.msg-cont .msg-bubble`（保留分組尖角）。
+- **回覆拆多則・逐段冒出**：新增 `format.js` 的 `splitReply()`（依空行切段）；`chatEngine.js` 新增 `persistReplySegments()`，`generateAIResponseStream`／`generateProactiveMessageStream` 完成後切多則寫入（`createdAt` 毫秒位移保序、由 `isCont` 歸連續），回傳由單 `msg` 改 `{ msgs }`。`ChatRoomView` 抽共用 `streamSegmentedReply()`：串流時已封段固定成實心氣泡、末段維持串流，達成真人一顆接一顆連發。格式規則改「空一行分隔」。
+- **字數隨個性彈性**：以 `c.talkative`／`c.style` 算 `lengthGuide` 取代固定「50～150 字」，高冷話少可短、話多可長。
+- **正常回覆禁場景旁白**：新增 `REPLY_NO_NARRATION` 接到一般回覆 system prompt（正常回覆＋重新生成共用），比照 P81 抑制場景／時間旁白。
+- **即時主動加冷卻**：`triggerProactive` 新增 `PROACTIVE_FLOOR_MS`（3 分鐘），距最後一則訊息未滿就不主動。
+
+| 檔案 | 變更 |
+|------|------|
+| `assets/main.css` | `.msg-cont .msg-bubble` 補背景／邊框／陰影 |
+| `services/format.js` | 新增 `splitReply(text, maxSegments)` |
+| `services/chatEngine.js` | 新增 `persistReplySegments()`／`REPLY_NO_NARRATION`／`lengthGuide`；兩個串流函式回傳改 `{ msgs }`；格式規則改空行分隔 |
+| `views/ChatRoomView.vue` | 抽 `streamSegmentedReply()` 套三處呼叫點；新增 `PROACTIVE_FLOOR_MS` 冷卻 |
+| `views/SettingsView.vue` | P81 → P82 |
 
 ### P81（2026-06-16）主動訊息修復：杜絕競態疊訊息・時段對齊現在・禁場景旁白・聊天室即時同步・內主動勿擾
 

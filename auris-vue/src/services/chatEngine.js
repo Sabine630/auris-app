@@ -1,6 +1,22 @@
 import { dbGet, dbPut, dbIdx, dbAll, getSetting, setSetting } from './db.js';
 import { fetchWithTimeout, sendLLMRequest, getVertexToken } from './api.js';
 import { getCyclePhase, cycleCareContext } from './cycle.js';
+import { splitReply } from './format.js';
+
+// 把 AI 一次回覆的整段文字依空行切成多則訊息並寫入 DB（真人連發短泡泡）。
+// 回傳已落庫的訊息陣列（同角色、createdAt 以毫秒位移保序，會被 isCont 歸為連續訊息）。
+// maxSegments 預設取角色 maxMsg，避免一句一泡泡；kind 供主動訊息標記用。
+async function persistReplySegments(charId, fullText, { maxSegments = 3, kind = null } = {}) {
+  const segs = splitReply(fullText, maxSegments);
+  const base = Date.now();
+  const msgs = segs.map((content, i) => {
+    const m = { id: 'msg_' + base + '_ai_' + i, charId, role: 'assistant', content, createdAt: base + i };
+    if (kind) m.kind = kind;
+    return m;
+  });
+  for (const m of msgs) await dbPut('messages', m);
+  return msgs;
+}
 
 function getDefModel(provider) {
   if (provider === 'anthropic') return 'claude-3-5-sonnet-20240620';
@@ -236,6 +252,14 @@ async function buildAIChatSetup(charId, allMsgs) {
     ? '\n【排版規則】把動作、表情、場景等敘述用半形星號 *像這樣* 包起來（會顯示成斜體旁白），角色說出口的話用「」括住。例：*他笑了笑*「好啊，那走吧。」自然運用即可，不要每句都硬套。'
     : '';
 
+  // 回覆長度貼合角色個性：高冷／話少的角色不該被硬性字數逼著湊長段（取代舊的固定「50～150 字」）。
+  const isTerse = c.talkative === 'quiet' || c.style === 'cool';
+  const lengthGuide = isTerse
+    ? '・回覆長度貼合你的個性：你話不多、偏高冷，可以只回一兩句短訊息，不必湊字數；但每句都要有具體內容，不能是「嗯」「好啊」這種空洞敷衍'
+    : c.talkative === 'lots'
+      ? '・你話多、愛聊天，可以回得長一些、自然地連發多則訊息，內容要具體、有細節與溫度'
+      : '・回覆長度適中，要有具體內容，不要只是「嗯」「好啊」「哈哈」這種空洞回應';
+
   let lang = '繁體中文';
   if (c.lang === 'zh-cn') lang = '簡體中文';
   if (c.lang === 'ja') lang = '日文';
@@ -263,13 +287,13 @@ ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
 ${timeCtx}${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${worldCtx}${memCtx}${formatCtx}
 【回覆品質要求】
-・每則訊息至少 50～150 字，要有具體內容，不能只是「嗯」「好啊」「哈哈」等空洞回應
+${lengthGuide}
 ・要回應對方說的具體內容，展現你真的在聽、在意
 ・可以分享自己的感受、想法、記憶、日常細節，讓對話有深度和溫度
 ・語氣、用詞要完全符合角色個性，不能像客服或 AI
 ・禁止使用「我理解你的感受」「這很有趣」「確實如此」等通用句
 ・回覆要有延伸性，可以反問、聊到相關話題、分享自身經歷
-【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 3}則訊息，每則之間用換行分隔。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。`;
+【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 3}則訊息，每則訊息之間「空一行」分隔（前端會把每則顯示成獨立的訊息泡泡，像真人連發）。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。${REPLY_NO_NARRATION}`;
 
   const history = allMsgs.slice(-(c.memory || 20)).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
 
@@ -368,13 +392,12 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
     if (fullText.length >= dynamicMaxTokens * 0.4 && !CLEAN_END_RE.test(lastChar)) truncated = true;
   }
 
-  let msg = null;
+  let msgs = [];
   if (fullText) {
-    msg = { id: 'msg_' + Date.now() + '_ai', charId, role: 'assistant', content: fullText, createdAt: Date.now() };
-    await dbPut('messages', msg);
+    msgs = await persistReplySegments(charId, fullText, { maxSegments: c.maxMsg || 3 });
     if (c.heartVoice) generateHeartVoice(c, allMsgs, fullText).catch(() => {});
   }
-  return { msg, truncated };
+  return { msgs, truncated };
 }
 
 // ── 主動訊息共用工具 ───────────────────────────────────────────────────────
@@ -397,6 +420,12 @@ export function isRecentlyActive(allMsgs) {
 const PROACTIVE_ACTIVE_TAIL = '\n\n（補充：對方此刻正在跟你聊天，上面是你們最近的對話。'
   + '請順著當下的對話與情境，自然地把這份心意接進去說——要承接對方剛剛說的內容，'
   + '不要無視剛才聊的話、也不要硬起一個不相干的新話題。）';
+
+// 正常回覆共用尾巴：禁止 AI 把即時聊天回覆寫成小說場景／時間旁白（比照主動訊息的 PROACTIVE_NO_NARRATION）。
+// 接在一般回覆 system prompt 末端（正常回覆與重新生成共用）。動作排版開著時仍可用 *星號* 簡短帶過動作。
+const REPLY_NO_NARRATION = '\n（重要：這是即時聊天訊息，不是小說章節。不要寫「隔天早上」「手機震動」'
+  + '「書房裡咖啡剛沏好」這類場景旁白、時間旁白或大段敘事鋪陳；就像真人傳訊一樣，直接說你想說的話。'
+  + '若有用星號標動作，也只是簡短點綴，不要整段場景描寫。）';
 
 // 主動訊息共用尾巴：禁止 AI 把「主動傳訊」演成小說場景／時間旁白（B）。
 // 主動訊息是即時送出的一則訊息，不該出現「隔天早上」「手機震動」「書房裡…」這類鋪陳。
@@ -516,14 +545,13 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
     ({ truncated } = await parseSSEStream(r, provider, accumulate));
   }
 
-  let msg = null;
+  let msgs = [];
   if (fullText.trim()) {
-    msg = { id: 'msg_' + Date.now() + '_pro', charId, role: 'assistant', content: fullText.trim(), kind: 'proactive', createdAt: Date.now() };
-    await dbPut('messages', msg);
+    msgs = await persistReplySegments(charId, fullText, { maxSegments: c.maxMsg || 3, kind: 'proactive' });
     // 聊天室即時主動也計入「上一則主動訊息時間」，讓背景派發的 3h min-gap 不會在你在場時又疊一則
     try { await setSetting('last_proactive_' + charId, Date.now()); } catch (_) {}
   }
-  return { msg, truncated };
+  return { msgs, truncated };
 }
 
 // ── 1-on-1 生理期主動關心訊息（背景生成，非串流）─────────────────────────

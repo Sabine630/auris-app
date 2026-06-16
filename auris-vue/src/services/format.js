@@ -26,3 +26,22 @@ export function formatContent(str, enableRich = false) {
   }
   return html.replace(/\n/g, '<br>');
 }
+
+// 把 AI 一次回覆依「空行」切成多則訊息（真人 LINE 連發短泡泡）。
+// 規則：以一個以上空行（\n{2,}）分段、各段 trim、丟掉空段。
+// 無空行 → 回傳單段陣列（= 原本的單泡泡行為，安全退路）。
+// maxSegments：上限（通常傳角色的 maxMsg），超過時把多出來的尾段合併回最後一段，
+// 避免模型一句一段炸出一堆泡泡。預設不限。
+export function splitReply(text, maxSegments = 0) {
+  const segs = (text || '')
+    .split(/\n{2,}/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (!segs.length) return [];
+  if (maxSegments > 0 && segs.length > maxSegments) {
+    const head = segs.slice(0, maxSegments - 1);
+    const tail = segs.slice(maxSegments - 1).join('\n\n');
+    return [...head, tail];
+  }
+  return segs;
+}

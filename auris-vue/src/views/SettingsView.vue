@@ -96,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P81
+        Auris · P82
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P81 主動訊息修復：杜絕競態疊訊息・時段對齊現在・禁場景旁白・聊天室即時同步・內主動勿擾
+        P82 聊天室回覆體驗：連續訊息補對話框・回覆拆多則短泡泡逐段冒出・字數隨個性彈性・正常回覆禁場景旁白・即時主動加冷卻
       </div>
     </div>
   </div>

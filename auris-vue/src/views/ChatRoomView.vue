@@ -340,7 +340,7 @@ import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbDel, dbPut, getSetting } from '../services/db.js';
 import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, summarizeToMemory, hasUnrepliedProactive } from '../services/chatEngine.js';
-import { formatContent } from '../services/format.js';
+import { formatContent, splitReply } from '../services/format.js';
 import { globalStore } from '../store/index.js';
 
 const route = useRoute();
@@ -476,6 +476,8 @@ let proactiveTimer = null;
 let proactiveController = null;
 const isProactiveGenerating = ref(false);
 const CARE_INTERVALS = { rarely: [12, 25], sometimes: [4, 10], often: [1, 4] };
+// 即時主動冷卻地板：距最後一則訊息未滿此時間就先不主動，避免剛互動完角色馬上又自己補一則（可調）。
+const PROACTIVE_FLOOR_MS = 3 * 60 * 1000; // 3 分鐘
 
 onMounted(async () => {
   const c = await dbGet('characters', charId);
@@ -606,6 +608,9 @@ async function triggerProactive() {
   // 勿擾時段（23:00–08:00）不主動打擾，與背景派發規則一致（D）。重排計時器，等過了勿擾時段再說。
   const h = new Date().getHours();
   if (h >= 23 || h < 8) { scheduleProactive(); return; }
+  // 冷卻地板：剛互動完不要馬上又自己補一則（care=often 最短 1 分鐘 → 補一個下限），避免黏人/自言自語。
+  const lastReal = [...messages.value].reverse().find(m => m.type !== 'hv');
+  if (lastReal && Date.now() - lastReal.createdAt < PROACTIVE_FLOOR_MS) { scheduleProactive(); return; }
   // 背景派發已發過一則還沒回的主動訊息，就先別在聊天室再疊一則（避免兩套系統互疊）
   try { if (await hasUnrepliedProactive(charId)) { scheduleProactive(); return; } } catch (_) {}
 
@@ -613,33 +618,15 @@ async function triggerProactive() {
   proactiveController = new AbortController();
   isProactiveGenerating.value = true;
 
-  let streamIdx = -1;
   try {
     isTyping.value = true;
-    const { msg } = await generateProactiveMessageStream(charId, rawMsgs, {
-      onChunk(text) {
-        if (streamIdx === -1) {
-          messages.value.push({ id: 'streaming_' + Date.now(), charId, role: 'assistant', content: '', createdAt: Date.now(), isStreaming: true });
-          streamIdx = messages.value.length - 1;
-          isTyping.value = false;
-        }
-        messages.value[streamIdx].content += text;
-        if (isNearBottom()) scrollToBottom();
-      },
-      signal: proactiveController.signal
-    });
-    if (streamIdx !== -1) {
-      messages.value.splice(streamIdx, 1, msg || null);
-      if (!msg) messages.value.splice(streamIdx, 1);
-    } else if (msg) {
-      messages.value.push(msg);
-      scrollToBottom();
-    }
-    if (msg) {
+    const { msgs } = await streamSegmentedReply(
+      (handlers) => generateProactiveMessageStream(charId, rawMsgs, { ...handlers, signal: proactiveController.signal })
+    );
+    if (msgs.length) {
       await dbPut('notifications', { id: 'notif_chat_' + Date.now(), charId, type: 'chat', targetId: charId, text: '主動傳了訊息給你', read: false, createdAt: Date.now() });
     }
   } catch (err) {
-    if (streamIdx !== -1) messages.value.splice(streamIdx, 1);
     if (err.name !== 'AbortError') console.error('Proactive error:', err);
   } finally {
     isTyping.value = false;
@@ -773,6 +760,51 @@ function isNearBottom() {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
 }
 
+// 串流逐段顯示（真人 LINE 連發短泡泡）：onChunk 累積 buffer，依 splitReply 把已封段
+// 固定成實心氣泡、最後一段維持串流中，達成「一顆定住→下一顆冒出」。
+// 回覆氣泡永遠是 messages.value 的尾端（送訊/重生/主動三種情境皆如此），故以「最後 N 顆」管理 live placeholder。
+// genFn：(handlers) => Promise<{ msgs, truncated }>，由本函式注入 { onChunk }；最後用已落庫的 msgs 換掉 live 氣泡。
+async function streamSegmentedReply(genFn) {
+  const maxSeg = character.value?.maxMsg || 3;
+  const stamp = Date.now();
+  let buffer = '';
+  let liveCount = 0;
+  const removeLive = () => {
+    if (liveCount > 0) {
+      messages.value.splice(messages.value.length - liveCount, liveCount);
+      liveCount = 0;
+    }
+  };
+  try {
+    const { msgs, truncated } = await genFn({
+      onChunk(text) {
+        buffer += text;
+        const segs = splitReply(buffer, maxSeg);
+        if (!segs.length) return;
+        if (liveCount === 0) isTyping.value = false;
+        // 段數只增不減；不足就補新的串流氣泡（新段落出現＝又冒一顆）
+        while (liveCount < segs.length) {
+          messages.value.push({ id: 'streaming_' + stamp + '_' + liveCount, charId, role: 'assistant', content: '', createdAt: stamp + liveCount, isStreaming: true });
+          liveCount++;
+        }
+        const start = messages.value.length - liveCount;
+        for (let i = 0; i < liveCount; i++) {
+          messages.value[start + i].content = segs[i] || '';
+          messages.value[start + i].isStreaming = (i === liveCount - 1); // 只有最後一顆還在打字
+        }
+        if (isNearBottom()) scrollToBottom();
+      }
+    });
+    removeLive();
+    const out = msgs || [];
+    if (out.length) { messages.value.push(...out); scrollToBottom(); }
+    return { msgs: out, truncated };
+  } catch (err) {
+    removeLive();
+    throw err;
+  }
+}
+
 async function sendMsg() {
   const content = inputContent.value.trim();
   if ((!content && !pendingImage.value) || isTyping.value) return;
@@ -795,35 +827,16 @@ async function sendMsg() {
   isTyping.value = true;
   const rawMsgs = messages.value.filter(m => m.type !== 'hv');
 
-  let streamIdx = -1;
   try {
-    const { msg, truncated } = await generateAIResponseStream(charId, rawMsgs, {
-      onChunk(text) {
-        if (streamIdx === -1) {
-          messages.value.push({ id: 'streaming_' + Date.now(), charId, role: 'assistant', content: '', createdAt: Date.now(), isStreaming: true });
-          streamIdx = messages.value.length - 1;
-          isTyping.value = false;
-        }
-        messages.value[streamIdx].content += text;
-        if (isNearBottom()) scrollToBottom();
-      }
-    }, imgToSend);
-    if (streamIdx !== -1) {
-      messages.value.splice(streamIdx, 1, msg || null);
-      if (!msg) {
-        messages.value.splice(streamIdx, 1);
-        window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
-      }
-    } else if (msg) {
-      messages.value.push(msg);
-      scrollToBottom();
-    } else {
-      window.toast_('沒有收到任何回應，請確認 API 設定與代理是否正常');
+    const { msgs, truncated } = await streamSegmentedReply(
+      (handlers) => generateAIResponseStream(charId, rawMsgs, handlers, imgToSend)
+    );
+    if (!msgs.length) {
+      window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
     }
     if (truncated) window.toast_('⚠ 回覆可能被截斷，可長按訊息「重新生成回覆」');
   } catch (err) {
     console.error('Chat error:', err);
-    if (streamIdx !== -1) messages.value.splice(streamIdx, 1);
     window.toast_('錯誤：' + err.message);
   } finally {
     isTyping.value = false;
@@ -1113,35 +1126,16 @@ async function doRegenerate(m) {
   isTyping.value = true;
   const rawMsgs = messages.value.filter(x => x.type !== 'hv');
 
-  let streamIdx = -1;
   try {
-    const { msg, truncated } = await generateAIResponseStream(charId, rawMsgs, {
-      onChunk(text) {
-        if (streamIdx === -1) {
-          messages.value.push({ id: 'streaming_' + Date.now(), charId, role: 'assistant', content: '', createdAt: Date.now(), isStreaming: true });
-          streamIdx = messages.value.length - 1;
-          isTyping.value = false;
-        }
-        messages.value[streamIdx].content += text;
-        if (isNearBottom()) scrollToBottom();
-      }
-    });
-    if (streamIdx !== -1) {
-      messages.value.splice(streamIdx, 1, msg || null);
-      if (!msg) {
-        messages.value.splice(streamIdx, 1);
-        window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
-      }
-    } else if (msg) {
-      messages.value.push(msg);
-      scrollToBottom();
-    } else {
-      window.toast_('沒有收到任何回應，請確認 API 設定與代理是否正常');
+    const { msgs, truncated } = await streamSegmentedReply(
+      (handlers) => generateAIResponseStream(charId, rawMsgs, handlers)
+    );
+    if (!msgs.length) {
+      window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
     }
     if (truncated) window.toast_('⚠ 回覆可能被截斷');
   } catch (err) {
     console.error('Chat error:', err);
-    if (streamIdx !== -1) messages.value.splice(streamIdx, 1);
     window.toast_('錯誤：' + err.message);
   } finally {
     isTyping.value = false;
