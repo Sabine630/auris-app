@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-17（P84）
+> 最後更新：2026-06-17（P85）
 
 ---
 
@@ -325,6 +325,19 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P85（2026-06-17）還原 P83 iOS PWA 鍵盤改動——聊天室版面回到 P82 穩定狀態
+
+P83 為解決 iOS PWA 鍵盤升起時底部露出帶，把 `.phone` 從 `height:100dvh` 改成釘在 `visualViewport`（`height:var(--vvh)` ＋ `transform:translateY(var(--vvtop))`），並讓 `updateKB` 寫入 `--vvh/--vvtop`。實機上此改動把聊天室版面改爆，故精準回退這兩處到 P82 狀態，P83/P84 其餘功能全部保留。
+
+- **`main.css`**：`.phone` 回退 `height:100dvh`、移除 `transform:translateY(var(--vvtop))` 與 `--vvh` fallback。
+- **`store/index.js`**：`updateKB` 回退為僅計算 `keyboardOffset`，不再以 `document.documentElement` 寫入 `--vvh/--vvtop` 兩個 CSS 變數。鍵盤避讓仍由既有的 `keyboardOffset` ＋ `BottomNav` 的 `kb-hidden` 機制處理。
+
+| 檔案 | 變更 |
+|------|------|
+| `assets/main.css` | `.phone` 回退 `height:100dvh`、移除 `transform` 與 `--vvh` |
+| `store/index.js` | `updateKB` 回退為僅算 `keyboardOffset` |
+| `views/SettingsView.vue` | P84 → P85 |
 
 ### P84（2026-06-17）貼文回覆讀取完整貼文＋留言串不再自相矛盾・通知點擊跳到並高亮該則聊天訊息
 

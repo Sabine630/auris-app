@@ -96,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P84
+        Auris · P85
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P84 貼文回覆讀取完整貼文＋留言串不再自相矛盾・通知點擊跳到並高亮該則聊天訊息
+        P85 還原 P83 iOS PWA 鍵盤改動——聊天室版面回到 P82 穩定狀態，其餘 P83/P84 功能保留
       </div>
     </div>
   </div>
