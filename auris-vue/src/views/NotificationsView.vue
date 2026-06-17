@@ -80,7 +80,7 @@ function openNotif(n) {
   if (n.type === 'diary') router.push('/diary/' + n.targetId);
   else if (n.type === 'dream') router.push('/dream/' + n.targetId);
   else if (n.type === 'post') router.push('/post/' + n.targetId);
-  else if (n.type === 'chat') router.push('/chat/' + n.charId);
+  else if (n.type === 'chat') router.push({ path: '/chat/' + n.charId, query: n.messageId ? { msg: n.messageId } : {} });
   else if (n.type === 'hv') router.push('/blackbox');
 }
 </script>

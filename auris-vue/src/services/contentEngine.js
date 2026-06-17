@@ -85,8 +85,18 @@ export async function generateCommentReply(postId, charId, userComment) {
   if (!c || !p) { console.warn('generateCommentReply: char or post not found', charId, postId); return; }
 
   const me = await getSetting('me_settings') || {};
+  const meName = me.name || '對方';
 
-  const prompt = `你是「${c.name}」，個性：${c.persona || ''}。你剛發了一則貼文：「${(p.content || '').substring(0, 120)}」。\n${me.name || '對方'}留言說：「${userComment}」\n請用角色口吻回覆留言，20~60字，自然簡短，像社群留言回覆的語氣。直接輸出回覆內容，不加引號。不要只回一個字或一個 emoji。`;
+  // 帶入完整貼文與整串留言（由舊到新，最後一則即剛送出的待回覆留言），讓回覆貼合貼文與前文、不自相矛盾
+  const body = (p.content || '').slice(0, 1000);
+  const thread = (p.comments || []).slice(-10)
+    .map(cm => `${cm.role === 'user' ? meName : c.name}：${cm.content}`)
+    .join('\n');
+  const prompt = `你是「${c.name}」，個性：${c.persona || ''}。
+你發了一則貼文，內容如下：
+「${body}」
+${thread ? `\n這則貼文下面的留言串（由舊到新，最後一則是你要回覆的對象）：\n${thread}\n` : `\n${meName}留言說：「${userComment}」\n`}
+請以貼文作者的身分回覆最後一則留言。務必貼合你貼文與前面留言的實際內容，不要說出與貼文矛盾的話。20~60字，自然簡短，像社群留言回覆的語氣。直接輸出回覆內容，不加引號。不要只回一個字或一個 emoji。`;
 
   try {
     const text = await sendLLMRequest(

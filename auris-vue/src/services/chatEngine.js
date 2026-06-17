@@ -594,7 +594,7 @@ export async function generateCycleCareMessage(charId, trigger) {
   c.unreadCount = (c.unreadCount || 0) + 1;
   c.hasUnread = true;
   await dbPut('characters', JSON.parse(JSON.stringify(c)));
-  await dbPut('notifications', { id: 'notif_care_' + Date.now(), charId, type: 'chat', targetId: charId, text: '傳了一則訊息關心你', read: false, createdAt: Date.now() });
+  await dbPut('notifications', { id: 'notif_care_' + Date.now(), charId, type: 'chat', targetId: charId, messageId: msg.id, text: '傳了一則訊息關心你', read: false, createdAt: Date.now() });
   // 開著的聊天室即時撈出這則背景訊息（E）
   try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
   return msg;
@@ -631,7 +631,7 @@ export async function generateScheduleMessage(charId, triggerDesc) {
   c.unreadCount = (c.unreadCount || 0) + 1;
   c.hasUnread = true;
   await dbPut('characters', JSON.parse(JSON.stringify(c)));
-  await dbPut('notifications', { id: 'notif_sched_' + Date.now(), charId, type: 'chat', targetId: charId, text: '傳了一則訊息給你', read: false, createdAt: Date.now() });
+  await dbPut('notifications', { id: 'notif_sched_' + Date.now(), charId, type: 'chat', targetId: charId, messageId: msg.id, text: '傳了一則訊息給你', read: false, createdAt: Date.now() });
   // 開著的聊天室即時撈出這則背景訊息（E），避免之後重開才「插進歷史中間」
   try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
   return msg;
@@ -989,7 +989,7 @@ export async function generateMissYouMessage(charId) {
   c.unreadCount = (c.unreadCount || 0) + 1;
   c.hasUnread = true;
   await dbPut('characters', JSON.parse(JSON.stringify(c)));
-  await dbPut('notifications', { id: 'notif_miss_' + Date.now(), charId, type: 'chat', targetId: charId, text: '突然想到你了', read: false, createdAt: Date.now() });
+  await dbPut('notifications', { id: 'notif_miss_' + Date.now(), charId, type: 'chat', targetId: charId, messageId: msg.id, text: '突然想到你了', read: false, createdAt: Date.now() });
   // 開著的聊天室即時撈出這則背景訊息（E）
   try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
   return msg;
@@ -1026,7 +1026,7 @@ export async function generateDailyQuestion(charId) {
   c.unreadCount = (c.unreadCount || 0) + 1;
   c.hasUnread = true;
   await dbPut('characters', JSON.parse(JSON.stringify(c)));
-  await dbPut('notifications', { id: 'notif_dq_' + Date.now(), charId, type: 'chat', targetId: charId, text: '今天想問你一個問題', read: false, createdAt: Date.now() });
+  await dbPut('notifications', { id: 'notif_dq_' + Date.now(), charId, type: 'chat', targetId: charId, messageId: msg.id, text: '今天想問你一個問題', read: false, createdAt: Date.now() });
   // 開著的聊天室即時撈出這則背景訊息（E）
   try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
   return msg;

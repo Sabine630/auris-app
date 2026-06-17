@@ -501,6 +501,8 @@ onMounted(async () => {
 
   await loadMessages();
   await loadChatMems();
+  // 由通知帶 ?msg=訊息id 進來 → 捲到該則並高亮（無則維持 loadMessages 的捲到底）
+  if (route.query.msg) scrollToMessage(route.query.msg);
   scheduleProactive();
 
   // Listen for background Heart Voices
@@ -625,7 +627,7 @@ async function triggerProactive() {
       (handlers) => generateProactiveMessageStream(charId, rawMsgs, { ...handlers, signal: proactiveController.signal })
     );
     if (msgs.length) {
-      await dbPut('notifications', { id: 'notif_chat_' + Date.now(), charId, type: 'chat', targetId: charId, text: '主動傳了訊息給你', read: false, createdAt: Date.now() });
+      await dbPut('notifications', { id: 'notif_chat_' + Date.now(), charId, type: 'chat', targetId: charId, messageId: msgs[0]?.id, text: '主動傳了訊息給你', read: false, createdAt: Date.now() });
     }
   } catch (err) {
     if (err.name !== 'AbortError') console.error('Proactive error:', err);
@@ -923,6 +925,18 @@ function nextMatch() {
 function scrollToMatch() {
   const id = searchMatchIds.value[searchIdx.value];
   if (id == null) return;
+  nextTick(() => {
+    const el = scrollArea.value?.querySelector(`[data-msg-id="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('search-hit');
+    setTimeout(() => el.classList.remove('search-hit'), 1600);
+  });
+}
+
+// 由通知點擊進來時（?msg=訊息id），捲到該則並閃爍高亮（沿用搜尋的 .search-hit 機制）
+function scrollToMessage(id) {
+  if (!id) return;
   nextTick(() => {
     const el = scrollArea.value?.querySelector(`[data-msg-id="${id}"]`);
     if (!el) return;

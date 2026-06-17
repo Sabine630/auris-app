@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-17（P83）
+> 最後更新：2026-06-17（P84）
 
 ---
 
@@ -325,6 +325,19 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P84（2026-06-17）貼文回覆讀取完整貼文＋留言串不再自相矛盾・通知點擊跳到並高亮該則聊天訊息
+
+- **貼文回覆讀取完整貼文＋留言串**：`contentEngine.js` 的 `generateCommentReply()` 舊 prompt 只截貼文前 120 字、且未帶入留言串，回覆會與貼文矛盾。改為帶入完整貼文（上限 1000 字）與整串留言（由舊到新、取最後 10 則，最後一則即待回覆對象），並要求貼合貼文與前文、不可矛盾。
+- **通知跳到並高亮該則聊天訊息**：五處 chat 通知（`chatEngine.js` 的 cycleCare／schedule／missYou／dailyQuestion + `ChatRoomView.vue` 即時主動）的 notif 物件補 `messageId`；`NotificationsView.vue` 的 `openNotif` chat 分支改帶 `?msg=訊息id` query；`ChatRoomView.vue` 新增 `scrollToMessage()`，`onMounted` 依 `route.query.msg` 捲到該則並沿用 `.search-hit` 閃爍 1.6s。無 `messageId` 的舊通知自動 fallback 捲到底。日記／夢境／貼文通知本就路由到該篇詳情頁，未改。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/contentEngine.js` | `generateCommentReply()` prompt 改吃完整貼文＋留言串 |
+| `services/chatEngine.js` | 四處 chat 通知補 `messageId` |
+| `views/ChatRoomView.vue` | 即時主動通知補 `messageId`；新增 `scrollToMessage()`；`onMounted` 依 query 捲動高亮 |
+| `views/NotificationsView.vue` | `openNotif` chat 分支帶 `?msg=` query |
+| `views/SettingsView.vue` | P83 → P84 |
 
 ### P83（2026-06-17）聊天室細修：泡泡切分上限降為 2・時間改在整組對話框結束後顯示・確認彈窗修回實心底・iOS PWA 鍵盤升起不再透底
 
