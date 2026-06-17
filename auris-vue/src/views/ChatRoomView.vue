@@ -75,7 +75,7 @@
               <img v-if="m.image" :src="m.image" class="msg-image msg-image-me" @click="viewImage(m.image)" />
               <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id }" :data-msg-id="m.id" data-role="user" v-html="m.content ? formatContent(m.content, globalStore.chatFormatStyle) : ''" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent v-show="!!m.content"></div>
               <div v-if="m.reaction" class="msg-reaction" @click="removeReaction(m)">{{ m.reaction }}</div>
-              <div v-if="!isCont(i)" class="msg-time">{{ fmtT(m.createdAt) }}</div>
+              <div v-if="isLastInGroup(i)" class="msg-time">{{ fmtT(m.createdAt) }}</div>
             </div>
           </div>
 
@@ -89,12 +89,13 @@
               <div class="msg them">
                 <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id, streaming: m.isStreaming }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content, globalStore.chatFormatStyle)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
                 <div v-if="m.reaction" class="msg-reaction" @click="removeReaction(m)">{{ m.reaction }}</div>
-                <div class="msg-time">{{ fmtT(m.createdAt) }}</div>
+                <div v-if="isLastInGroup(i)" class="msg-time">{{ fmtT(m.createdAt) }}</div>
               </div>
             </div>
             <div v-else class="msg-cont them">
               <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id, streaming: m.isStreaming }" :data-msg-id="m.id" data-role="assistant" v-html="formatContent(m.content, globalStore.chatFormatStyle)" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent></div>
               <div v-if="m.reaction" class="msg-reaction msg-reaction-cont" @click="removeReaction(m)">{{ m.reaction }}</div>
+              <div v-if="isLastInGroup(i)" class="msg-time">{{ fmtT(m.createdAt) }}</div>
             </div>
           </template>
         </template>
@@ -717,6 +718,11 @@ function isCont(i) {
   return prev.role === m.role && (m.createdAt - prev.createdAt) < 120000;
 }
 
+// 該則是否為同組最後一則（下一則不是它的連續訊息 → 時間掛在這裡，整組結束後才顯示）
+function isLastInGroup(i) {
+  return i === messages.value.length - 1 || !isCont(i + 1);
+}
+
 function showDateSep(i) {
   const m = messages.value[i];
   if (!m?.createdAt || m.type === 'hv') return false;
@@ -765,7 +771,7 @@ function isNearBottom() {
 // 回覆氣泡永遠是 messages.value 的尾端（送訊/重生/主動三種情境皆如此），故以「最後 N 顆」管理 live placeholder。
 // genFn：(handlers) => Promise<{ msgs, truncated }>，由本函式注入 { onChunk }；最後用已落庫的 msgs 換掉 live 氣泡。
 async function streamSegmentedReply(genFn) {
-  const maxSeg = character.value?.maxMsg || 3;
+  const maxSeg = character.value?.maxMsg || 2;
   const stamp = Date.now();
   let buffer = '';
   let liveCount = 0;

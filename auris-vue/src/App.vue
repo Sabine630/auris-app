@@ -393,7 +393,7 @@ onUnmounted(() => {
   display: flex; align-items: center; justify-content: center;
 }
 .cm-box {
-  background: var(--card);
+  background: var(--surface);
   border-radius: 16px;
   padding: 24px 20px 16px;
   width: min(320px, 85vw);

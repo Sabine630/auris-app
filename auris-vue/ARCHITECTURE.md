@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-16（P82）
+> 最後更新：2026-06-17（P83）
 
 ---
 
@@ -325,6 +325,25 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P83（2026-06-17）聊天室細修：泡泡切分上限降為 2・時間改在整組對話框結束後顯示・確認彈窗修回實心底・iOS PWA 鍵盤升起不再透底
+
+接 P82 回報的三個畫面問題收尾：
+
+- **泡泡切分上限 3 → 2**：預設與 fallback 的 `maxMsg` 一律由 3 降為 2（prompt、`persistReplySegments` 兩處、`streamSegmentedReply` 的 `maxSeg`、`CharEditView` 新角色預設）。`splitReply` 仍只在空行切，故單句不拆。既有角色沿用已存 `maxMsg`，可由「訊息則數」滑桿自調。
+- **時間改在整組結束後顯示**：`ChatRoomView` 新增 `isLastInGroup(i)`（`i === 最末 || !isCont(i+1)`）。時間由「組首」（`!isCont`）改掛「組尾」：玩家／AI 組首泡泡時間條件改 `isLastInGroup`，AI 連續泡泡區塊補上一條 `msg-time`。每組僅最後一則、於整組下方顯示時間。
+- **確認彈窗實心底（CSS 變數 bug）**：全站共用確認框 `.cm-box` 誤用未定義變數 `var(--card)`（透明），改 `var(--surface)`，一次修好 5 個確認彈窗。
+- **iOS PWA 鍵盤透底**：iOS 聚焦輸入框會平移可視區（`visualViewport.offsetTop>0`），使 `keyboardOffset≈0`、`.phone`（`100dvh`）不再對齊可見區而露出透底帶。改用 visualViewport API：`store` 的 `updateKB()` 把 `visualViewport.height`／`offsetTop` 寫入 root CSS 變數 `--vvh`／`--vvtop`，手機版 `.phone` 改 `height:var(--vvh,100dvh)` + `transform:translateY(var(--vvtop,0px))`，把 app 框釘在可見區（桌面用 fallback 不受影響）。
+
+| 檔案 | 變更 |
+|------|------|
+| `App.vue` | `.cm-box` 背景 `var(--card)` → `var(--surface)` |
+| `services/chatEngine.js` | prompt 與兩處 `persistReplySegments` 的 `maxMsg` fallback 3 → 2 |
+| `views/CharEditView.vue` | 新角色 `maxMsg` 預設 3 → 2 |
+| `views/ChatRoomView.vue` | 新增 `isLastInGroup()`、時間改掛組尾（三處）、`maxSeg` fallback 3 → 2 |
+| `store/index.js` | `updateKB()` 新增寫入 `--vvh`／`--vvtop` |
+| `assets/main.css` | 手機版 `.phone` 改 `height:var(--vvh,100dvh)` + `translateY(var(--vvtop,0px))` |
+| `views/SettingsView.vue` | P82 → P83 |
 
 ### P82（2026-06-16）聊天室回覆體驗：連續訊息補對話框・回覆拆多則短泡泡逐段冒出・字數隨個性彈性・正常回覆禁場景旁白・即時主動加冷卻
 

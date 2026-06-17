@@ -128,7 +128,9 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   body::before{display:none}
   .phone{
     width:100%;
-    height:100dvh;
+    /* iOS PWA：把 app 框釘在 visualViewport（鍵盤升起時跟著縮高＋平移），未升鍵盤時用 100dvh fallback */
+    height:var(--vvh,100dvh);
+    transform:translateY(var(--vvtop,0px));
     border-radius:0;
     box-shadow:none;
     overflow:hidden;

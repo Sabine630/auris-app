@@ -559,7 +559,7 @@ const char = ref({
   replyMode: 'manual',
   delay: 1,
   minMsg: 1,
-  maxMsg: 3,
+  maxMsg: 2,
   memory: 20,
   temperature: 0.8,
   timeAware: true,

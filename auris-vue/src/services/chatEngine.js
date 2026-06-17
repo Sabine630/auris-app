@@ -293,7 +293,7 @@ ${lengthGuide}
 ・語氣、用詞要完全符合角色個性，不能像客服或 AI
 ・禁止使用「我理解你的感受」「這很有趣」「確實如此」等通用句
 ・回覆要有延伸性，可以反問、聊到相關話題、分享自身經歷
-【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 3}則訊息，每則訊息之間「空一行」分隔（前端會把每則顯示成獨立的訊息泡泡，像真人連發）。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。${REPLY_NO_NARRATION}`;
+【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 2}則訊息，每則訊息之間「空一行」分隔（前端會把每則顯示成獨立的訊息泡泡，像真人連發）。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。${REPLY_NO_NARRATION}`;
 
   const history = allMsgs.slice(-(c.memory || 20)).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
 
@@ -394,7 +394,7 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
 
   let msgs = [];
   if (fullText) {
-    msgs = await persistReplySegments(charId, fullText, { maxSegments: c.maxMsg || 3 });
+    msgs = await persistReplySegments(charId, fullText, { maxSegments: c.maxMsg || 2 });
     if (c.heartVoice) generateHeartVoice(c, allMsgs, fullText).catch(() => {});
   }
   return { msgs, truncated };
@@ -547,7 +547,7 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
 
   let msgs = [];
   if (fullText.trim()) {
-    msgs = await persistReplySegments(charId, fullText, { maxSegments: c.maxMsg || 3, kind: 'proactive' });
+    msgs = await persistReplySegments(charId, fullText, { maxSegments: c.maxMsg || 2, kind: 'proactive' });
     // 聊天室即時主動也計入「上一則主動訊息時間」，讓背景派發的 3h min-gap 不會在你在場時又疊一則
     try { await setSetting('last_proactive_' + charId, Date.now()); } catch (_) {}
   }
