@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P74–P76 更新公告</div>
+      <div class="ann-badge">P77–P85 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,20 +16,24 @@
               <div class="ann-title">近期新功能</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">首頁全面升級 Widget 🏠</div>
-                  <div class="ann-item-desc">首頁新增「最近對話」與「每日一問」動態卡片，磁磚支援懸浮顯示最新訊息，角色列也可以自由調整順序。</div>
+                  <div class="ann-item-title">角色會主動傳訊息給你 💌</div>
+                  <div class="ann-item-desc">開啟後，角色會在一天的不同時段自己捎來訊息，內容自然融入對話、不再像系統提醒。深夜勿擾時段不打擾，也可隨時暫停。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">聊天室快捷操作 ⚡</div>
-                  <div class="ann-item-desc">聊天室右上角選單二層化，新增日記與夢境一鍵生成捷徑，不必離開對話就能記錄角色的內心世界。</div>
+                  <div class="ann-item-title">聊天回覆更像真人 💬</div>
+                  <div class="ann-item-desc">AI 回覆會拆成多則短泡泡逐段冒出，長短隨角色個性變化，讀起來像真的在跟你連發訊息，時間也改在整組對話結束後才顯示。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">角色匯出 / 匯入 📦</div>
-                  <div class="ann-item-desc">角色管理頁可單獨匯出一個角色（含聊天記錄、記憶、日記、夢境、貼文），換裝置或分享給朋友都方便。</div>
+                  <div class="ann-item-title">聊天全文搜尋 🔍</div>
+                  <div class="ann-item-desc">在聊天室內搜尋關鍵字，直接跳到並高亮那則訊息，再也不用慢慢往上捲找那句話。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">「我想你」＋ 每日一問 💭</div>
-                  <div class="ann-item-desc">角色設定可分別開啟：「我想你」讓角色偶爾主動說想你；「每日一問」讓角色每天提一個問題了解你的生活。</div>
+                  <div class="ann-item-title">共同願望清單・備忘錄 📝</div>
+                  <div class="ann-item-desc">和角色一起記下「想一起做的事」與約定、計畫、待辦。每段關係各自一份，可勾選完成。</div>
+                </div>
+                <div class="ann-item">
+                  <div class="ann-item-title">通知一點直達訊息 🔔</div>
+                  <div class="ann-item-desc">點擊主動訊息的通知，會直接跳到聊天室那一則並高亮顯示，不再只是開啟對話而已。</div>
                 </div>
               </div>
             </template>
@@ -39,20 +43,20 @@
               <div class="ann-title">怎麼用</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">調整首頁角色順序</div>
-                  <div class="ann-item-desc">長按角色列中的頭像，拖曳即可重新排列，放開確認位置。</div>
+                  <div class="ann-item-title">開啟主動訊息</div>
+                  <div class="ann-item-desc">角色設定 → 進階設定，開啟「我想你」「每日一問」等開關；角色就會在不同時段主動傳訊息。需有一定對話記錄才會觸發。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">聊天室生成日記 / 夢境</div>
-                  <div class="ann-item-desc">聊天室右上角 ⋯ → 第二層選單，找到「寫今日日記」或「生成夢境」，直接在聊天頁觸發。</div>
+                  <div class="ann-item-title">暫停某角色主動 / 勿擾時段</div>
+                  <div class="ann-item-desc">角色設定的「暫停主動訊息（總開關）」可讓該角色完全不主動，但你傳訊時仍正常回覆。深夜 23:00–08:00 一律不打擾。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">開啟「我想你」與「每日一問」</div>
-                  <div class="ann-item-desc">角色設定 → 進階設定，找到對應開關即可。需有一定對話記錄才會觸發（我想你 ≥ 5 則、每日一問 ≥ 3 則）。</div>
+                  <div class="ann-item-title">搜尋聊天記錄</div>
+                  <div class="ann-item-desc">進入聊天室，點右上角搜尋，輸入關鍵字即可跳到那則訊息。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">匯出 / 匯入角色</div>
-                  <div class="ann-item-desc">角色管理 → 角色卡 → 「匯出」下載備份；頁頭「匯入」還原角色，匯入後名稱會加「（匯入）」可再改名。</div>
+                  <div class="ann-item-title">願望清單・備忘錄</div>
+                  <div class="ann-item-desc">關係主頁的「我們的願望清單・備忘錄」卡片，或聊天室 ⋯ →「我們的願望・備忘」進入。輸入後按 Enter 新增，點一下可勾選完成。</div>
                 </div>
               </div>
             </template>
@@ -86,7 +90,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P76</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P85</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
