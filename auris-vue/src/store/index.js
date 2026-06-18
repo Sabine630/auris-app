@@ -5,7 +5,6 @@ export const globalStore = reactive({
   theme: 'cream',
   characters: [],
   settings: {},
-  chatListData: [],
   keyboardOffset: 0,
   chatFormatStyle: false,
 

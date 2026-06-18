@@ -475,6 +475,7 @@ const enabledTokenEstimate = computed(() => {
 // ── Proactive Timer State (P49) ──
 let proactiveTimer = null;
 let proactiveController = null;
+let pendingProactiveReload = false; // 串流中收到背景主動訊息 → 先記著，串流結束再重撈（避免抹掉 live 氣泡）
 const isProactiveGenerating = ref(false);
 const CARE_INTERVALS = { rarely: [12, 25], sometimes: [4, 10], often: [1, 4] };
 // 即時主動冷卻地板：距最後一則訊息未滿此時間就先不主動，避免剛互動完角色馬上又自己補一則（可調）。
@@ -635,6 +636,7 @@ async function triggerProactive() {
     isTyping.value = false;
     isProactiveGenerating.value = false;
     proactiveController = null;
+    if (pendingProactiveReload) reloadAfterProactive();
     scheduleProactive();
     maybeAutoSummarize();
   }
@@ -695,8 +697,24 @@ async function maybeAutoSummarize() {
 // 背景派發（想你／每日一問／定時／生理期）寫入訊息後，即時重撈、排序、捲到底（E）。
 // 用 loadMessages 是因為背景訊息已寫進 DB，重撈才能拿到正確的 createdAt 排序，
 // 不會像以前那樣等下次重開房才「插進歷史中間」。
-function onProactiveMsg(e) {
-  if (e.detail?.charId === charId) loadMessages();
+async function onProactiveMsg(e) {
+  if (e.detail?.charId !== charId) return;
+  // 前台正在串流（送訊／主動）時，整批替換 messages 會抹掉尚未落庫的 live 氣泡，
+  // 造成 removeLive 的 splice 誤刪剛載入的真實訊息 → 改為記旗標，串流結束後再重撈。
+  if (isTyping.value || isProactiveGenerating.value) { pendingProactiveReload = true; return; }
+  await reloadAfterProactive();
+}
+
+// 重撈背景主動訊息，並把背景生成器剛加上的未讀紅點清掉（使用者正開著本房，不該再累積未讀）。
+async function reloadAfterProactive() {
+  pendingProactiveReload = false;
+  await loadMessages();
+  const c = await dbGet('characters', charId);
+  if (c && (c.unreadCount > 0 || c.hasUnread)) {
+    c.unreadCount = 0;
+    c.hasUnread = false;
+    await dbPut('characters', c);
+  }
 }
 
 function onHeartVoice(e) {
@@ -773,7 +791,10 @@ function isNearBottom() {
 // 回覆氣泡永遠是 messages.value 的尾端（送訊/重生/主動三種情境皆如此），故以「最後 N 顆」管理 live placeholder。
 // genFn：(handlers) => Promise<{ msgs, truncated }>，由本函式注入 { onChunk }；最後用已落庫的 msgs 換掉 live 氣泡。
 async function streamSegmentedReply(genFn) {
-  const maxSeg = character.value?.maxMsg || 2;
+  // 從 DB 取最新 maxMsg，與落庫端 persistReplySegments 用的是同一來源，
+  // 避免剛改過 maxMsg 時 live 氣泡數與最終落庫則數對不上。
+  const fresh = await dbGet('characters', charId);
+  const maxSeg = fresh?.maxMsg || character.value?.maxMsg || 2;
   const stamp = Date.now();
   let buffer = '';
   let liveCount = 0;
@@ -848,6 +869,7 @@ async function sendMsg() {
     window.toast_('錯誤：' + err.message);
   } finally {
     isTyping.value = false;
+    if (pendingProactiveReload) reloadAfterProactive();
     scheduleProactive();
     maybeAutoSummarize();
   }
@@ -961,8 +983,14 @@ async function confirmClearChat() {
   for (const m of msgs) {
     await dbDel('messages', m.id);
   }
+  // 訊息已清空 → chat 型通知指向的訊息都不存在了，一併刪掉避免點進來連到不存在的訊息。
+  const notifs = await dbIdx('notifications', 'charId', charId);
+  for (const n of notifs) {
+    if (n.type === 'chat') await dbDel('notifications', n.id);
+  }
   messages.value = [];
   showClearConfirm.value = false;
+  scheduleProactive(); // 依清空後的狀態重排主動計時器（clearTimeout 會先取消對舊對話排定的那一輪）
 }
 
 function exportChat() {
@@ -1098,20 +1126,24 @@ function doCopy(m) {
 
 async function setReaction(m, emoji) {
   // 點同一個表情＝取消
+  const prev = m.reaction || '';
   m.reaction = m.reaction === emoji ? '' : emoji;
   activeMsg.value = null;
   try {
     const stored = await dbGet('messages', m.id);
     if (stored) { stored.reaction = m.reaction; await dbPut('messages', stored); }
-  } catch (e) { console.error('save reaction failed:', e); }
+    else m.reaction = prev; // 尚未落庫（如串流中泡泡）→ 回滾，避免重整後表情消失造成狀態不一致
+  } catch (e) { console.error('save reaction failed:', e); m.reaction = prev; }
 }
 
 async function removeReaction(m) {
+  const prev = m.reaction || '';
   m.reaction = '';
   try {
     const stored = await dbGet('messages', m.id);
     if (stored) { stored.reaction = ''; await dbPut('messages', stored); }
-  } catch (e) { console.error('remove reaction failed:', e); }
+    else m.reaction = prev;
+  } catch (e) { console.error('remove reaction failed:', e); m.reaction = prev; }
 }
 
 function doEditAndResend(m) {

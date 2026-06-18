@@ -707,10 +707,10 @@ async function saveChar() {
 async function doDeleteChar() {
   confirmDeletePrompt.value = false;
   await dbDel('characters', charId.value);
-  const stores = ['messages', 'memories', 'diary', 'dreams', 'moments'];
-  const idxKeys = { messages: 'charId', memories: 'charId', diary: 'charId', dreams: 'charId', moments: 'charId' };
+  // 連同角色所有衍生資料一併清除（與 CharManageView 一致），含 notifications，避免孤兒資料與死通知。
+  const stores = ['messages', 'memories', 'chat_memories', 'moments', 'diary', 'dreams', 'notifications', 'wishes', 'notes'];
   for (const store of stores) {
-    const items = await dbIdx(store, idxKeys[store], charId.value);
+    const items = await dbIdx(store, 'charId', charId.value);
     for (const item of items) await dbDel(store, item.id);
   }
   await globalStore.loadCharacters();

@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-17（P85）
+> 最後更新：2026-06-18（P86）
 
 ---
 
@@ -325,6 +325,29 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P86（2026-06-18）全面健檢：聊天競態／逾時修復＋死碼清理
+
+累積多版後首次全面健檢（分聊天核心正確性／整體健康度／文件一致性三路審查）。核心修復：
+
+- **`fetchWithTimeout` 合併外部 `signal`**：原本會丟棄呼叫端帶入的 `signal`（被內部 timeout signal 覆蓋）。改為「逾時 OR 外部 abort 任一觸發即中止」；外部中斷保留 `AbortError`（供 auto-interrupt 辨識），逾時則轉 `request_timeout`。
+- **主動訊息串流逾時保護**：`generateProactiveMessageStream` 三家 provider 原用裸 `fetch` 以傳 signal、無逾時，連線吊死會使 `isProactiveGenerating/isTyping` 永真而鎖死發訊。改全部走 `fetchWithTimeout(..., signal, 90000)`；Vertex 分支也補上 `signal`，使三家皆可被 auto-interrupt 中斷。
+- **聊天室串流競態**：`onProactiveMsg` 在前台串流中（`isTyping/isProactiveGenerating`）改記 `pendingProactiveReload` 旗標、串流結束後才 `loadMessages`，避免整批替換抹掉 live 氣泡；重撈時順手把背景生成器加上的未讀清回 0。
+- **其他**：`confirmClearChat` 補 `scheduleProactive()`；reaction 寫入失敗回滾；`streamSegmentedReply` 的 `maxMsg` 改與落庫端同源（DB）。
+- **刪內容連動刪通知**：通知與內容的對應關係——`hv`→`memories`(targetId)、`chat`→`messages`(charId)、`diary/dream/post`→各內容(charId)。補齊死通知清理：BlackboxView 刪心聲依 `targetId` 刪 hv 通知；ChatRoomView 清聊天刪該角色 `chat` 通知；ChatListView 清空把 `chat` 納入必清；CharEditView / ChatListView 批次刪角色補上完整 store 連動刪除（原漏 `notifications/chat_memories/wishes/notes`，與 CharManageView 對齊）。
+- **清理**：刪死碼 `generateGroupAIResponse`、store 未用欄位 `chatListData`；`ApiView` 改靜態 import 消 `INEFFECTIVE_DYNAMIC_IMPORT` build 警告。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/api.js` | `fetchWithTimeout` 合併外部 `signal` |
+| `services/chatEngine.js` | 主動串流走 `fetchWithTimeout`＋`signal`；刪 `generateGroupAIResponse` |
+| `views/ChatRoomView.vue` | `pendingProactiveReload` 旗標、清未讀、清聊天重排＋清 chat 通知、reaction 回滾、maxMsg 同源 |
+| `views/BlackboxView.vue` | 刪心聲連動刪 hv 通知 |
+| `views/ChatListView.vue` | 清空加清 chat 通知、批次刪角色補完整連動刪除 |
+| `views/CharEditView.vue` | 刪角色補完整連動刪除（含 notifications） |
+| `store/index.js` | 移除 `chatListData` |
+| `views/ApiView.vue` | `api.js` 改靜態 import |
+| `views/SettingsView.vue` | P85 → P86 |
 
 ### P85（2026-06-17）還原 P83 iOS PWA 鍵盤改動——聊天室版面回到 P82 穩定狀態
 

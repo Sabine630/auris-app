@@ -3,10 +3,21 @@ import { getSetting } from './db.js';
 export async function fetchWithTimeout(url, opts = {}, timeoutMs = 90000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...opts, signal: controller.signal })
+  // 合併呼叫端自帶的 signal（例如可手動中斷的主動訊息串流）：逾時或外部 abort 任一觸發都中斷請求。
+  const ext = opts.signal;
+  if (ext) {
+    if (ext.aborted) controller.abort();
+    else ext.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+  const { signal: _ext, ...rest } = opts;
+  return fetch(url, { ...rest, signal: controller.signal })
     .finally(() => clearTimeout(timer))
     .catch((e) => {
-      if (e.name === 'AbortError') throw new Error('request_timeout');
+      if (e.name === 'AbortError') {
+        // 外部主動中斷 → 保留 AbortError 讓上層辨識（auto-interrupt）；逾時 → request_timeout
+        if (ext && ext.aborted) throw e;
+        throw new Error('request_timeout');
+      }
       throw e;
     });
 }

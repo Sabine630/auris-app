@@ -272,8 +272,6 @@ function toggleMember(id) {
 
 async function saveMembers() {
   if (editMemberIds.value.length < 2) {
-    // Use a visible inline warning instead of alert for better UX
-    // TODO(security): Consider using a custom modal component instead of alert
     window.toast_('群組至少需要 2 位成員');
     return;
   }

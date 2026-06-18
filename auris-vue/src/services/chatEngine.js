@@ -505,7 +505,6 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
 
   const proactiveHistory = buildProactiveHistory(history, '你想主動再說點什麼——分享一件事、問問近況、或只是想到他／她了。', active);
 
-  const fetchOpts = signal ? { signal } : {};
   let fullText = '';
   const accumulate = (text) => { fullText += text; onChunk(text); };
   let truncated = false;
@@ -520,27 +519,27 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
       systemInstruction: { parts: [{ text: proactivePrompt }] },
       generationConfig: { maxOutputTokens: 2000, temperature: c.temperature ?? 0.85 }
     };
-    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 90000);
+    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body), signal }, 90000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
     const data = await r.json();
     fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     onChunk(fullText);
   } else if (provider === 'anthropic') {
-    const r = await fetch(`${base}/messages`, {
+    const r = await fetchWithTimeout(`${base}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({ model, max_tokens: 2000, system: proactivePrompt, messages: proactiveHistory, stream: true }),
-      ...fetchOpts
-    });
+      signal
+    }, 90000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
     ({ truncated } = await parseSSEStream(r, 'anthropic', accumulate));
   } else {
-    const r = await fetch(`${base}/chat/completions`, {
+    const r = await fetchWithTimeout(`${base}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({ model, max_tokens: 2000, temperature: c.temperature ?? 0.85, messages: [{ role: 'system', content: proactivePrompt }, ...proactiveHistory], stream: true }),
-      ...fetchOpts
-    });
+      signal
+    }, 90000);
     if (!r.ok) { const d = await r.json(); throw new Error(d.error?.message || `HTTP ${r.status}`); }
     ({ truncated } = await parseSSEStream(r, provider, accumulate));
   }
@@ -844,79 +843,6 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
     content: cleanedText,
     createdAt: Date.now()
   };
-  await dbPut('group_messages', msg);
-  return msg;
-}
-
-// ── Group Chat: Non-streaming (kept for retry fallback) ───────────────────
-export async function generateGroupAIResponse(groupId, charIdToRespond, allMsgs, members) {
-  const setup = await buildGroupChatSetup(charIdToRespond, allMsgs, members);
-  if (!setup) return null;
-  const { c, provider, model, base, apiKey, systemPrompt, history, lastMsg, validChars } = setup;
-
-  const fallbackHistory = history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : 'こんにちは' }];
-  let aiText = '';
-  let rawResponse = null;
-
-  try {
-    if (provider === 'vertex') {
-      const sa = JSON.parse(apiKey);
-      const token = await getVertexToken(sa);
-      const region = 'us-central1';
-      const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
-      const body = {
-        contents: fallbackHistory.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: { maxOutputTokens: 4000, temperature: c.temperature ?? 0.8 }
-      };
-      const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 30000);
-      const d = await r.json();
-      rawResponse = d;
-      if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
-      aiText = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } else if (provider === 'anthropic') {
-      const r = await fetchWithTimeout(base + '/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({ model, max_tokens: 4000, system: systemPrompt, messages: fallbackHistory })
-      }, 30000);
-      const d = await r.json();
-      rawResponse = d;
-      const errObj = Array.isArray(d) ? d[0]?.error : d.error;
-      if (errObj) throw new Error(errObj.message || JSON.stringify(errObj));
-      aiText = d.content?.[0]?.text || '';
-    } else {
-      const r = await fetchWithTimeout(base + '/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-        body: JSON.stringify({ model, max_tokens: 4000, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: systemPrompt }, ...fallbackHistory] })
-      }, 30000);
-      const d = await r.json();
-      rawResponse = d;
-      const errObj = Array.isArray(d) ? d[0]?.error : d.error;
-      if (errObj) throw new Error(errObj.message || JSON.stringify(errObj));
-      aiText = d.choices?.[0]?.message?.content || '';
-    }
-  } catch (err) {
-    const debugMsg = { id: 'debug_' + Date.now(), groupId, charId: 'user', content: '【系統偵錯】API 呼叫失敗：' + err.message, createdAt: Date.now() };
-    await dbPut('group_messages', debugMsg);
-    return debugMsg;
-  }
-
-  const rawAiText = aiText;
-  aiText = cleanGroupAIText(aiText, c, validChars);
-
-  if (!aiText.trim()) {
-    const debugMsg = {
-      id: 'debug_' + Date.now(), groupId, charId: 'user',
-      content: '【系統偵錯】AI 回傳了空字串，或被清洗歸零。\n原始回傳長度：' + rawAiText.length + '\n原始內容：' + rawAiText + '\nAPI Raw JSON：' + JSON.stringify(rawResponse),
-      createdAt: Date.now()
-    };
-    await dbPut('group_messages', debugMsg);
-    return debugMsg;
-  }
-
-  const msg = { id: 'gmsg_' + Date.now() + '_ai', groupId, charId: c.id, content: aiText.trim(), createdAt: Date.now() };
   await dbPut('group_messages', msg);
   return msg;
 }

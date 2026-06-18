@@ -25,7 +25,7 @@
       </div>
     </div>
 
-    <div class="h-world anim" style="animation-delay:.08s" @click="console.log('多世界模式即將開放')">
+    <div class="h-world anim" style="animation-delay:.08s" @click="$toast('多世界模式即將開放')">
       <div class="h-world-name">▸ &nbsp;主世界 · World One</div>
       <svg width="10" height="7" viewBox="0 0 10 7" style="flex-shrink:0"><path d="M1 1.5L5 5.5L9 1.5" stroke="var(--rose)" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>

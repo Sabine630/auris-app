@@ -337,7 +337,7 @@ async function batchDelete() {
   }
   if (!await window.confirm_(`確定要刪除 ${selectedChats.value.length} 個角色嗎？所有對話記錄也會一併刪除。`)) return;
   
-  const stores = ['messages', 'memories', 'diary', 'dreams', 'moments'];
+  const stores = ['messages', 'memories', 'chat_memories', 'moments', 'diary', 'dreams', 'notifications', 'wishes', 'notes'];
   for (const charId of selectedChats.value) {
     await dbDel('characters', charId);
     for (const store of stores) {
@@ -381,9 +381,9 @@ async function confirmClear() {
     const contentStores = ['diary', 'dreams', 'moments'];
     const stores = clearAlsoContent.value ? [...baseStores, ...contentStores] : baseStores;
     // 清掉某個 store 時，指向該 store 的通知也要一併清掉，否則點進去會連到已不存在的內容。
-    // 心聲（hv）內容其實存在 memories store，基本清空一律會刪它，故 hv 通知永遠要清；
+    // 基本清空一律刪訊息與對話記憶 → chat（指向已刪訊息）與 hv（心聲存在 memories）通知永遠要清；
     // post/diary/dream 綁日記/夢境/貼文，只有勾選連帶清除時才刪，對應通知也才清。
-    const notifTypesToClear = ['hv'];
+    const notifTypesToClear = ['chat', 'hv'];
     if (clearAlsoContent.value) notifTypesToClear.push('post', 'diary', 'dream');
     for (const id of clearTargetIds.value) {
       for (const store of stores) {

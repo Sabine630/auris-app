@@ -77,6 +77,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { getSetting, setSetting } from '../services/db.js';
+import { fetchWithTimeout, getVertexToken } from '../services/api.js';
 
 const apiProvider = ref('openai');
 const apiModel = ref('gpt-5.4-mini');
@@ -215,7 +216,6 @@ async function testApi() {
   }
   isTesting.value = true;
   try {
-    const { fetchWithTimeout, getVertexToken } = await import('../services/api.js');
     const headers = { 'Content-Type': 'application/json' };
     let url;
 

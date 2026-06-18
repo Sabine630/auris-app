@@ -128,8 +128,14 @@ async function deleteSelected() {
   if (selectedIds.value.length === 0) return;
   const count = selectedIds.value.length;
   if (!await window.confirm_(`確定要刪除這 ${count} 則心聲嗎？此操作無法復原。`)) return;
+  const deletedIds = new Set(selectedIds.value);
   for (const id of selectedIds.value) {
     await dbDel('memories', id);
+  }
+  // 一併清掉指向這些心聲的通知（hv 通知的 targetId = 心聲 memory id），避免點通知連到已刪內容。
+  const notifs = await dbAll('notifications');
+  for (const n of notifs) {
+    if (n.type === 'hv' && deletedIds.has(n.targetId)) await dbDel('notifications', n.id);
   }
   allMemories.value = allMemories.value.filter(m => !selectedIds.value.includes(m.id));
   selectedIds.value = [];
