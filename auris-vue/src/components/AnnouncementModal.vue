@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P77–P85 更新公告</div>
+      <div class="ann-badge">P86–P87 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -15,6 +15,10 @@
             <template v-if="page === 0">
               <div class="ann-title">近期新功能</div>
               <div class="ann-items">
+                <div class="ann-item">
+                  <div class="ann-item-title">輸入框 Enter 改為換行 ⏎</div>
+                  <div class="ann-item-desc">聊天、群組、貼文留言的輸入框，按 Enter 不再直接送出、改成換行；要送出請點輸入框右側的送出鍵。電腦版可用 Ctrl／Cmd + Enter 快速送出。</div>
+                </div>
                 <div class="ann-item">
                   <div class="ann-item-title">角色會主動傳訊息給你 💌</div>
                   <div class="ann-item-desc">開啟後，角色會在一天的不同時段自己捎來訊息，內容自然融入對話、不再像系統提醒。深夜勿擾時段不打擾，也可隨時暫停。</div>
@@ -90,7 +94,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P85</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P87</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
