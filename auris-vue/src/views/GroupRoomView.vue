@@ -64,7 +64,7 @@
     
     <div class="chat-ia">
       <textarea class="chat-in" ref="chatInp" v-model="inputContent" placeholder="說點什麼或 @點名…" rows="1"
-        @keydown.enter.exact.prevent="sendMsg" @input="autoResize"></textarea>
+        @keydown.enter.ctrl.prevent="sendMsg" @keydown.enter.meta.prevent="sendMsg" @input="autoResize"></textarea>
       <button class="chat-send" @click="sendMsg" :disabled="!!typingCharId">
         <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>

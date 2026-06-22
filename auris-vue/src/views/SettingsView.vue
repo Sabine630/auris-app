@@ -96,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P86
+        Auris · P87
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P86 全面健檢：修開房未讀累加／串流競態／主動訊息逾時鎖死，刪內容連動清通知，清死碼與 build 警告
+        P87 聊天／群組／貼文留言輸入框：Enter 改為換行（送出改按右側送出鍵，桌面可 Ctrl/Cmd+Enter 送出）
       </div>
     </div>
   </div>

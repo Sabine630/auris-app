@@ -138,7 +138,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10a7 7 0 01-14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
       </button>
       <textarea class="chat-in" ref="chatInp" v-model="inputContent" placeholder="說點什麼…" rows="1"
-        @keydown.enter.exact.prevent="sendMsg" @input="handleInput"></textarea>
+        @keydown.enter.ctrl.prevent="sendMsg" @keydown.enter.meta.prevent="sendMsg" @input="handleInput"></textarea>
       <button class="chat-send" @click="sendMsg" :disabled="isTyping">
         <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
