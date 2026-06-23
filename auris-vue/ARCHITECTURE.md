@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-23（P89）
+> 最後更新：2026-06-23（P90）
 
 ---
 
@@ -328,6 +328,12 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P90（2026-06-23）貼文回覆吃完整角色設定＋Claude prompt caching 降本
+
+- **貼文回覆吃完整設定**：`contentEngine.generateCommentReply` 原本組 prompt 時只帶 `c.persona`，導致背景故事（`c.stories`）、近況（`c.status`）、喜好（`c.hobby`）裡的設定（如「怕黑開小夜燈」）在留言回覆時看不到，回出與角色矛盾的話。改為與 `generatePost` 一致地帶入「個性＋背景＋近況＋喜好」，並加防矛盾指令。
+- **Claude prompt caching（聊天降本）**：`buildAIChatSetup` 將 system prompt 拆為 `systemStable`（角色設定／背景／說話範例 few-shot／格式規則——整段對話幾乎不變）與 `systemVolatile`（`timeCtx` 現在時間／`worldCtx` 世界書觸發／`memCtx` 長期記憶相關性挑選／長文提示——每則訊息可能變）。原本插在 system 中段的 `timeCtx` 移到易變段尾，確保穩定段位元組一致、可命中快取。`finalSystemPrompt = systemStable + systemVolatile` 保留給 Google/OpenAI 相容路徑與各主動訊息路徑（行為不變）。
+- **Anthropic 串流路徑**：`generateAIResponseStream` 的 anthropic 分支把 `system` 由字串改為區塊陣列——穩定段標 `cache_control: { type: 'ephemeral' }` 設快取點、易變段接其後（非空才加），並補 `anthropic-beta: prompt-caching-2024-07-31` 標頭。5 分鐘 TTL 內連續聊天幾乎每則命中，重複輸入只收約 1 折；穩定段未達最低 token 門檻時 Anthropic 自動略過快取、不報錯。其他 provider 與主動/關心/提醒路徑維持單一字串 system，未變。
 
 ### P89（2026-06-23）即時主動未讀綠燈修正＋群組回覆韌性
 

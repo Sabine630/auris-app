@@ -96,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P89
+        Auris · P90
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P89 修復：聊天室「即時主動」在背景時也會亮首頁綠燈、回前景自動清未讀・群組逾時 30s→90s・群組回覆遇 503/逾時自動重試・整輪群組回覆鎖住輸入防打架
+        P90 修復：貼文回覆改吃完整角色設定（背景/近況/喜好），不再說出與設定矛盾的話・Claude 聊天導入 prompt caching（穩定角色設定設快取點），連續聊天輸入成本大幅降低
       </div>
     </div>
   </div>

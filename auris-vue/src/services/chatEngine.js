@@ -327,7 +327,7 @@ ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}
 ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
-${timeCtx}${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${formatCtx}
+${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${formatCtx}
 【回覆品質要求】
 ${lengthGuide}
 ・要回應對方說的具體內容，展現你真的在聽、在意
@@ -335,18 +335,25 @@ ${lengthGuide}
 ・語氣、用詞要完全符合角色個性，不能像客服或 AI
 ・禁止使用「我理解你的感受」「這很有趣」「確實如此」等通用句
 ・回覆要有延伸性，可以反問、聊到相關話題、分享自身經歷
-【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 2}則訊息，每則訊息之間「空一行」分隔（前端會把每則顯示成獨立的訊息泡泡，像真人連發）。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。${REPLY_NO_NARRATION}${worldCtx}${memCtx}`;
+【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 2}則訊息，每則訊息之間「空一行」分隔（前端會把每則顯示成獨立的訊息泡泡，像真人連發）。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。${REPLY_NO_NARRATION}`;
 
   const history = allMsgs.slice(-(c.memory || 20)).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
 
   const lastUserMsg = history[history.length - 1]?.content || '';
   const isLongForm = LONG_FORM_RE.test(lastUserMsg);
   const dynamicMaxTokens = isLongForm ? 8000 : 4000;
-  const finalSystemPrompt = isLongForm
-    ? systemPrompt + `\n\n【特別提示】使用者要求較長內容，請完整寫完整段，不要中途收尾或省略。如果是故事，要有開頭、發展、結尾；如果是文章，要有段落結構。寫到結束為止，不要刻意縮短。`
-    : systemPrompt;
 
-  return { c, provider, model, base, apiKey, history, finalSystemPrompt, dynamicMaxTokens };
+  // system prompt 拆成「穩定段（systemStable）＋易變段（systemVolatile）」：
+  // 穩定段為角色設定/說話範例/格式規則，整段對話幾乎不變 → 可在 Anthropic 設快取點，重複輸入只收 1 折。
+  // 易變段為現在時間、世界書觸發、長期記憶相關性挑選、長文提示，每則訊息都可能變 → 放在快取點之後，不破壞前段快取。
+  const longFormNote = isLongForm
+    ? `\n\n【特別提示】使用者要求較長內容，請完整寫完整段，不要中途收尾或省略。如果是故事，要有開頭、發展、結尾；如果是文章，要有段落結構。寫到結束為止，不要刻意縮短。`
+    : '';
+  const systemStable = systemPrompt;
+  const systemVolatile = `${timeCtx}${worldCtx}${memCtx}${longFormNote}`;
+  const finalSystemPrompt = systemStable + systemVolatile;
+
+  return { c, provider, model, base, apiKey, history, finalSystemPrompt, systemStable, systemVolatile, dynamicMaxTokens };
 }
 
 // ── 1-on-1 User Message ───────────────────────────────────────────────────
@@ -359,7 +366,7 @@ export async function sendUserMessage(charId, content, image = null) {
 
 // ── 1-on-1 Chat: Streaming ────────────────────────────────────────────────
 export async function generateAIResponseStream(charId, allMsgs, { onChunk }, imageBase64 = null) {
-  const { c, provider, model, base, apiKey, history, finalSystemPrompt, dynamicMaxTokens } = await buildAIChatSetup(charId, allMsgs);
+  const { c, provider, model, base, apiKey, history, finalSystemPrompt, systemStable, systemVolatile, dynamicMaxTokens } = await buildAIChatSetup(charId, allMsgs);
 
   if (c.delay > 0) await new Promise(r => setTimeout(r, c.delay * 1000));
 
@@ -412,10 +419,14 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
     fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     onChunk(fullText);
   } else if (provider === 'anthropic') {
+    // Prompt caching：穩定段（角色設定/說話範例/格式規則）設快取點，5 分鐘內的後續訊息重複輸入只收 1 折；
+    // 易變段（時間/世界書/長期記憶）接在快取點之後，不破壞前段快取。穩定段不足最低 token 門檻時 Anthropic 會自動略過快取、不報錯。
+    const systemBlocks = [{ type: 'text', text: systemStable, cache_control: { type: 'ephemeral' } }];
+    if (systemVolatile) systemBlocks.push({ type: 'text', text: systemVolatile });
     const r = await fetchWithTimeout(`${base}/messages`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, system: finalSystemPrompt, messages: buildImgHistory('anthropic'), stream: true })
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'prompt-caching-2024-07-31', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, system: systemBlocks, messages: buildImgHistory('anthropic'), stream: true })
     }, 90000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
     ({ truncated } = await parseSSEStream(r, 'anthropic', accumulate));
