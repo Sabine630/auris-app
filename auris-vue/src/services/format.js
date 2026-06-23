@@ -35,6 +35,7 @@ export function formatContent(str, enableRich = false) {
 export function splitReply(text, maxSegments = 0) {
   const segs = (text || '')
     .split(/\n{2,}/)
+    .flatMap(splitQuotedBubbles)
     .map(s => s.trim())
     .filter(Boolean);
   if (!segs.length) return [];
@@ -44,4 +45,13 @@ export function splitReply(text, maxSegments = 0) {
     return [...head, tail];
   }
   return segs;
+}
+
+// 動作排版（「」包對話）下，模型常把多句「…」連寫成一段、彼此不空行，
+// 使 splitReply 只切出一顆泡泡。這裡在「一句結束的 」」緊接「下一句的 「」
+//（或中間夾一段 *動作* 後再接 「）的交界補切點，讓每則對話（含其前綴動作）各自成泡泡。
+// 只在 」 後面確實還有下一句 「 時才切，句末引號或夾在句中的引用詞不受影響。
+function splitQuotedBubbles(seg) {
+  if (!seg || seg.indexOf('」') === -1) return [seg];
+  return seg.split(/(?<=」)\s*(?=「|\*[^*\n]+\*\s*「)/);
 }

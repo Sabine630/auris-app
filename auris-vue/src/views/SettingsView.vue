@@ -96,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P90
+        Auris · P91
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P90 修復：貼文回覆改吃完整角色設定（背景/近況/喜好），不再說出與設定矛盾的話・Claude 聊天導入 prompt caching（穩定角色設定設快取點），連續聊天輸入成本大幅降低
+        P91 修復：聊天室回覆分泡泡修復——動作排版下模型把多句「」連寫不空行時，改在「」邊界自動切成獨立泡泡，連發訊息恢復穩定
       </div>
     </div>
   </div>
