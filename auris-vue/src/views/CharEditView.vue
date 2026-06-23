@@ -192,6 +192,20 @@
             </div>
           </div>
         </div>
+
+        <div class="sec-label">範例對話</div>
+        <div class="form-group">
+          <div class="form-hint" style="margin-bottom:10px">寫幾組「你說 → 角色怎麼回」的範例，AI 會模仿這種語氣與用詞（這是抓住角色「說話聲音」最有效的方式）。不必照抄內容，留空欄位會自動略過。</div>
+          <div v-for="(ex, i) in char.examples" :key="i" style="margin-bottom:12px;padding:10px 12px;background:var(--surface);border-radius:12px;border:.5px solid var(--border)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <span style="font-size:12px;color:var(--text-3)">範例 {{ i + 1 }}</span>
+              <div @click="char.examples.splice(i, 1)" style="cursor:pointer;color:var(--text-3);font-size:18px;line-height:1">×</div>
+            </div>
+            <textarea class="form-input" rows="2" v-model="ex.user" placeholder="你說…" style="margin-bottom:6px"></textarea>
+            <textarea class="form-input" rows="2" v-model="ex.char" placeholder="角色怎麼回…"></textarea>
+          </div>
+          <div class="form-hint" style="cursor:pointer;color:var(--accent);margin-top:4px" @click="char.examples.push({ user: '', char: '' })">＋ 新增範例對話</div>
+        </div>
       </div>
 
       <!-- ── Tab 3：關係設定 ── -->
@@ -544,6 +558,7 @@ const char = ref({
   talkative: 'mid',
   call: '',
   phrase: '',
+  examples: [],
   conflict: 'direct',
   care: 'sometimes',
   relation: '',

@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-18（P86）
+> 最後更新：2026-06-23（P88）
 
 ---
 
@@ -76,7 +76,7 @@ graph TD
 
 | 資料表 | keyPath | 索引 | 說明 |
 |--------|---------|------|------|
-| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80） |
+| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80、`examples` 範例對話 few-shot P88） |
 | `messages` | `id` | `charId`, `createdAt` | 單人聊天訊息（軟欄位：`image` 圖片 base64 P65、`reaction` 表情 P62） |
 | `memories` | `id` | `charId` | Heart Voice 心聲記錄 |
 | `moments` | `id` | `charId`, `createdAt` | 貼文（含 likes/comments） |
@@ -144,6 +144,9 @@ API 請求的底層工具。
 
 ### `services/format.js`
 共用文字處理。`formatContent(str, enableRich = false)`：escape `&`/`<`/`>` 後將 `\n` 轉 `<br>`，並清洗夾在中文字／標點之間的孤立換行（P56）；`enableRich`（P78，聊天室／群組傳入）時於 escape 後把 `*動作*` 轉 `<em class="msg-action">`、`「對話」` 轉 `<span class="msg-quote">`。全站各 v-html 渲染點（6 個檔案：ChatRoomView／GroupRoomView／PostDetailView／DiaryDetailView／DreamDetailView／BlackboxView）統一引用，避免某處漏 escape 形成 stored XSS（P55 抽出）。另 `splitReply(text, maxSegments)`（P82）依空行把 AI 一次回覆切成多則短訊息（真人連發短泡泡）；無空行回單段。
+
+### `services/tokens.js`（P88）
+`estimateTokens(text)`：token 粗估（CJK≈0.6、英數≈0.25 tok/字）。前端無各家真實 tokenizer，採保守啟發式（寧可高估），供記憶用量顯示與注入預算控管（如 `MEM_TOKEN_BUDGET`）。
 
 ### `services/cycle.js`（P59）
 生理期週期計算，全本地、不上傳。
@@ -325,6 +328,24 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P88（2026-06-23）AIRP 核心強化：範例對話 few-shot・長期記憶相關性排序＋上限・注入順序優化
+
+先以技術評估盤點 prompt 組裝與記憶機制，再分三階段漸進落地（風險由低到高）。
+
+- **`services/tokens.js`（新）**：`estimateTokens(text)` token 粗估（CJK≈0.6、英數≈0.25 tok/字）。前端無各家 tokenizer，採保守啟發式，供記憶用量顯示與注入預算控管。取代 `ChatRoomView.enabledTokenEstimate` 原本的「字÷3」假估算。
+- **範例對話 few-shot（A）**：`characters` 新增軟欄位 `examples: [{ user, char }]`（`CharEditView`「說話方式」分頁編輯，免 DB 升版）。`buildAIChatSetup` 組 `exampleCtx`——標註為「範例、只模仿風格不照抄」放在 system prompt 說話聲音區。**採 system 區塊而非真實對話 turn**，避免 Anthropic/Vertex 的 role 交替限制，五家 provider 行為一致。舊角色靠 `CharEditView` 的 `{ ...default, ...loaded }` merge 自動補空陣列。
+- **長期記憶相關性排序＋上限（C）**：`buildAIChatSetup` 的記憶注入由「全部 enabled 照序塞」改為——以字元 2-gram（`shingleSet`/`relevanceScore`）算記憶與近期對話的相關性排序（同分以 `createdAt` 遞減），再以 `MEM_TOKEN_BUDGET`（1500）截斷，最相關的先進。解決記憶越多越稀釋／越燒錢。
+- **注入順序優化（F）**：`worldCtx`/`memCtx` 從 system prompt 中段移至最末尾（緊鄰對話歷史），利用模型 recency 偏好，世界書與長期記憶不再被埋。`recentText` 計算上移與世界書關鍵字觸發共用。
+- **競態修復**：`ChatRoomView.maybeAutoSummarize` 寫角色前改 `dbGet('characters', charId)` 重讀最新角色、只設 `lastAutoSumAt` 再 `dbPut`，根治「自動總結數秒空窗內整包覆寫吃掉使用者角色編輯」的既有 read-modify-write bug。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/tokens.js` | 新增——`estimateTokens()` |
+| `services/chatEngine.js` | `exampleCtx` 範例注入・記憶相關性排序＋token 上限（`MEM_TOKEN_BUDGET`/`shingleSet`/`relevanceScore`）・world/memory 移至 prompt 末尾・`recentText` 共用 |
+| `views/CharEditView.vue` | `characters` 加 `examples: []`・「說話方式」分頁加範例對話 UI |
+| `views/ChatRoomView.vue` | `enabledTokenEstimate` 改用 `estimateTokens`・`maybeAutoSummarize` 寫前重讀修競態 |
+| `views/SettingsView.vue` | P87 → P88 |
 
 ### P86（2026-06-18）全面健檢：聊天競態／逾時修復＋死碼清理
 

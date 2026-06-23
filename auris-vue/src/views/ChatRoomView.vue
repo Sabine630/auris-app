@@ -342,6 +342,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbDel, dbPut, getSetting } from '../services/db.js';
 import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, summarizeToMemory, hasUnrepliedProactive } from '../services/chatEngine.js';
 import { formatContent, splitReply } from '../services/format.js';
+import { estimateTokens } from '../services/tokens.js';
 import { globalStore } from '../store/index.js';
 
 const route = useRoute();
@@ -467,10 +468,9 @@ async function handleImageFile(e) {
 }
 
 const enabledMemCount = computed(() => chatMems.value.filter(m => m.enabled).length);
-const enabledTokenEstimate = computed(() => {
-  const total = chatMems.value.filter(m => m.enabled).reduce((acc, m) => acc + m.content.length, 0);
-  return Math.ceil(total / 3);
-});
+const enabledTokenEstimate = computed(() =>
+  chatMems.value.filter(m => m.enabled).reduce((acc, m) => acc + estimateTokens(m.content), 0)
+);
 
 // ── Proactive Timer State (P49) ──
 let proactiveTimer = null;
@@ -683,8 +683,13 @@ async function maybeAutoSummarize() {
   try {
     const mem = await summarizeToMemory(charId, rawMsgs, every);
     chatMems.value.unshift(mem);
-    c.lastAutoSumAt = Date.now();
-    await dbPut('characters', { ...c });
+    // 寫前重讀：摘要的數秒空窗內使用者可能在別處（CharEdit）改了此角色，
+    // 整包覆寫舊快照會吃掉那些編輯。只把進度欄位寫回最新的角色物件。
+    const now = Date.now();
+    const fresh = await dbGet('characters', charId) || { ...c };
+    fresh.lastAutoSumAt = now;
+    await dbPut('characters', fresh);
+    if (character.value) character.value.lastAutoSumAt = now;
     window.toast_('已自動總結記憶');
   } catch (err) {
     console.error('Auto summarize failed:', err);

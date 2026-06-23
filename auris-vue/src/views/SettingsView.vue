@@ -96,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P87
+        Auris · P88
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P87 聊天／群組／貼文留言輸入框：Enter 改為換行（送出改按右側送出鍵，桌面可 Ctrl/Cmd+Enter 送出）
+        P88 AIRP 核心強化：角色卡新增「範例對話」few-shot・長期記憶相關性排序＋上限・世界書/記憶注入順序優化・記憶用量估算校正・修自動總結覆寫角色編輯的競態
       </div>
     </div>
   </div>

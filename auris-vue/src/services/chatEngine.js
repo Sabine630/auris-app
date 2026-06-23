@@ -2,6 +2,24 @@ import { dbGet, dbPut, dbIdx, dbAll, getSetting, setSetting } from './db.js';
 import { fetchWithTimeout, sendLLMRequest, getVertexToken } from './api.js';
 import { getCyclePhase, cycleCareContext } from './cycle.js';
 import { splitReply } from './format.js';
+import { estimateTokens } from './tokens.js';
+
+// 長期記憶注入的 token 上限：記憶越多越稀釋、越燒錢，超量時依相關性截斷（保留最相關的）。
+const MEM_TOKEN_BUDGET = 1500;
+
+// CJK 無詞界，用字元 2-gram（shingle）近似相關性：記憶內容與近期對話共享的 bigram 越多越相關。
+function shingleSet(text) {
+  const cleaned = (text || '').replace(/\s+/g, '');
+  const set = new Set();
+  for (let i = 0; i < cleaned.length - 1; i++) set.add(cleaned.slice(i, i + 2));
+  return set;
+}
+function relevanceScore(memText, querySh) {
+  if (!querySh.size) return 0;
+  let hits = 0;
+  for (const s of shingleSet(memText)) if (querySh.has(s)) hits++;
+  return hits;
+}
 
 // 把 AI 一次回覆的整段文字依空行切成多則訊息並寫入 DB（真人連發短泡泡）。
 // 回傳已落庫的訊息陣列（同角色、createdAt 以毫秒位移保序，會被 isCont 歸為連續訊息）。
@@ -180,11 +198,28 @@ async function buildAIChatSetup(charId, allMsgs) {
   const youRole = c.overrideMe && c.you_role ? c.you_role : me.job || '';
   const youPersona = c.overrideMe && c.you_persona ? c.you_persona : me.persona || '';
 
+  // 近期對話文字：長期記憶相關性排序與世界書關鍵字觸發共用。
+  const recentText = allMsgs.slice(-10).map(m => m.content).join(' ');
+
   const allChatMems = await dbIdx('chat_memories', 'charId', charId);
   const enabledMems = allChatMems.filter(m => m.enabled);
-  const memCtx = enabledMems.length
-    ? `\n【長期記憶】以下是過去對話的重要摘要，請在回覆時參考：\n${enabledMems.map((m, i) => `${i + 1}. ${m.content}`).join('\n')}`
-    : '';
+  let memCtx = '';
+  if (enabledMems.length) {
+    // 相關性優先（命中近期對話越多越前），同分以新近度遞減；再用 token 預算截斷，最相關的先進。
+    const querySh = shingleSet(recentText);
+    const ranked = enabledMems
+      .map(m => ({ m, score: relevanceScore(m.content, querySh) }))
+      .sort((a, b) => b.score - a.score || (b.m.createdAt || 0) - (a.m.createdAt || 0));
+    const picked = [];
+    let used = 0;
+    for (const { m } of ranked) {
+      const t = estimateTokens(m.content);
+      if (picked.length && used + t > MEM_TOKEN_BUDGET) break; // 至少留最相關的一條
+      picked.push(m);
+      used += t;
+    }
+    memCtx = `\n【長期記憶】以下是過去對話的重要摘要，請在回覆時參考：\n${picked.map((m, i) => `${i + 1}. ${m.content}`).join('\n')}`;
+  }
 
   let timeCtx = '';
   if (c.timeAware) {
@@ -228,9 +263,8 @@ async function buildAIChatSetup(charId, allMsgs) {
     ? `\n【對方作息】${pSched.join('；')}。請依現在時間推測對方此刻的狀態（上班中／通勤／休息中／睡覺等），在傳訊或主動關心時考慮對方是否方便，語氣要體貼當下情境。`
     : '';
 
-  // 世界書：掃描近 10 則訊息，命中詞條名稱或別名才注入，節省 token
+  // 世界書：掃描近 10 則訊息（recentText 已於上方計算），命中詞條名稱或別名才注入，節省 token
   const allWorlds = await dbAll('worlds');
-  const recentText = allMsgs.slice(-10).map(m => m.content).join(' ');
   const matchedWorlds = allWorlds.filter(w => {
     if (!w.enabled) return false;
     if (w.charScope?.length && !w.charScope.includes(charId)) return false;
@@ -246,6 +280,14 @@ async function buildAIChatSetup(charId, allMsgs) {
   const cycleCtx = c.cycleCare ? cycleCareContext(getCyclePhase(me)) : '';
 
   const storyCtx = c.stories?.filter(s => s.content).map(s => `【${s.title}】${s.content}`).join('\n') || '';
+
+  // 範例對話（few-shot）：抓住角色「說話聲音」最強的槓桿。放在 system prompt 內當標註過的範例，
+  // 而非真實對話 turn——避免被當成發生過的事，也免去各家 provider 的 role 交替限制。
+  const exampleEntries = (c.examples || []).filter(e => (e.user && e.user.trim()) || (e.char && e.char.trim()));
+  const exampleCtx = exampleEntries.length
+    ? `\n【說話範例】以下是「${c.name}」的對話範例，請揣摩並模仿這種語氣、用詞與節奏（只模仿風格，不要照抄內容）：\n`
+      + exampleEntries.map(e => `${youName}：${(e.user || '').trim()}\n${c.name}：${(e.char || '').trim()}`).join('\n')
+    : '';
 
   // 動作排版（全域開關）：請角色用 *星號* 包動作／場景敘述、用「」包對話，前端會渲染成斜體旁白與上色。
   const formatCtx = formatStyle
@@ -275,7 +317,7 @@ ${c.hobby ? `【喜好】${c.hobby}` : ''}
 【說話風格】${styleMap[c.style] || '輕鬆自然'}
 【話量】${talkMap[c.talkative] || '適中'}
 ${c.call ? `平時稱呼對方為「${c.call}」，用此暱稱叫對方，不可擅自改為其他稱謂。` : ''}
-${c.phrase ? `口頭禪：${c.phrase}。` : ''}
+${c.phrase ? `口頭禪：${c.phrase}。` : ''}${exampleCtx}
 ${c.conflict ? `面對衝突時：${{ direct: '直接表達不滿', cold: '傾向冷戰迴避', cute: '用撒嬌化解', rational: '保持理性溝通' }[c.conflict]}。` : ''}
 ${c.relation ? `與對方的關係：${{ lover: '戀人', childhood: '青梅竹馬', friend: '好友', online: '網友', colleague: '同事', stranger: '陌生人' }[c.relation] || c.relation}。` : ''}
 ${c.rel_bg ? `關係背景：${c.rel_bg}` : ''}
@@ -285,7 +327,7 @@ ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}
 ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
-${timeCtx}${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${worldCtx}${memCtx}${formatCtx}
+${timeCtx}${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${formatCtx}
 【回覆品質要求】
 ${lengthGuide}
 ・要回應對方說的具體內容，展現你真的在聽、在意
@@ -293,7 +335,7 @@ ${lengthGuide}
 ・語氣、用詞要完全符合角色個性，不能像客服或 AI
 ・禁止使用「我理解你的感受」「這很有趣」「確實如此」等通用句
 ・回覆要有延伸性，可以反問、聊到相關話題、分享自身經歷
-【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 2}則訊息，每則訊息之間「空一行」分隔（前端會把每則顯示成獨立的訊息泡泡，像真人連發）。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。${REPLY_NO_NARRATION}`;
+【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 2}則訊息，每則訊息之間「空一行」分隔（前端會把每則顯示成獨立的訊息泡泡，像真人連發）。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。${REPLY_NO_NARRATION}${worldCtx}${memCtx}`;
 
   const history = allMsgs.slice(-(c.memory || 20)).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
 
