@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-23（P88）
+> 最後更新：2026-06-23（P89）
 
 ---
 
@@ -328,6 +328,13 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P89（2026-06-23）即時主動未讀綠燈修正＋群組回覆韌性
+
+- **即時主動的未讀狀態（綠燈）**：首頁頭像綠燈與「最近聊天」紅點均由 `character.hasUnread` 驅動。四種背景主動訊息（`chatEngine` 的 cycleCare/schedule/missYou/dailyQuestion）都會設 `hasUnread=true`，但「回覆模式＝自動」的**聊天室即時主動**（`ChatRoomView.triggerProactive`）原本只建通知、不設 `hasUnread` ——它靠計時器於元件掛載時觸發，誤把「元件掛載」當成「使用者正在看」。修法：生成當下若 `document.hidden` 才標 `hasUnread`/`unreadCount`（背景＝沒看到→該亮），並新增 `visibilitychange` 監聽 `onPageVisible`，回前景且開著本房時 `reloadAfterProactive()` 清未讀＋補撈漏接訊息（串流中先記 `pendingProactiveReload`，與 `onProactiveMsg` 同邏輯）。
+- **群組逾時放寬**：`generateGroupAIResponseStream` 三 provider 分支的 `fetchWithTimeout` 由 30s 改 90s，與一對一一致（群組 `max_tokens: 4000` 輸出更長，30s 易撞 `request_timeout`）。
+- **群組回覆自動重試**：`GroupRoomView.sendMsg` 對每位成員加暫時性錯誤（`isTransientError`：503/429/5xx/逾時/限流）自動重試最多 3 次、退避遞增。**只在串流尚未開始時重試**（`streamIdx === -1`；503/逾時都發生在串流前，氣泡未建立→重試乾淨不半截重複）；已開始串流才失敗則清氣泡放棄。重試期間 `typingCharId` 維持該成員，UI 持續顯示「正在輸入」。
+- **整輪鎖輸入防打架**：新增 `groupReplying` 旗標包住整個成員迴圈（含成員間空檔與重試），送出鍵 `:disabled` 與 `sendMsg` 入口同步檢查，避免使用者在多成員回覆途中插話造成訊息錯亂。
 
 ### P88（2026-06-23）AIRP 核心強化：範例對話 few-shot・長期記憶相關性排序＋上限・注入順序優化
 

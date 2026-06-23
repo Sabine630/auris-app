@@ -510,6 +510,8 @@ onMounted(async () => {
   window.addEventListener('new-heart-voice', onHeartVoice);
   // 背景派發器寫入主動訊息時，即時把這間聊天室的訊息重撈一次（E）
   window.addEventListener('new-proactive-msg', onProactiveMsg);
+  // 回前景時：把「背景時即時主動」標下的未讀清掉，並重撈可能漏接的背景訊息
+  document.addEventListener('visibilitychange', onPageVisible);
 });
 
 onUnmounted(() => {
@@ -517,7 +519,16 @@ onUnmounted(() => {
   proactiveController?.abort();
   window.removeEventListener('new-heart-voice', onHeartVoice);
   window.removeEventListener('new-proactive-msg', onProactiveMsg);
+  document.removeEventListener('visibilitychange', onPageVisible);
 });
+
+// App 由背景回到前景且正開著本房 → 視同已讀：清未讀紅點/綠燈並重撈訊息。
+// 串流中先記旗標，結束後再撈，避免抹掉尚未落庫的 live 氣泡（與 onProactiveMsg 同邏輯）。
+function onPageVisible() {
+  if (document.visibilityState !== 'visible') return;
+  if (isTyping.value || isProactiveGenerating.value) { pendingProactiveReload = true; return; }
+  reloadAfterProactive();
+}
 
 async function loadMessages() {
   const msgs = await dbIdx('messages', 'charId', charId);
@@ -629,6 +640,18 @@ async function triggerProactive() {
     );
     if (msgs.length) {
       await dbPut('notifications', { id: 'notif_chat_' + Date.now(), charId, type: 'chat', targetId: charId, messageId: msgs[0]?.id, text: '主動傳了訊息給你', read: false, createdAt: Date.now() });
+      // 即時主動是在聊天室掛載時由計時器觸發，但「掛載 ≠ 使用者正在看」。
+      // 若生成當下 App 不在前景（鎖屏/切走/背景），代表使用者沒看到 → 標未讀亮綠燈。
+      // 回前景時由 visibilitychange（onPageVisible）清掉。在前景看著時則不標，避免假未讀。
+      if (document.hidden) {
+        const fresh = await dbGet('characters', charId);
+        if (fresh) {
+          fresh.hasUnread = true;
+          fresh.unreadCount = (fresh.unreadCount || 0) + 1;
+          await dbPut('characters', fresh);
+          if (character.value) { character.value.hasUnread = true; character.value.unreadCount = fresh.unreadCount; }
+        }
+      }
     }
   } catch (err) {
     if (err.name !== 'AbortError') console.error('Proactive error:', err);

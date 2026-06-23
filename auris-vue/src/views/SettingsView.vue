@@ -96,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P88
+        Auris · P89
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P88 AIRP 核心強化：角色卡新增「範例對話」few-shot・長期記憶相關性排序＋上限・世界書/記憶注入順序優化・記憶用量估算校正・修自動總結覆寫角色編輯的競態
+        P89 修復：聊天室「即時主動」在背景時也會亮首頁綠燈、回前景自動清未讀・群組逾時 30s→90s・群組回覆遇 503/逾時自動重試・整輪群組回覆鎖住輸入防打架
       </div>
     </div>
   </div>

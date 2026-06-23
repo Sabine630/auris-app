@@ -848,7 +848,7 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
       systemInstruction: { parts: [{ text: systemPrompt }] },
       generationConfig: { maxOutputTokens: 4000, temperature: c.temperature ?? 0.8 }
     };
-    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 30000);
+    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 90000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
     onStart?.();
     const data = await r.json();
@@ -859,7 +859,7 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({ model, max_tokens: 4000, system: systemPrompt, messages: fallbackHistory, stream: true })
-    }, 30000);
+    }, 90000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
     onStart?.();
     await parseSSEStream(r, 'anthropic', (text) => { fullText += text; onChunk(text); });
@@ -868,7 +868,7 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
       body: JSON.stringify({ model, max_tokens: 4000, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: systemPrompt }, ...fallbackHistory], stream: true })
-    }, 30000);
+    }, 90000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
     onStart?.();
     await parseSSEStream(r, 'openai', (text) => { fullText += text; onChunk(text); });

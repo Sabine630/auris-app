@@ -65,7 +65,7 @@
     <div class="chat-ia">
       <textarea class="chat-in" ref="chatInp" v-model="inputContent" placeholder="說點什麼或 @點名…" rows="1"
         @keydown.enter.ctrl.prevent="sendMsg" @keydown.enter.meta.prevent="sendMsg" @input="autoResize"></textarea>
-      <button class="chat-send" @click="sendMsg" :disabled="!!typingCharId">
+      <button class="chat-send" @click="sendMsg" :disabled="!!typingCharId || groupReplying">
         <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
     </div>
@@ -157,6 +157,14 @@ const members = ref([]);
 const messages = ref([]);
 const inputContent = ref('');
 const typingCharId = ref(null);
+// 整輪群組回覆進行中（含成員間空檔與重試）→ 鎖住輸入，避免使用者中途插話造成訊息打架
+const groupReplying = ref(false);
+
+// 暫時性錯誤（伺服器過載/逾時/限流）才值得重試；金鑰錯、參數錯等重試也沒用
+function isTransientError(err) {
+  const m = (err?.message || '').toLowerCase();
+  return /request_timeout|timeout|429|500|502|503|504|overload|rate.?limit|temporarily|unavailable/.test(m);
+}
 const showGroupInfo = ref(false);
 
 // Edit state
@@ -291,67 +299,88 @@ async function saveMembers() {
 // ── Send Message ──
 async function sendMsg() {
   const content = inputContent.value.trim();
-  if (!content || typingCharId.value) return;
+  if (!content || typingCharId.value || groupReplying.value) return;
 
-  const userMsg = await sendGroupMessage(groupId, 'user', content);
-  messages.value.push(userMsg);
+  groupReplying.value = true;
+  try {
+    const userMsg = await sendGroupMessage(groupId, 'user', content);
+    messages.value.push(userMsg);
 
-  inputContent.value = '';
-  autoResize();
-  scrollToBottom();
-
-  // Determine who should reply based on @mention
-  let targetChars = [];
-  for (const m of members.value) {
-    if (content.includes(`@${m.name}`) || content.includes(m.name)) {
-      targetChars.push(m);
-    }
-  }
-
-  // If no mention, all members reply in shuffled order
-  if (targetChars.length === 0) {
-    targetChars = [...members.value].sort(() => Math.random() - 0.5);
-  }
-
-  for (let i = 0; i < targetChars.length; i++) {
-    const targetChar = targetChars[i];
-
-    if (i > 0) {
-      await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
-    }
-
-    typingCharId.value = targetChar.id;
+    inputContent.value = '';
+    autoResize();
     scrollToBottom();
 
-    let streamIdx = -1;
-    try {
-      const msg = await generateGroupAIResponseStream(groupId, targetChar.id, messages.value, members.value, {
-        onStart() {
-          messages.value.push({ id: 'streaming_' + Date.now(), groupId, charId: targetChar.id, content: '', createdAt: Date.now(), isStreaming: true });
-          streamIdx = messages.value.length - 1;
-          typingCharId.value = null;
-          scrollToBottom();
-        },
-        onChunk(text) {
-          if (streamIdx !== -1) {
-            messages.value[streamIdx].content += text;
-            if (isNearBottom()) scrollToBottom();
-          }
-        }
-      });
-      if (streamIdx !== -1) {
-        if (msg) messages.value.splice(streamIdx, 1, msg);
-        else messages.value.splice(streamIdx, 1);
-      } else if (msg) {
-        messages.value.push(msg);
-        scrollToBottom();
+    // Determine who should reply based on @mention
+    let targetChars = [];
+    for (const m of members.value) {
+      if (content.includes(`@${m.name}`) || content.includes(m.name)) {
+        targetChars.push(m);
       }
-    } catch (err) {
-      console.error('Group chat error:', err);
-      if (streamIdx !== -1) messages.value.splice(streamIdx, 1);
-      window.toast_('回覆失敗：' + err.message);
     }
+
+    // If no mention, all members reply in shuffled order
+    if (targetChars.length === 0) {
+      targetChars = [...members.value].sort(() => Math.random() - 0.5);
+    }
+
+    for (let i = 0; i < targetChars.length; i++) {
+      const targetChar = targetChars[i];
+
+      if (i > 0) {
+        await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
+      }
+
+      typingCharId.value = targetChar.id;
+      scrollToBottom();
+
+      // 暫時性錯誤（503/逾時等）自動重試最多 3 次。重試只在「串流尚未開始」時進行
+      // ——503/逾時都發生在串流開始前，此時氣泡還沒建立，重試最乾淨、不會出現半截重複。
+      // 重試期間 typingCharId 仍是該成員，畫面持續顯示「正在輸入」，送出鍵也鎖著，杜絕插話打架。
+      const MAX_ATTEMPTS = 3;
+      let streamIdx = -1;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          const msg = await generateGroupAIResponseStream(groupId, targetChar.id, messages.value, members.value, {
+            onStart() {
+              messages.value.push({ id: 'streaming_' + Date.now(), groupId, charId: targetChar.id, content: '', createdAt: Date.now(), isStreaming: true });
+              streamIdx = messages.value.length - 1;
+              typingCharId.value = null;
+              scrollToBottom();
+            },
+            onChunk(text) {
+              if (streamIdx !== -1) {
+                messages.value[streamIdx].content += text;
+                if (isNearBottom()) scrollToBottom();
+              }
+            }
+          });
+          if (streamIdx !== -1) {
+            if (msg) messages.value.splice(streamIdx, 1, msg);
+            else messages.value.splice(streamIdx, 1);
+          } else if (msg) {
+            messages.value.push(msg);
+            scrollToBottom();
+          }
+          break; // 成功，跳出重試迴圈
+        } catch (err) {
+          console.error(`Group chat error (attempt ${attempt}/${MAX_ATTEMPTS}):`, err);
+          const startedStreaming = streamIdx !== -1;
+          if (startedStreaming) { messages.value.splice(streamIdx, 1); streamIdx = -1; }
+          // 還沒開始串流 + 暫時性錯誤 + 還有次數 → 退避後重試（typingCharId 維持「正在輸入」）
+          if (!startedStreaming && attempt < MAX_ATTEMPTS && isTransientError(err)) {
+            typingCharId.value = targetChar.id;
+            await new Promise(r => setTimeout(r, 1000 * attempt));
+            continue;
+          }
+          window.toast_('回覆失敗：' + err.message);
+          break;
+        }
+      }
+      typingCharId.value = null;
+    }
+  } finally {
     typingCharId.value = null;
+    groupReplying.value = false;
   }
 }
 </script>
