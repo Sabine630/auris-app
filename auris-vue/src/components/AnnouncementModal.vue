@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P86–P87 更新公告</div>
+      <div class="ann-badge">P88–P93 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,28 +16,28 @@
               <div class="ann-title">近期新功能</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">輸入框 Enter 改為換行 ⏎</div>
-                  <div class="ann-item-desc">聊天、群組、貼文留言的輸入框，按 Enter 不再直接送出、改成換行；要送出請點輸入框右側的送出鍵。電腦版可用 Ctrl／Cmd + Enter 快速送出。</div>
+                  <div class="ann-item-title">貼文與留言可以管理了 🗂️</div>
+                  <div class="ann-item-desc">貼文可以「編輯／重新生成／刪除」（卡片或詳情頁右上「⋯」）；每則留言長按可「複製／編輯／刪除」，角色的回覆還能「重新生成」。AI 講錯或不滿意都能就地修掉。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">角色會主動傳訊息給你 💌</div>
-                  <div class="ann-item-desc">開啟後，角色會在一天的不同時段自己捎來訊息，內容自然融入對話、不再像系統提醒。深夜勿擾時段不打擾，也可隨時暫停。</div>
+                  <div class="ann-item-title">角色回覆認得你本人 💬</div>
+                  <div class="ann-item-desc">角色回覆你在貼文下的留言時，會認得「留言的人就是貼文裡稱呼的對象本人」，不再把你當成第三方陌生人（例如用「她」來指你）。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">聊天回覆更像真人 💬</div>
-                  <div class="ann-item-desc">AI 回覆會拆成多則短泡泡逐段冒出，長短隨角色個性變化，讀起來像真的在跟你連發訊息，時間也改在整組對話結束後才顯示。</div>
+                  <div class="ann-item-title">角色更有時間感 🕐</div>
+                  <div class="ann-item-desc">開啟「時間感」的角色，聊天與貼文提到的星期、時段、日期會對齊現在，不再把星期三講成星期四。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">聊天全文搜尋 🔍</div>
-                  <div class="ann-item-desc">在聊天室內搜尋關鍵字，直接跳到並高亮那則訊息，再也不用慢慢往上捲找那句話。</div>
+                  <div class="ann-item-title">範例對話，抓住角色的聲音 🎭</div>
+                  <div class="ann-item-desc">角色設定可填幾組「你說／角色怎麼回」的範例對話，AI 會模仿那種語氣與用詞——這是讓角色「說話像本人」最有效的方式。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">共同願望清單・備忘錄 📝</div>
-                  <div class="ann-item-desc">和角色一起記下「想一起做的事」與約定、計畫、待辦。每段關係各自一份，可勾選完成。</div>
+                  <div class="ann-item-title">貼文回覆更貼合人設 🌸</div>
+                  <div class="ann-item-desc">角色回覆貼文留言時會帶入完整人設（背景／近況／喜好），不再說出與設定矛盾的話。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">通知一點直達訊息 🔔</div>
-                  <div class="ann-item-desc">點擊主動訊息的通知，會直接跳到聊天室那一則並高亮顯示，不再只是開啟對話而已。</div>
+                  <div class="ann-item-title">主動訊息未讀即時亮燈 🔔</div>
+                  <div class="ann-item-desc">角色主動傳訊息時，背景就會即時亮起未讀提示，回到 App 自動清除；群組逾時與失敗也會自動重試。</div>
                 </div>
               </div>
             </template>
@@ -47,20 +47,20 @@
               <div class="ann-title">怎麼用</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">開啟主動訊息</div>
-                  <div class="ann-item-desc">角色設定 → 進階設定，開啟「我想你」「每日一問」等開關；角色就會在不同時段主動傳訊息。需有一定對話記錄才會觸發。</div>
+                  <div class="ann-item-title">管理貼文</div>
+                  <div class="ann-item-desc">在貼文卡片或貼文詳情頁右上角點「⋯」，即可選擇編輯（就地修改內容）、重新生成（讓角色重寫一篇）或刪除。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">暫停某角色主動 / 勿擾時段</div>
-                  <div class="ann-item-desc">角色設定的「暫停主動訊息（總開關）」可讓該角色完全不主動，但你傳訊時仍正常回覆。深夜 23:00–08:00 一律不打擾。</div>
+                  <div class="ann-item-title">管理留言／回覆</div>
+                  <div class="ann-item-desc">在貼文詳情頁長按某一則留言，會跳出選單：複製、編輯、刪除；如果是角色的回覆，還會多一個「重新生成回覆」（只重生那一則，後面的留言會保留）。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">搜尋聊天記錄</div>
-                  <div class="ann-item-desc">進入聊天室，點右上角搜尋，輸入關鍵字即可跳到那則訊息。</div>
+                  <div class="ann-item-title">開啟角色的時間感</div>
+                  <div class="ann-item-desc">角色設定 → 進階設定，打開「時間感」開關，角色就會依現在的日期、星期、時段來說話與發文。架空／古裝角色可保持關閉。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">願望清單・備忘錄</div>
-                  <div class="ann-item-desc">關係主頁的「我們的願望清單・備忘錄」卡片，或聊天室 ⋯ →「我們的願望・備忘」進入。輸入後按 Enter 新增，點一下可勾選完成。</div>
+                  <div class="ann-item-title">填寫範例對話</div>
+                  <div class="ann-item-desc">角色設定 →「說話方式」→ 範例對話，寫幾組「你說／角色怎麼回」，AI 會模仿這種語氣。不必照抄內容，留空會自動略過。</div>
                 </div>
               </div>
             </template>
@@ -94,7 +94,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P87</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P93</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
