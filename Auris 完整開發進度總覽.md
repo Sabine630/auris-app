@@ -9,6 +9,7 @@
 ## 📌 專案資訊
 
 - **專案名稱**：Auris（你說，他在聽）
+- **專案起始**：2026-05-04（GitHub repo 建立日；更早的 HTML 單檔原型未進版控）
 - **類型**：AI 角色聊天 PWA 應用
 - **技術棧**：Vue 3 + Vite + Vue Router 4 + IndexedDB + CSS Variables（P37 起為正式架構）
 - **部署**：GitHub Pages（正式 `main`）／ Vercel（測試 `dev`）
