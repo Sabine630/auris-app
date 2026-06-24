@@ -96,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P91
+        Auris · P92
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P91 修復：聊天室回覆分泡泡修復——動作排版下模型把多句「」連寫不空行時，改在「」邊界自動切成獨立泡泡，連發訊息恢復穩定
+        P92 強化時間感：時間感知開啟時，聊天回覆與貼文改用「完整日期＋星期＋時段＋時分」的統一時間錨，不再星期/時段講錯
       </div>
     </div>
   </div>

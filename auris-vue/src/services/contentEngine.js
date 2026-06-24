@@ -1,5 +1,6 @@
 import { dbGet, dbPut, dbIdx, getSetting } from './db.js';
 import { sendLLMRequest } from './api.js';
+import { timeAnchorLine } from './chatEngine.js';
 
 function buildRecentChat(msgs, charName, userLabel, count, maxLen) {
   return msgs.slice(0, count).reverse().map(m =>
@@ -41,13 +42,18 @@ export async function generatePost(charId) {
   msgs.sort((a, b) => b.createdAt - a.createdAt);
   const recentChat = buildRecentChat(msgs, c.name, youName || '對方', 6, 50);
 
+  // 時間感知開啟時才注入時間錨；關閉（架空/古裝等）則不給現在時間
+  const timeLine = c.timeAware
+    ? `【現在時間】現在是 ${timeAnchorLine()}。貼文若提到日期、星期、時段或時間，必須對齊現在，不要寫錯。\n`
+    : '';
+
   const prompt = `你是「${c.name}」。請根據以下設定，寫一則短篇社群貼文（類似 IG 或 Twitter），分享你此刻的想法或生活片段。
 【個性】${c.persona || ''}
 ${storyCtx ? `【背景】${storyCtx}` : ''}
 ${c.status ? `【近況】${c.status}` : ''}
 ${c.hobby ? `【喜好】${c.hobby}` : ''}
 【說話風格】${styleMap[c.style] || '輕鬆自然'}
-${youLine}${recentChat ? `【最近與對方的對話】\n${recentChat}\n貼文可以若有似無地反映這段互動，或完全無關也行。` : ''}
+${timeLine}${youLine}${recentChat ? `【最近與對方的對話】\n${recentChat}\n貼文可以若有似無地反映這段互動，或完全無關也行。` : ''}
 
 【格式要求】
 1. 直接輸出貼文內容，不要加引號，長度約 60~200 字，要有具體的事件、感受或想法，不要只寫一句話。
