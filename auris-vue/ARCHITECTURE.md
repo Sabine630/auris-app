@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-24（P91）
+> 最後更新：2026-06-24（P93）
 
 ---
 
@@ -160,7 +160,7 @@ API 請求的底層工具。
 ### `services/contentEngine.js` 與 `chatEngine.js`
 AI 內容與對話生成邏輯：
 
-- `contentEngine.js`：負責生成貼文 (`generatePost`)、日記 (`generateDiary`)、夢境 (`generateDream`) 以及留言回覆 (`generateCommentReply`)。每次生成成功後會同步寫入 `notifications` store，讓通知頁顯示新動態。**P56 起**：`generatePost` 與 `generateDream` 在 prompt 中加入最近 6–8 則聊天紀錄 context；**P60**：三處重複的近期對話組裝提取為 `buildRecentChat()` 工具函式。
+- `contentEngine.js`：負責生成貼文 (`generatePost`)、日記 (`generateDiary`)、夢境 (`generateDream`) 以及留言回覆 (`generateCommentReply`)。每次生成成功後會同步寫入 `notifications` store，讓通知頁顯示新動態。**P56 起**：`generatePost` 與 `generateDream` 在 prompt 中加入最近 6–8 則聊天紀錄 context；**P60**：三處重複的近期對話組裝提取為 `buildRecentChat()` 工具函式。**P93 起**：貼文生成抽出 `buildPostContent(c)`、回覆生成抽出 `buildReplyText(post,char,threadComments)`（含「留言者＝貼文對象本人」身份綁定），並新增就地重生用的 `regeneratePost(postId)` 與 `regenerateCommentReply(postId, replyIdx)`。
 - `chatEngine.js`：核心對話引擎，主要函式：
   - `generateAIResponseStream` — 一對一串流回覆，完成後觸發 Heart Voice
   - `generateGroupAIResponseStream` — 群組串流回覆，支援 `onStart`（切換動畫）與 `onChunk`（逐字更新）
@@ -328,6 +328,19 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P93（2026-06-24）貼文/回覆管理＋回覆身份綁定
+
+- **回覆身份綁定**：`generateCommentReply` 的 prompt 組裝抽成共用 `buildReplyText(post, char, threadComments)`，比照 `generatePost` 解析角色對使用者的稱呼（`overrideMe?you_name:me.name` 與 `c.call`），並加「留言串中標示為對方的留言＝你貼文裡稱呼/提到的那個人本人、非第三者，勿用第三人稱把對方講成別人」的綁定指示，修復角色把留言的使用者當陌生人（用「她」指稱）。
+- **貼文管理**：`generatePost` 內容生成抽成共用 `buildPostContent(c)`；新增 `regeneratePost(postId)`（保留 id/讚數、重寫內容、清空舊留言）。`MomentsView`/`PostDetailView` 加 `⋯` 選單：編輯（就地）/重生/刪除。
+- **留言管理**：新增 `regenerateCommentReply(postId, replyIdx)`（以該回覆之前的留言串重生、原地取代、保留其後留言）。`PostDetailView` 留言長按（沿用 `.msg-sheet`）→ 複製/編輯（就地）/刪除/重生。
+- **影響面**：純前端 + service prompt；資料結構不變（comments 仍以 index 操作）。新增 `.post-edit-area`/`.post-edit-btn` 樣式。
+
+### P92（2026-06-24）強化時間感——統一時間錨
+
+- **症狀**：開了時間感知的角色仍把星期講錯、自編比實際早的時間戳；貼文提到日子/時段易錯。
+- **根因**：聊天回覆 `timeCtx` 只在 `timeAware` 開時給且僅「時:分＋星期」（缺日期/時段）；`generatePost` 完全沒餵現在時間；而主動訊息的 `proactiveTimeAnchor()` 早有「完整日期＋星期＋時段＋時分」範本，兩路不一致。
+- **修法**：抽共用 `dayPeriod()`＋`timeAnchorLine()`（export 自 `chatEngine.js`），三處共用——`proactiveTimeAnchor` 改用之（行為不變）、聊天 `timeCtx` 維持 `timeAware` 閘門但升級為完整錨、`generatePost` 於 `timeAware` 開時注入錨。保留 `timeAware` 語意，不禁自寫時間戳，純 prompt 字串、前端無變化。
 
 ### P91（2026-06-24）聊天室回覆分泡泡修復——「」邊界自動切泡泡
 

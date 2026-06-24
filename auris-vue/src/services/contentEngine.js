@@ -19,13 +19,8 @@ function dedupeRepeats(text) {
   return res.join('');
 }
 
-export async function generatePost(charId) {
-  const apiKey = await getSetting('api_key');
-  if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
-
-  const c = await dbGet('characters', charId);
-  if (!c) throw new Error('找不到角色');
-
+// 共用：依角色組貼文 prompt → 生成 → 解析出 { content, tags }（供 generatePost 新建與 regeneratePost 就地重生共用）
+async function buildPostContent(c) {
   const styleMap = {
     casual: '輕鬆日常', sweet: '甜蜜撒嬌', cool: '冷靜高冷',
     gentle: '溫柔體貼', playful: '活潑俏皮', mature: '成熟穩重', literary: '文藝感性'
@@ -38,7 +33,7 @@ export async function generatePost(charId) {
   const youLine = youName
     ? `【對方資訊】對方本名是「${youName}」${c.call ? `，你習慣稱呼對方為「${c.call}」` : ''}。若貼文提到對方，請用此稱呼。\n`
     : '';
-  const msgs = await dbIdx('messages', 'charId', charId);
+  const msgs = await dbIdx('messages', 'charId', c.id);
   msgs.sort((a, b) => b.createdAt - a.createdAt);
   const recentChat = buildRecentChat(msgs, c.name, youName || '對方', 6, 50);
 
@@ -65,33 +60,61 @@ ${timeLine}${youLine}${recentChat ? `【最近與對方的對話】\n${recentCha
     { max_tokens: 2500, temperature: 0.75, frequency_penalty: 0.6, presence_penalty: 0.3 }
   );
 
-  if (text.trim()) {
-    let content = text.trim();
-    let tags = [];
-    const tagMatch = content.match(/(?:^|\n)\s*#\w+/g);
-    if (tagMatch) {
-      tags = tagMatch.map(t => t.trim().substring(1));
-      content = content.replace(/(?:\n\s*#\w+\s*)+$/, '').trim();
-    }
-    content = dedupeRepeats(content);
-    const entry = { id: 'post_' + Date.now(), charId, content, tags, likes: 0, likedByMe: false, comments: [], createdAt: Date.now() };
-    await dbPut('moments', entry);
-    await dbPut('notifications', { id: 'notif_' + Date.now(), charId, type: 'post', targetId: entry.id, text: '發了一則新貼文', read: false, createdAt: Date.now() });
-    return { entry, truncated: false };
+  if (!text.trim()) return null;
+  let content = text.trim();
+  let tags = [];
+  const tagMatch = content.match(/(?:^|\n)\s*#\w+/g);
+  if (tagMatch) {
+    tags = tagMatch.map(t => t.trim().substring(1));
+    content = content.replace(/(?:\n\s*#\w+\s*)+$/, '').trim();
   }
-  return null;
+  content = dedupeRepeats(content);
+  return { content, tags };
 }
 
-export async function generateCommentReply(postId, charId, userComment) {
+export async function generatePost(charId) {
   const apiKey = await getSetting('api_key');
-  if (!apiKey) { window.toast_?.('請先設定 API 金鑰'); return; }
+  if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
 
   const c = await dbGet('characters', charId);
-  const p = await dbGet('moments', postId);
-  if (!c || !p) { console.warn('generateCommentReply: char or post not found', charId, postId); return; }
+  if (!c) throw new Error('找不到角色');
 
+  const result = await buildPostContent(c);
+  if (!result) return null;
+
+  const entry = { id: 'post_' + Date.now(), charId, content: result.content, tags: result.tags, likes: 0, likedByMe: false, comments: [], createdAt: Date.now() };
+  await dbPut('moments', entry);
+  await dbPut('notifications', { id: 'notif_' + Date.now(), charId, type: 'post', targetId: entry.id, text: '發了一則新貼文', read: false, createdAt: Date.now() });
+  return { entry, truncated: false };
+}
+
+// 就地重生一則既有貼文：保留 id 與點讚數，重寫內容/標籤並清空舊留言（內容已換，舊回覆失去脈絡）
+export async function regeneratePost(postId) {
+  const apiKey = await getSetting('api_key');
+  if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
+
+  const p = await dbGet('moments', postId);
+  if (!p) throw new Error('找不到貼文');
+  const c = await dbGet('characters', p.charId);
+  if (!c) throw new Error('找不到角色');
+
+  const result = await buildPostContent(c);
+  if (!result) return null;
+
+  p.content = result.content;
+  p.tags = result.tags;
+  p.comments = [];
+  await dbPut('moments', p);
+  return { entry: p };
+}
+
+// 共用：組貼文回覆 prompt → 生成 → 回傳回覆文字。
+// threadComments：要當脈絡的留言串（一般回覆＝整串；重生＝待重生回覆之前的片段）。
+// 內含「留言者＝貼文所稱呼的對象本人」身份綁定，避免角色把留言的使用者當第三方（用「她／他」指稱）。
+async function buildReplyText(p, c, threadComments) {
   const me = await getSetting('me_settings') || {};
-  const meName = me.name || '對方';
+  const youName = (c.overrideMe && c.you_name) ? c.you_name : (me.name || '對方');
+  const callNick = c.call || '';
 
   // 角色完整設定：與發貼文一致地帶入背景/近況/喜好，避免回留言時說出與設定矛盾的話（如怕黑卻說關燈睡）
   const storyCtx = c.stories?.filter(s => s.content).map(s => `【${s.title}】${s.content}`).join('\n') || '';
@@ -102,26 +125,44 @@ export async function generateCommentReply(postId, charId, userComment) {
     c.hobby ? `喜好：${c.hobby}` : ''
   ].filter(Boolean).join('\n');
 
-  // 帶入完整貼文與整串留言（由舊到新，最後一則即剛送出的待回覆留言），讓回覆貼合貼文與前文、不自相矛盾
   const body = (p.content || '').slice(0, 1000);
-  const thread = (p.comments || []).slice(-10)
-    .map(cm => `${cm.role === 'user' ? meName : c.name}：${cm.content}`)
+  const ctxComments = (threadComments || []).slice(-10);
+  const thread = ctxComments
+    .map(cm => `${cm.role === 'user' ? youName : c.name}：${cm.content}`)
     .join('\n');
+  const lastUserComment = [...ctxComments].reverse().find(cm => cm.role === 'user')?.content || '';
+
+  // 身份綁定：明確告訴 AI「留言串裡標示為對方的人，就是貼文裡被稱呼/提到的那個人本人」
+  const identityBind = `【重要】這則貼文是你對對方（${youName}${callNick ? `，你平常叫他「${callNick}」` : ''}）說的話。留言串中標示為「${youName}」的留言就是這位對方本人——也就是你貼文裡稱呼/提到的那個人，不是第三者。回覆時直接把對方當成你貼文裡的那個人對話，不要用第三人稱「她／他」把對方講成別人。`;
+
   const prompt = `你是「${c.name}」。
 ${settingCtx}
 你發了一則貼文，內容如下：
 「${body}」
-${thread ? `\n這則貼文下面的留言串（由舊到新，最後一則是你要回覆的對象）：\n${thread}\n` : `\n${meName}留言說：「${userComment}」\n`}
+${identityBind}
+${thread ? `\n這則貼文下面的留言串（由舊到新，最後一則是你要回覆的對象）：\n${thread}\n` : `\n${youName}留言說：「${lastUserComment}」\n`}
 請以貼文作者的身分回覆最後一則留言。務必貼合你的角色設定、貼文與前面留言的實際內容，不要說出與角色設定或貼文矛盾的話（例如怕黑就不會說自己關燈睡）。20~60字，自然簡短，像社群留言回覆的語氣。直接輸出回覆內容，不加引號。不要只回一個字或一個 emoji。`;
 
-  try {
-    const text = await sendLLMRequest(
-      [{ role: 'user', content: prompt }],
-      { max_tokens: 400, temperature: 0.85 }
-    );
+  const text = await sendLLMRequest(
+    [{ role: 'user', content: prompt }],
+    { max_tokens: 400, temperature: 0.85 }
+  );
+  return (text && text.trim()) ? text.trim() : '';
+}
 
-    if (text && text.trim()) {
-      const reply = { role: 'assistant', content: text.trim(), createdAt: Date.now() };
+export async function generateCommentReply(postId, charId, userComment) {
+  const apiKey = await getSetting('api_key');
+  if (!apiKey) { window.toast_?.('請先設定 API 金鑰'); return; }
+
+  const c = await dbGet('characters', charId);
+  const p = await dbGet('moments', postId);
+  if (!c || !p) { console.warn('generateCommentReply: char or post not found', charId, postId); return; }
+
+  try {
+    // p.comments 此時已含剛送出的使用者留言（PostDetailView 先推入再呼叫），故整串即脈絡
+    const text = await buildReplyText(p, c, p.comments || []);
+    if (text) {
+      const reply = { role: 'assistant', content: text, createdAt: Date.now() };
       if (!p.comments) p.comments = [];
       p.comments.push(reply);
       await dbPut('moments', p);
@@ -131,6 +172,33 @@ ${thread ? `\n這則貼文下面的留言串（由舊到新，最後一則是你
   } catch (e) {
     console.error('generateCommentReply failed:', e);
     window.toast_?.('留言回覆失敗：' + e.message);
+  }
+}
+
+// 重生某一則角色回覆：以「該回覆之前的留言串」為脈絡重新生成，原地取代，保留其後留言。
+export async function regenerateCommentReply(postId, replyIdx) {
+  const apiKey = await getSetting('api_key');
+  if (!apiKey) { window.toast_?.('請先設定 API 金鑰'); return; }
+
+  const p = await dbGet('moments', postId);
+  if (!p || !p.comments?.[replyIdx] || p.comments[replyIdx].role !== 'assistant') {
+    console.warn('regenerateCommentReply: invalid target', postId, replyIdx); return;
+  }
+  const c = await dbGet('characters', p.charId);
+  if (!c) { console.warn('regenerateCommentReply: char not found', p.charId); return; }
+
+  try {
+    const threadBefore = p.comments.slice(0, replyIdx);
+    const text = await buildReplyText(p, c, threadBefore);
+    if (text) {
+      p.comments[replyIdx] = { role: 'assistant', content: text, createdAt: Date.now() };
+      await dbPut('moments', p);
+    } else {
+      window.toast_?.('角色暫時沒有回應');
+    }
+  } catch (e) {
+    console.error('regenerateCommentReply failed:', e);
+    window.toast_?.('重新生成失敗：' + e.message);
   }
 }
 

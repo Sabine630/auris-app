@@ -37,6 +37,7 @@
             <div class="post-name">{{ getName(p.charId) }}</div>
             <div class="post-time">{{ timeAgo(p.createdAt) }}</div>
           </div>
+          <div class="post-menu-btn" @click.stop="menuPost = p" style="margin-left:auto;padding:2px 8px;font-size:18px;line-height:1;color:var(--text-3);cursor:pointer">⋯</div>
         </div>
         <div class="post-body">{{ p.content.length > 80 ? p.content.substring(0, 80) + '...' : p.content }}</div>
         <div class="post-tags" v-if="p.tags && p.tags.length">
@@ -54,6 +55,24 @@
         </div>
       </div>
     </div>
+
+    <!-- 貼文管理 Action Sheet -->
+    <div class="msg-sheet-mask show" v-if="menuPost" @click="menuPost = null"></div>
+    <div class="msg-sheet show" v-if="menuPost">
+      <div class="msg-sheet-item" @click="editPost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        <span>編輯貼文</span>
+      </div>
+      <div class="msg-sheet-item" @click="regenPost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-9 9 9.75 9.75 0 01-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+        <span>重新生成貼文</span>
+      </div>
+      <div class="msg-sheet-item danger" @click="removePost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+        <span>刪除貼文</span>
+      </div>
+      <div class="msg-sheet-cancel" @click="menuPost = null">取消</div>
+    </div>
   </div>
 </template>
 
@@ -61,14 +80,15 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { globalStore } from '../store/index.js';
-import { dbAll, dbPut } from '../services/db.js';
-import { generatePost } from '../services/contentEngine.js';
+import { dbAll, dbPut, dbDel } from '../services/db.js';
+import { generatePost, regeneratePost } from '../services/contentEngine.js';
 
 const router = useRouter();
 const moments = ref([]);
 const filterCharId = ref('all');
 const showGenPanel = ref(false);
 const isGenerating = ref(false);
+const menuPost = ref(null);
 
 const filteredMoments = computed(() => {
   let list = moments.value;
@@ -133,5 +153,37 @@ async function toggleLike(p) {
 
 function openDetail(id) {
   router.push('/post/' + id);
+}
+
+// 「編輯」：進入詳情頁的編輯模式（貼文全文在詳情頁，編輯體驗較好）
+function editPost() {
+  const id = menuPost.value.id;
+  menuPost.value = null;
+  router.push('/post/' + id + '?edit=1');
+}
+
+async function regenPost() {
+  const id = menuPost.value.id;
+  menuPost.value = null;
+  if (!await window.confirm_('重新生成這則貼文？舊內容與留言會被覆蓋。')) return;
+  try {
+    const res = await regeneratePost(id);
+    if (res && res.entry) {
+      const i = moments.value.findIndex(m => m.id === id);
+      if (i !== -1) moments.value[i] = res.entry;
+      window.toast_('已重新生成');
+    }
+  } catch (err) {
+    window.toast_('重新生成失敗：' + err.message);
+  }
+}
+
+async function removePost() {
+  const id = menuPost.value.id;
+  menuPost.value = null;
+  if (!await window.confirm_('確定刪除這則貼文？留言會一併刪除。')) return;
+  await dbDel('moments', id);
+  moments.value = moments.value.filter(m => m.id !== id);
+  window.toast_('已刪除貼文');
 }
 </script>

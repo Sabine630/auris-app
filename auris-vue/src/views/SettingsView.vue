@@ -96,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P92
+        Auris · P93
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P92 強化時間感：時間感知開啟時，聊天回覆與貼文改用「完整日期＋星期＋時段＋時分」的統一時間錨，不再星期/時段講錯
+        P93 貼文/回覆管理＋回覆身份綁定：貼文可編輯/重生/刪除，留言可編輯/刪除、角色回覆可重生；修復角色把留言的你當成第三方（用「她」指稱）
       </div>
     </div>
   </div>
