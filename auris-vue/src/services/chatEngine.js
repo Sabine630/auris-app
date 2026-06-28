@@ -739,9 +739,18 @@ ${recentText}
 現在請直接輸出一句內心話：`;
 
   try {
-    let hvText = await sendLLMRequest([{ role: 'user', content: hvPrompt }], { max_tokens: 80, temperature: 0.9 });
+    // max_tokens 給 220：推理型模型（會先吃 token 思考）與 CJK tokenization 較差的
+    // 模型在 80 token 下常被硬切，導致心聲斷在句中。prompt 已限 30 字、下方又有 50 字
+    // 後處理上限，放大額度只是讓模型講得完，不會讓存入變長。
+    let hvText = await sendLLMRequest([{ role: 'user', content: hvPrompt }], { max_tokens: 220, temperature: 0.9 });
 
     hvText = hvText.trim().replace(/\n{2,}/g, ' ').replace(/\s+/g, ' ');
+
+    // 截斷偵測：sendLLMRequest 吞掉 finish_reason，無法直接得知是否被 token 上限切斷。
+    // 啟發式——很短（<6 字）又以「未完成」標點（逗號、頓號、分號、冒號）收尾，視為殘句，
+    // 寧缺勿濫，直接放棄不存、不發通知。
+    if (hvText.length < 6 && /[，、；：,;:]$/.test(hvText)) return;
+
     if (hvText.length > 50) {
       const window = hvText.slice(0, 50);
       const sentenceEnd = Math.max(

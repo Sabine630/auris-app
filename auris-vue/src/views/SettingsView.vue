@@ -96,10 +96,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P93
+        Auris · P94
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P93 貼文/回覆管理＋回覆身份綁定：貼文可編輯/重生/刪除，留言可編輯/刪除、角色回覆可重生；修復角色把留言的你當成第三方（用「她」指稱）
+        P94 修復心聲顯示不完全：放大 heart voice 生成 token 上限（80→220），解決推理型／CJK 模型把內心話切在句中的問題＋截斷殘句不存
       </div>
     </div>
   </div>
