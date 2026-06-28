@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P88–P93 更新公告</div>
+      <div class="ann-badge">P94 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -13,8 +13,12 @@
 
             <!-- 第一頁：近期新功能 -->
             <template v-if="page === 0">
-              <div class="ann-title">近期新功能</div>
+              <div class="ann-title">近期更新</div>
               <div class="ann-items">
+                <div class="ann-item">
+                  <div class="ann-item-title">心聲不再顯示不完整 🔧</div>
+                  <div class="ann-item-desc">修正部分模型（尤其是會「先思考」的推理型模型）生成心聲時被截斷、句子斷在一半的問題。之後新生成的內心話都會完整成句。（已存的舊殘句不會自動修復，可在「心聲 → 管理」手動刪除）</div>
+                </div>
                 <div class="ann-item">
                   <div class="ann-item-title">貼文與留言可以管理了 🗂️</div>
                   <div class="ann-item-desc">貼文可以「編輯／重新生成／刪除」（卡片或詳情頁右上「⋯」）；每則留言長按可「複製／編輯／刪除」，角色的回覆還能「重新生成」。AI 講錯或不滿意都能就地修掉。</div>
@@ -94,7 +98,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P93</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P94</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
