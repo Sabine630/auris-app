@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-24（P93）
+> 最後更新：2026-06-29（P95）
 
 ---
 
@@ -76,7 +76,7 @@ graph TD
 
 | 資料表 | keyPath | 索引 | 說明 |
 |--------|---------|------|------|
-| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80、`examples` 範例對話 few-shot P88） |
+| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80、`examples` 範例對話 few-shot P88、`weatherAware` 天氣感開關 P95） |
 | `messages` | `id` | `charId`, `createdAt` | 單人聊天訊息（軟欄位：`image` 圖片 base64 P65、`reaction` 表情 P62） |
 | `memories` | `id` | `charId` | Heart Voice 心聲記錄 |
 | `moments` | `id` | `charId`, `createdAt` | 貼文（含 likes/comments） |
@@ -109,6 +109,7 @@ graph TD
 | `last_proactive_<charId>` | 各角色最後一次主動訊息的時間戳（P79），背景派發的 3 小時 min-gap 依此判斷 |
 | `miss_you_<charId>` / `daily_q_<charId>` | 各角色「我想你」「每日一問」當天已處理的去重 key（日期字串，P74/P79） |
 | `sched_sent_<charId>_<time>_<date>` | 作息時段提醒當天去重 key（P66），同一時段一天只發一次 |
+| `weather_loc` | 天氣感知的所在位置（P95）：`{ lat, lon, city, fetchedAt }`，全域共用、僅本機；空 = 未設定，天氣不注入 |
 
 > [!WARNING]
 > **升版注意**：升版（`version` 數字 +1）只能「新增」資料表或索引，不能修改已有結構。修改已有 store 的結構必須刪掉重建，**會清空該 store 的資料**。
@@ -156,6 +157,18 @@ API 請求的底層工具。
 | `getCyclePhase(me)` | 依 `lastPeriodStart` + `cycleLength`(預設28) + `periodLength`(預設5) 推算今天落在 `period`/`pms`/`ovulation`/`normal`，回傳含 `dayNum`/`daysUntilNext` |
 | `cycleCareContext(phase)` | 依階段組裝注入 system prompt 的關心 context（僅 period/pms 有內容） |
 | `cyclePhaseLabel(phase)` | UI 預覽用的階段中文標籤 |
+
+### `services/weather.js`（P95）
+天氣感知，全靠免費、免 key 的外部 API，純前端直打。
+
+| 函式 | 用途 |
+|------|------|
+| `getWeatherCtx()` | 給 `chatEngine` 注入用：讀 `weather_loc` → 取天氣 → 回一行克制的 context 字串（強調「偶發提及」）；未定位或失敗回 `''` |
+| `geocodeCity(name)` | 城市名 → `{ lat, lon, city }`（手動輸入備案），Open-Meteo geocoding |
+| `reverseGeocode(lat, lon)` | 座標 → 城市名（自動定位後顯示用），BigDataCloud 免 key 反查；失敗回 `''` |
+| `weatherCodeToZh(code)` | WMO weather_code → 中文天氣詞 |
+
+> 內含模組級快取（仿 `api.js` 的 Vertex token 快取）：同座標 30 分鐘內不重打天氣 API。
 
 ### `services/contentEngine.js` 與 `chatEngine.js`
 AI 內容與對話生成邏輯：
@@ -328,6 +341,21 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P95（2026-06-29）天氣感知
+
+- **新服務 `services/weather.js`**：純前端直打免費、免 key 的 API——Open-Meteo（天氣查詢＋城市正查 geocoding）、BigDataCloud（座標反查地名）。`getWeatherCtx()` 讀 `weather_loc` → 取天氣 → 回一行注入字串；內含模組級 30 分鐘快取（仿 Vertex token 快取）；未定位或失敗回 `''`，聊天零影響。
+- **注入點**：`buildAIChatSetup` 依 `c.weatherAware` 組 `weatherCtx`，併入 `systemVolatile`（與 `timeCtx` 並列，Anthropic 快取點之後不破壞前段快取）。聊天與 5 種主動訊息共用 `buildAIChatSetup`，故天氣自動全面生效，無需改主動訊息函式。
+- **克制原則**：`weatherCtx` 措辭明確要求「偶發、自然時才提，多數時候不主動提、絕不每則都報天氣」，避免天氣淪為每句口頭禪。
+- **角色開關**：`characters` 新增軟欄位 `weatherAware`（預設 true），`CharEditView`「自動功能」區加 toggle，比照 `timeAware`。舊角色靠 `{ ...default, ...loaded }` merge 自動補上。
+- **定位（全域）**：`SettingsView` 新增「天氣」區——「使用目前位置」走瀏覽器原生 `navigator.geolocation`（免費），反查城市名後存 `settings.weather_loc`；拒絕／失敗時退回手動輸入城市（`geocodeCity`）。一個使用者一個位置，所有角色共用。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/weather.js` | 新增——天氣查詢／正反查地名／WMO 中文化／快取／`getWeatherCtx()` |
+| `services/chatEngine.js` | `buildAIChatSetup` 依 `weatherAware` 組 `weatherCtx` 併入 `systemVolatile`；import `getWeatherCtx` |
+| `views/CharEditView.vue` | 「自動功能」加「天氣感」toggle；預設物件加 `weatherAware: true` |
+| `views/SettingsView.vue` | 新增「天氣」設定區（定位／手動城市／清除）；P94 → P95 |
 
 ### P93（2026-06-24）貼文/回覆管理＋回覆身份綁定
 

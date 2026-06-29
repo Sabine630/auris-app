@@ -3,6 +3,7 @@ import { fetchWithTimeout, sendLLMRequest, getVertexToken } from './api.js';
 import { getCyclePhase, cycleCareContext } from './cycle.js';
 import { splitReply } from './format.js';
 import { estimateTokens } from './tokens.js';
+import { getWeatherCtx } from './weather.js';
 
 // 長期記憶注入的 token 上限：記憶越多越稀釋、越燒錢，超量時依相關性截斷（保留最相關的）。
 const MEM_TOKEN_BUDGET = 1500;
@@ -242,6 +243,11 @@ async function buildAIChatSetup(charId, allMsgs) {
     }
   }
 
+  // 天氣感知：角色開啟「天氣感」且使用者已在設定頁定位才注入。getWeatherCtx 內含 30 分鐘快取，
+  // 任何失敗都回空字串（聊天不受影響）。措辭本身強調「偶發性提及」，避免角色每則都報天氣。
+  let weatherCtx = '';
+  if (c.weatherAware) weatherCtx = await getWeatherCtx();
+
   // 個人紀念日（生日、相識日、在一起紀念日）——不依賴 timeAware，只要有設定就注入
   const personalDateCtx = getPersonalDateCtx(c, me);
 
@@ -350,7 +356,7 @@ ${lengthGuide}
     ? `\n\n【特別提示】使用者要求較長內容，請完整寫完整段，不要中途收尾或省略。如果是故事，要有開頭、發展、結尾；如果是文章，要有段落結構。寫到結束為止，不要刻意縮短。`
     : '';
   const systemStable = systemPrompt;
-  const systemVolatile = `${timeCtx}${worldCtx}${memCtx}${longFormNote}`;
+  const systemVolatile = `${timeCtx}${weatherCtx}${worldCtx}${memCtx}${longFormNote}`;
   const finalSystemPrompt = systemStable + systemVolatile;
 
   return { c, provider, model, base, apiKey, history, finalSystemPrompt, systemStable, systemVolatile, dynamicMaxTokens };

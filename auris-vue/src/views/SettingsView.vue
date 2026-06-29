@@ -74,6 +74,31 @@
       </div>
     </div>
 
+    <div class="sg-label">天氣</div>
+    <div class="sg">
+      <div style="padding:14px 16px">
+        <div style="font-size:13px;font-weight:300;color:var(--text);margin-bottom:4px">所在位置</div>
+        <div style="font-size:11px;font-weight:300;color:var(--text-3);line-height:1.6;margin-bottom:12px">
+          設定後，開啟「天氣感」的角色會偶爾感知你所在地的天氣（如下雨提醒帶傘）。位置僅存於本機，用於查詢天氣。
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <div style="font-size:12px;font-weight:400;color:var(--text-2)">
+            目前：<strong style="color:var(--text)">{{ weatherLoc?.city || '尚未設定' }}</strong>
+          </div>
+          <div v-if="weatherLoc" @click="clearWeatherLoc" style="font-size:11px;color:var(--red);cursor:pointer;margin-left:auto">清除</div>
+        </div>
+        <button class="sgbtn" :disabled="weatherBusy" @click="useCurrentLocation">
+          {{ weatherBusy ? '定位中…' : '📍 使用目前位置' }}
+        </button>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <input v-model="cityInput" type="text" placeholder="或手動輸入城市（如 台北、東京）"
+            style="flex:1;min-width:0;padding:9px 12px;border:.5px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font)"
+            @keyup.enter="setCityManual">
+          <button class="sgbtn" style="flex:0 0 auto;width:auto;padding:0 16px" :disabled="weatherBusy" @click="setCityManual">設定</button>
+        </div>
+      </div>
+    </div>
+
     <div class="sg-label">資料</div>
     <div class="sg" style="margin-bottom:32px">
       <div class="sr" @click="exportData">
@@ -96,10 +121,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P94
+        Auris · P95
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P94 修復心聲顯示不完全：放大 heart voice 生成 token 上限（80→220），解決推理型／CJK 模型把內心話切在句中的問題＋截斷殘句不存
+        P95 新增天氣感知：設定定位後，開啟「天氣感」的角色會偶爾感知所在地當下天氣（如下雨提醒帶傘）。定位用瀏覽器原生 API、天氣用 Open-Meteo，皆免費；支援手動輸入城市備案
       </div>
     </div>
   </div>
@@ -109,6 +134,7 @@
 import { ref, onMounted } from 'vue';
 import { globalStore } from '../store/index.js';
 import { getSetting, setSetting, exportAllData, importAllData } from '../services/db.js';
+import { geocodeCity, reverseGeocode } from '../services/weather.js';
 
 const themes = [
   {id:'cream', name:'奶白', bg:'#f7f5f2', surface:'#fff',    rose:'#c9887a', text:'#2a2420'},
@@ -123,6 +149,9 @@ const apiKey = ref('');
 const meName = ref('');
 const meAvatar = ref('');
 const chatFormatStyle = ref(false);
+const weatherLoc = ref(null);
+const cityInput = ref('');
+const weatherBusy = ref(false);
 
 onMounted(async () => {
   apiKey.value = (await getSetting('api_key')) || '';
@@ -130,12 +159,69 @@ onMounted(async () => {
   meName.value = me?.name || '';
   meAvatar.value = me?.avatar || '🙂';
   chatFormatStyle.value = !!(await getSetting('chat_format_style'));
+  weatherLoc.value = await getSetting('weather_loc');
 });
 
 async function toggleFormatStyle() {
   chatFormatStyle.value = !chatFormatStyle.value;
   globalStore.chatFormatStyle = chatFormatStyle.value;
   await setSetting('chat_format_style', chatFormatStyle.value);
+}
+
+// 天氣定位：自動定位優先（瀏覽器 Geolocation），失敗或拒絕時改用手動輸入城市。
+async function saveWeatherLoc(loc) {
+  loc.fetchedAt = Date.now();
+  await setSetting('weather_loc', loc);
+  weatherLoc.value = loc;
+}
+
+function useCurrentLocation() {
+  if (!navigator.geolocation) {
+    window.toast_('此瀏覽器不支援定位，請改用手動輸入');
+    return;
+  }
+  weatherBusy.value = true;
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      try {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const city = await reverseGeocode(lat, lon);
+        await saveWeatherLoc({ lat, lon, city: city || '目前位置' });
+        window.toast_('定位成功' + (city ? `：${city}` : ''));
+      } catch {
+        window.toast_('定位失敗，請改用手動輸入');
+      } finally {
+        weatherBusy.value = false;
+      }
+    },
+    () => {
+      weatherBusy.value = false;
+      window.toast_('無法取得定位（已拒絕或失敗），請改用手動輸入城市');
+    },
+    { timeout: 10000, maximumAge: 600000 }
+  );
+}
+
+async function setCityManual() {
+  const name = cityInput.value.trim();
+  if (!name) return;
+  weatherBusy.value = true;
+  try {
+    const r = await geocodeCity(name);
+    if (!r) { window.toast_('找不到這個城市，請換個寫法試試'); return; }
+    await saveWeatherLoc(r);
+    cityInput.value = '';
+    window.toast_(`已設定：${r.city}`);
+  } finally {
+    weatherBusy.value = false;
+  }
+}
+
+async function clearWeatherLoc() {
+  await setSetting('weather_loc', null);
+  weatherLoc.value = null;
+  window.toast_('已清除定位');
 }
 
 async function applyTheme(id) {
@@ -248,4 +334,19 @@ function importData() {
   color: var(--rose);
   letter-spacing: .02em;
 }
+.sgbtn {
+  width: 100%;
+  padding: 9px 12px;
+  border: .5px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.sgbtn:active { opacity: .7; }
+.sgbtn:disabled { opacity: .5; cursor: default; }
 </style>

@@ -356,6 +356,13 @@
           </div>
           <div class="toggle-row">
             <div class="toggle-info">
+              <div class="toggle-name">天氣感</div>
+              <div class="toggle-desc">角色會偶爾感知你所在地的天氣（如下雨提醒帶傘）。需先到「設定」開啟定位</div>
+            </div>
+            <div class="toggle" :class="{ on: char.weatherAware }" @click="char.weatherAware = !char.weatherAware"><div class="toggle-knob"></div></div>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
               <div class="toggle-name">Heart Voice（心聲）</div>
               <div class="toggle-desc">AI 在背景生成角色說不出口的內心話，存入黑盒子</div>
             </div>
@@ -578,6 +585,7 @@ const char = ref({
   memory: 20,
   temperature: 0.8,
   timeAware: true,
+  weatherAware: true,
   heartVoice: false,
   autoDiary: false,
   autoPost: false,
