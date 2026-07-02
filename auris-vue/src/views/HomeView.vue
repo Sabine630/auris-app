@@ -32,6 +32,27 @@
 
     <div class="h-divider"></div>
 
+    <!-- 今日心情打卡（P96）：未打卡顯示完整卡片；已打卡縮成 chip，點擊可重選 -->
+    <div v-if="!todayMood || moodPickerOpen" class="wg mood-card anim" style="animation-delay:.06s">
+      <div class="mood-title">
+        <span>今天的心情</span>
+        <span v-if="moodPickerOpen" class="mood-close" @click="moodPickerOpen = false">收起</span>
+      </div>
+      <div class="mood-opts">
+        <div v-for="mo in MOODS" :key="mo.key" class="mood-opt" :class="{ sel: pickedMood === mo.key }" @click="pickedMood = mo.key">
+          <div class="mood-opt-emoji">{{ mo.emoji }}</div>
+          <div class="mood-opt-label">{{ mo.label }}</div>
+        </div>
+      </div>
+      <div v-if="pickedMood" class="mood-note-row">
+        <input class="mood-note-in" v-model="moodNote" maxlength="60" placeholder="想補充一句嗎？（選填）" @keyup.enter="saveMood" />
+        <button class="mood-save" @click="saveMood">記下</button>
+      </div>
+    </div>
+    <div v-else class="mood-chip anim" style="animation-delay:.06s" @click="openMoodPicker">
+      今日心情 {{ moodEmoji(todayMood.mood) }}<span v-if="todayMood.note" class="mood-chip-note">・{{ snippet(todayMood.note, 14) }}</span>
+    </div>
+
     <!-- 最近對話 widget -->
     <div class="h-sec-row">
       <div class="h-sec">對話</div>
@@ -143,8 +164,33 @@
 import { ref, computed, onMounted } from 'vue';
 import { globalStore } from '../store/index.js';
 import { dbAll, dbIdx } from '../services/db.js';
+import { MOODS, getTodayMood, setTodayMood } from '../services/mood.js';
 
 const lastMsgByChar = ref({});
+
+// ── 今日心情打卡（P96）──
+const todayMood = ref(null);
+const moodPickerOpen = ref(false);
+const pickedMood = ref('');
+const moodNote = ref('');
+
+async function saveMood() {
+  if (!pickedMood.value) return;
+  await setTodayMood(pickedMood.value, moodNote.value);
+  todayMood.value = { mood: pickedMood.value, note: moodNote.value.trim() };
+  moodPickerOpen.value = false;
+  window.toast_?.('已記下今天的心情');
+}
+
+function openMoodPicker() {
+  pickedMood.value = todayMood.value?.mood || '';
+  moodNote.value = todayMood.value?.note || '';
+  moodPickerOpen.value = true;
+}
+
+function moodEmoji(key) {
+  return MOODS.find(m => m.key === key)?.emoji || '🙂';
+}
 const dailyQ = ref(null);
 const latestHv = ref(null);
 const latestDiary = ref(null);
@@ -176,6 +222,7 @@ const recentChats = computed(() =>
 
 onMounted(async () => {
   await globalStore.loadCharacters();
+  try { todayMood.value = await getTodayMood(); } catch (_) {}
 
   // 每角色掃一次訊息：取最後一句（聊天 widget 用）＋今日未回答的每日一問
   const todayStart = new Date();
@@ -268,4 +315,73 @@ function openAnnouncement() {
   letter-spacing: .03em;
 }
 .h-ann-btn:active { opacity: .6; }
+
+/* ── 今日心情打卡（P96）── */
+.mood-card { padding: 14px 16px 12px; }
+.mood-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-3);
+  letter-spacing: .04em;
+  margin-bottom: 10px;
+}
+.mood-close { font-size: 11px; color: var(--text-3); cursor: pointer; padding: 2px 6px; }
+.mood-opts { display: flex; justify-content: space-between; gap: 4px; }
+.mood-opt {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 2px 6px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform .12s ease, background .15s ease;
+}
+.mood-opt:active { transform: scale(1.1); }
+.mood-opt.sel { background: var(--rose-pale); }
+.mood-opt-emoji { font-size: 24px; line-height: 1; }
+.mood-opt-label { font-size: 11px; font-weight: 300; color: var(--text-3); }
+.mood-note-row { display: flex; gap: 8px; margin-top: 10px; }
+.mood-note-in {
+  flex: 1;
+  padding: 8px 12px;
+  border: .5px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg, transparent);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 300;
+  outline: none;
+}
+.mood-save {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--rose);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.mood-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 16px 10px;
+  padding: 6px 14px;
+  background: var(--surface);
+  border: .5px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--sh);
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--text-3);
+  cursor: pointer;
+  letter-spacing: .03em;
+}
+.mood-chip:active { opacity: .6; }
+.mood-chip-note { color: var(--text-3); }
 </style>

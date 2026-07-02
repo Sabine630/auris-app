@@ -4,6 +4,7 @@ import { getCyclePhase, cycleCareContext } from './cycle.js';
 import { splitReply } from './format.js';
 import { estimateTokens } from './tokens.js';
 import { getWeatherCtx } from './weather.js';
+import { getTodayMood, moodContext } from './mood.js';
 
 // 長期記憶注入的 token 上限：記憶越多越稀釋、越燒錢，超量時依相關性截斷（保留最相關的）。
 const MEM_TOKEN_BUDGET = 1500;
@@ -285,6 +286,10 @@ async function buildAIChatSetup(charId, allMsgs) {
   // 在經期/經期前把對方身體狀態餵進 prompt，讓角色自然地關心（其餘階段為空字串）。
   const cycleCtx = c.cycleCare ? cycleCareContext(getCyclePhase(me)) : '';
 
+  // 心情打卡（P96）：使用者今天有打卡才注入（mood.js），沒打卡零影響。放易變段（當天可改）。
+  let moodCtx = '';
+  try { moodCtx = moodContext(await getTodayMood()); } catch (_) {}
+
   const storyCtx = c.stories?.filter(s => s.content).map(s => `【${s.title}】${s.content}`).join('\n') || '';
 
   // 範例對話（few-shot）：抓住角色「說話聲音」最強的槓桿。放在 system prompt 內當標註過的範例，
@@ -356,7 +361,7 @@ ${lengthGuide}
     ? `\n\n【特別提示】使用者要求較長內容，請完整寫完整段，不要中途收尾或省略。如果是故事，要有開頭、發展、結尾；如果是文章，要有段落結構。寫到結束為止，不要刻意縮短。`
     : '';
   const systemStable = systemPrompt;
-  const systemVolatile = `${timeCtx}${weatherCtx}${worldCtx}${memCtx}${longFormNote}`;
+  const systemVolatile = `${timeCtx}${weatherCtx}${worldCtx}${memCtx}${moodCtx}${longFormNote}`;
   const finalSystemPrompt = systemStable + systemVolatile;
 
   return { c, provider, model, base, apiKey, history, finalSystemPrompt, systemStable, systemVolatile, dynamicMaxTokens };
@@ -619,6 +624,129 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
     try { await setSetting('last_proactive_' + charId, Date.now()); } catch (_) {}
   }
   return { msgs, truncated };
+}
+
+// 共用串流呼叫：以指定 system prompt＋history 打一次串流生成（vertex 不支援串流、一次回）。
+// touch 回應與已讀不回補回都走這裡，避免重複三家 provider 的分支。
+async function streamWithSystem({ c, provider, model, base, apiKey }, sysPrompt, history, { onChunk, maxTokens = 2000 }) {
+  let fullText = '';
+  const accumulate = (text) => { fullText += text; onChunk(text); };
+  let truncated = false;
+
+  if (provider === 'vertex') {
+    const sa = JSON.parse(apiKey);
+    const token = await getVertexToken(sa);
+    const region = 'us-central1';
+    const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
+    const body = {
+      contents: history.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+      systemInstruction: { parts: [{ text: sysPrompt }] },
+      generationConfig: { maxOutputTokens: maxTokens, temperature: c.temperature ?? 0.85 }
+    };
+    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 90000);
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+    const data = await r.json();
+    fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    onChunk(fullText);
+  } else if (provider === 'anthropic') {
+    const r = await fetchWithTimeout(`${base}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model, max_tokens: maxTokens, system: sysPrompt, messages: history, stream: true })
+    }, 90000);
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+    ({ truncated } = await parseSSEStream(r, 'anthropic', accumulate));
+  } else {
+    const r = await fetchWithTimeout(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, max_tokens: maxTokens, temperature: c.temperature ?? 0.85, messages: [{ role: 'system', content: sysPrompt }, ...history], stream: true })
+    }, 90000);
+    if (!r.ok) { const d = await r.json(); throw new Error(d.error?.message || `HTTP ${r.status}`); }
+    ({ truncated } = await parseSSEStream(r, provider, accumulate));
+  }
+  return { fullText, truncated };
+}
+
+// ── 1-on-1 輕觸互動回應：Streaming（P96）─────────────────────────────────
+// 使用者長按頭像做了親暱動作（拍拍/抱抱/摸摸頭…），動作訊息已落庫並在 history 尾端
+// （role user、內容如「（拍了拍你）」）。這裡讓角色針對「動作本身」即時反應，簡短、貼人設。
+export async function generateTouchResponseStream(charId, allMsgs, { onChunk }, actionLabel) {
+  const setup = await buildAIChatSetup(charId, allMsgs);
+
+  const touchPrompt = setup.finalSystemPrompt
+    + `\n\n【親暱動作】對方剛剛對你做了「${actionLabel}」的親暱動作。請立刻用你的個性與你們的關係，對這個動作本身做出反應（害羞、開心、彆扭、吐槽都可以），簡短自然（1～2 句），不要另起話題。`;
+
+  const { fullText, truncated } = await streamWithSystem(setup, touchPrompt, setup.history, { onChunk, maxTokens: 800 });
+
+  let msgs = [];
+  if (fullText.trim()) {
+    msgs = await persistReplySegments(charId, fullText, { maxSegments: 2, kind: 'touch' });
+  }
+  return { msgs, truncated };
+}
+
+// ── 1-on-1 已讀不回補回：Streaming（P96）─────────────────────────────────
+// 角色忙碌時段「已讀」了訊息但延遲數分鐘才回。history 尾端就是被已讀的那則使用者訊息。
+export async function generateBusyReplyStream(charId, allMsgs, { onChunk }) {
+  const setup = await buildAIChatSetup(charId, allMsgs);
+
+  const busyPrompt = setup.finalSystemPrompt
+    + `\n\n【已讀後補回】你稍早在忙（依你的作息推測當時在做什麼），已讀了對方的訊息但沒能馬上回。現在忙告一段落，回覆對方剛才的訊息，開頭可以自然帶一句剛剛在做什麼或簡單致意（例如「抱歉剛剛在開會」），不要過度道歉、不要長篇解釋。`;
+
+  const { fullText, truncated } = await streamWithSystem(setup, busyPrompt, setup.history, { onChunk });
+
+  let msgs = [];
+  if (fullText.trim()) {
+    msgs = await persistReplySegments(charId, fullText, { maxSegments: setup.c.maxMsg || 2 });
+  }
+  return { msgs, truncated };
+}
+
+// ── 已讀不回：背景補發（P96）──────────────────────────────────────────────
+// 使用者離開聊天室／關 app 後，到期的 pending busy reply 由 App.vue 的 5 分鐘派發掃到這裡補生成
+// （借串流函式、onChunk 空轉），補上未讀與通知，並廣播 new-proactive-msg 讓開著的聊天列表即時更新。
+export async function processDueBusyReply(charId) {
+  const key = 'pending_busy_reply_' + charId;
+  const pending = await getSetting(key);
+  if (!pending || Date.now() < pending.dueAt) return false;
+  const anchor = await dbGet('messages', pending.msgId);
+  await setSetting(key, null);
+  if (!anchor) return false; // 被已讀的那則訊息已刪（清空／編輯重傳）→ 丟棄
+
+  const allMsgs = await dbIdx('messages', 'charId', charId);
+  allMsgs.sort((a, b) => a.createdAt - b.createdAt);
+  const rawMsgs = allMsgs.filter(m => m.type !== 'hv');
+  const { msgs } = await generateBusyReplyStream(charId, rawMsgs, { onChunk: () => {} });
+  if (!msgs.length) return false;
+
+  const fresh = await dbGet('characters', charId);
+  if (fresh) {
+    fresh.hasUnread = true;
+    fresh.unreadCount = (fresh.unreadCount || 0) + msgs.length;
+    await dbPut('characters', JSON.parse(JSON.stringify(fresh)));
+  }
+  await dbPut('notifications', { id: 'notif_busy_' + Date.now(), charId, type: 'chat', targetId: charId, messageId: msgs[0].id, text: '忙完回覆了你的訊息', read: false, createdAt: Date.now() });
+  try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
+  return true;
+}
+
+// 「已讀不回」觸發判定（P96）：角色開啟 busyRead 且非深夜時擲骰——基礎機率 15%；
+// workTime 是自由文字，盡力解析出 HH:MM–HH:MM 區間，現在落在忙碌時段內則提高到 40%。
+export function shouldBusyRead(c, now = new Date()) {
+  if (!c?.busyRead) return false;
+  const h = now.getHours();
+  if (h >= 23 || h < 8) return false; // 深夜不觸發（睡著的人連已讀都不會有）
+  let p = 0.15;
+  const mch = (c.workTime || '').match(/(\d{1,2}):(\d{2})\s*[-–—~到至]\s*(\d{1,2}):(\d{2})/);
+  if (mch) {
+    const cur = h * 60 + now.getMinutes();
+    const start = (+mch[1]) * 60 + (+mch[2]);
+    const end = (+mch[3]) * 60 + (+mch[4]);
+    const inWindow = start <= end ? (cur >= start && cur < end) : (cur >= start || cur < end);
+    if (inWindow) p = 0.4;
+  }
+  return Math.random() < p;
 }
 
 // ── 1-on-1 生理期主動關心訊息（背景生成，非串流）─────────────────────────

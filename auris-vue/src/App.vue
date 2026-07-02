@@ -47,7 +47,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from './store/index.js';
 import { getSetting, setSetting, dbAll, dbIdx, dbGet } from './services/db.js';
 import { generateDiary, generatePost } from './services/contentEngine.js';
-import { generateCycleCareMessage, generateScheduleMessage, generateMissYouMessage, generateDailyQuestion, hasUnrepliedProactive } from './services/chatEngine.js';
+import { generateCycleCareMessage, generateScheduleMessage, generateMissYouMessage, generateDailyQuestion, hasUnrepliedProactive, processDueBusyReply } from './services/chatEngine.js';
 import { getCyclePhase } from './services/cycle.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
@@ -306,11 +306,24 @@ async function runScheduleTriggers() {
 // 派發鎖＋序列化：定時、環境兩套派發器同一時刻並行檢查閘門時，會在對方訊息還沒寫進 DB
 // 前都放行而各生一則（競態，A）。改成同一時間只跑一輪、且定時先跑完（含寫入）再跑環境，
 // 環境派發本就尊重 last_proactive_ 的 3 小時間隔，於是整輪實際上最多送出一則主動訊息。
+// 已讀不回補發（P96）：正開著該聊天室時交給房內計時器，其餘角色到期就在背景補生成。
+// 這是「欠的回覆」不是新的主動訊息，所以不吃勿擾／min-gap 閘門，且排在兩套派發器之前。
+async function runBusyReplyCatchup() {
+  try {
+    const chars = await dbAll('characters');
+    for (const c of chars) {
+      if (route.name === 'chat' && route.params.id === c.id) continue;
+      if (await processDueBusyReply(c.id)) return; // 每輪最多補一則
+    }
+  } catch (_) {}
+}
+
 let proactiveBusy = false;
 async function runAllProactive() {
   if (proactiveBusy) return;
   proactiveBusy = true;
   try {
+    await runBusyReplyCatchup();
     await runScheduleTriggers();
     await runProactiveDispatch();
   } finally {

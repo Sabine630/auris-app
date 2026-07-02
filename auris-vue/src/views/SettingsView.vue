@@ -121,10 +121,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P95
+        Auris · P96
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P95 新增天氣感知：設定定位後，開啟「天氣感」的角色會偶爾感知所在地當下天氣（如下雨提醒帶傘）。定位用瀏覽器原生 API、天氣用 Open-Meteo，皆免費；支援手動輸入城市備案
+        P96 互動真實感三連發：輕觸互動（長按頭像拍拍/抱抱/摸摸頭…角色即時反應）・心情打卡（首頁標記今日心情，角色會體貼感知）・已讀與已讀不回（訊息顯示已讀；忙碌時段可能過幾分鐘才回，逐角色開關）
       </div>
     </div>
   </div>

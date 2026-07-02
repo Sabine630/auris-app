@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-06-29（P95）
+> 最後更新：2026-07-02（P96）
 
 ---
 
@@ -76,8 +76,8 @@ graph TD
 
 | 資料表 | keyPath | 索引 | 說明 |
 |--------|---------|------|------|
-| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80、`examples` 範例對話 few-shot P88、`weatherAware` 天氣感開關 P95） |
-| `messages` | `id` | `charId`, `createdAt` | 單人聊天訊息（軟欄位：`image` 圖片 base64 P65、`reaction` 表情 P62） |
+| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80、`examples` 範例對話 few-shot P88、`weatherAware` 天氣感開關 P95、`busyRead` 已讀不回開關 P96） |
+| `messages` | `id` | `charId`, `createdAt` | 單人聊天訊息（軟欄位：`image` 圖片 base64 P65、`reaction` 表情 P62、`readAt` 已讀時間戳 P96、`type:'touch'`＋`touchAction` 輕觸動作訊息 P96、`kind:'touch'` 輕觸回應 P96） |
 | `memories` | `id` | `charId` | Heart Voice 心聲記錄 |
 | `moments` | `id` | `charId`, `createdAt` | 貼文（含 likes/comments） |
 | `diary` | `id` | `charId`, `date` | 日記（`date` 格式：YYYY-MM-DD） |
@@ -110,6 +110,8 @@ graph TD
 | `miss_you_<charId>` / `daily_q_<charId>` | 各角色「我想你」「每日一問」當天已處理的去重 key（日期字串，P74/P79） |
 | `sched_sent_<charId>_<time>_<date>` | 作息時段提醒當天去重 key（P66），同一時段一天只發一次 |
 | `weather_loc` | 天氣感知的所在位置（P95）：`{ lat, lon, city, fetchedAt }`，全域共用、僅本機；空 = 未設定，天氣不注入 |
+| `mood_log` | 心情打卡紀錄（P96）：`{ 'YYYY-MM-DD': { mood, note } }`，寫入時自動清 60 天前舊紀錄；當天沒打卡＝不注入 |
+| `pending_busy_reply_<charId>` | 已讀不回的待補回覆（P96）：`{ dueAt, queuedAt, msgId }`；聊天室開著由房內計時器補回、離房由 `App.vue` 背景派發補生成，取消/完成後清除 |
 
 > [!WARNING]
 > **升版注意**：升版（`version` 數字 +1）只能「新增」資料表或索引，不能修改已有結構。修改已有 store 的結構必須刪掉重建，**會清空該 store 的資料**。
@@ -158,6 +160,15 @@ API 請求的底層工具。
 | `cycleCareContext(phase)` | 依階段組裝注入 system prompt 的關心 context（僅 period/pms 有內容） |
 | `cyclePhaseLabel(phase)` | UI 預覽用的階段中文標籤 |
 
+### `services/mood.js`（P96）
+心情打卡，仿 `cycle.js` 的「資料＋context 注入」小服務，全本地。
+
+| 函式 | 用途 |
+|------|------|
+| `MOODS` | 5 種心情常數：開心😊／平靜😌／累了😴／低落😞／煩躁😤 |
+| `getTodayMood()` / `setTodayMood(key, note)` | 讀寫 settings `mood_log` 的當日紀錄（同日覆寫＝修改；寫入時清 60 天前舊 key） |
+| `moodContext(entry)` | 給 `chatEngine` 注入用：組「對方今天的心情」context（措辭比照生理期關心：自然體貼、不句句提及）；沒打卡回 `''` |
+
 ### `services/weather.js`（P95）
 天氣感知，全靠免費、免 key 的外部 API，純前端直打。
 
@@ -183,6 +194,8 @@ AI 內容與對話生成邏輯：
   - `generateCycleCareMessage` — 生理期主動關心（P59），非串流生成關心訊息 → 存 assistant 訊息 + `unreadCount++` + `type:'chat'` 通知
   - `generateScheduleMessage` — 作息時段主動訊息（P66），由 `App.vue` 每 5 分鐘掃 `scheduleTriggers`，命中時段且當天未發過才觸發
   - `generateMissYouMessage`（P74）／`generateDailyQuestion`（P74）— 「我想你」短訊與「每日一問」，非串流，由 `App.vue` `runProactiveDispatch` 觸發
+  - `generateTouchResponseStream`（P96）— 輕觸互動回應：動作訊息已入 history，追加「對動作本身反應、1～2 句」指示串流生成，落庫 `kind:'touch'`
+  - `generateBusyReplyStream`（P96）／`shouldBusyRead(c)`（P96）／`processDueBusyReply(charId)`（P96）— 已讀不回三件組：補回生成（追加「稍早在忙、已讀沒回，現在補回」指示）；觸發擲骰（基礎 15%、`workTime` 解析出 HH:MM–HH:MM 且命中提至 40%、深夜不觸發）；背景補發（到期的 pending 非串流補生成＋未讀＋通知＋`new-proactive-msg` 廣播）。三者共用新抽出的 `streamWithSystem()` 串流 helper
   - **主動訊息共用層**（P79–P81）：`isRecentlyActive(allMsgs)`（最後一則非 hv 距今 < 5 分鐘＝熱聊）、`buildProactiveHistory(history, task, active)`（指令放對話最尾端＋熱聊/冷場分支）、`PROACTIVE_KINDS`／`hasUnrepliedProactive(charId)`（防堆疊閘門）、`proactiveTimeAnchor()`（P81，**不依賴 `timeAware`**，強制注入當下時段，杜絕「早上問午餐」）、`PROACTIVE_NO_NARRATION`（P81，禁止主動訊息寫場景旁白）；5 個主動生成函式皆套用。4 個背景生成器寫入訊息後 `dispatchEvent('new-proactive-msg')`，供開著的 `ChatRoomView` 即時 `loadMessages`（P81）
   - **世界書注入**（P65）：`buildAIChatSetup` 掃描近 10 則訊息，命中詞條名稱／別名才把對應 `worlds` 詞條注入 system prompt（`worldCtx`），不觸發不佔 token
   - **圖片識別**（P65）：`sendUserMessage` 加 `image` 參數、`generateAIResponseStream` 加 `imageBase64`，`buildImgHistory()` 依 provider 轉成 Anthropic／OpenAI／Vertex 各自的圖片 content 格式
@@ -341,6 +354,24 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P96（2026-07-02）輕觸互動・心情打卡・已讀/已讀不回
+
+- **輕觸互動**：`ChatRoomView` 長按角色頭像（header `chat-hd-av` 與訊息旁 `msg-av`，沿用 380ms＋8px 閾值＋vibrate 的長按 pattern）→ `.msg-sheet` 樣式的 3×2 動作選單（拍拍/抱抱/摸摸頭/牽手/戳一下/親親）。動作以 `type:'touch'` 訊息落庫（`content` 為「（拍了拍你）」式短句 → 自然進 AI history，角色記得），渲染為置中系統行 `.touch-line`；`isCont` 將 touch 排除連續分組。回應走 `generateTouchResponseStream`（`kind:'touch'`、maxSegments 2）。
+- **心情打卡**：新服務 `services/mood.js`（見 §4）；`HomeView` 新增「今天的心情」卡片（未打卡）／chip（已打卡、可點開重選），資料存 settings `mood_log`。`buildAIChatSetup` 組 `moodCtx` 併入 `systemVolatile`——聊天與 5 種主動訊息全面生效，沒打卡零注入。
+- **已讀**：messages 軟欄位 `readAt`；正常送訊於生成前標記、已讀不回路徑延遲 0.5–2 秒標記。顯示規則 `showRead()`：僅最後一則使用者訊息、`readAt` 存在**或**其後已有 assistant 訊息（舊資料免遷移），渲染於 `.msg-time` 內的 `.msg-read` 小字。
+- **已讀不回**：`characters` 軟欄位 `busyRead`（預設 false，`CharEditView`「自動功能」toggle）。`sendMsg` 於生成前呼叫 `shouldBusyRead(c)` 擲骰（帶圖／編輯重傳／已有 pending 不觸發）；命中 → 存 `pending_busy_reply_<charId>`（dueAt = 2–6 分隨機）＋房內 `setTimeout` 到點 `generateBusyReplyStream` 補回。等待中再送訊息/輕觸 → `cancelBusyPending()` 取消、立即正常回覆；進房 `onMounted` 重掛 pending 計時器；離房後由 `App.vue` `runAllProactive` 前置的 `runBusyReplyCatchup()` → `processDueBusyReply()` 背景補生成（生成前驗證錨點訊息仍存在，正開著該房則跳過交給房內計時器；先摘牌再生成防雙重）。
+- **設計原則**：三功能皆為「軟欄位＋settings key」，資料庫免升版；預設行為與 P95 完全一致（不長按、不打卡、不開 busyRead 時零變化）。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/mood.js` | 新增——MOODS／`getTodayMood`／`setTodayMood`／`moodContext()` |
+| `services/chatEngine.js` | `moodCtx` 注入；新增 `streamWithSystem`／`generateTouchResponseStream`／`generateBusyReplyStream`／`shouldBusyRead`／`processDueBusyReply` |
+| `views/ChatRoomView.vue` | 頭像長按＋輕觸選單＋touch 行；`showRead` 已讀；已讀不回 queue/timer/補發；scoped CSS |
+| `views/HomeView.vue` | 心情卡片＋chip＋scoped CSS |
+| `views/CharEditView.vue` | 「已讀不回」toggle；預設物件加 `busyRead: false` |
+| `App.vue` | `runBusyReplyCatchup()` 前置於 `runAllProactive` |
+| `views/SettingsView.vue` | P95 → P96 |
 
 ### P95（2026-06-29）天氣感知
 

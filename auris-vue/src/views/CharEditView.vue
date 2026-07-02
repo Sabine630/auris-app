@@ -391,6 +391,13 @@
           </div>
           <div class="toggle-row">
             <div class="toggle-info">
+              <div class="toggle-name">已讀不回</div>
+              <div class="toggle-desc">忙碌時段（依上班時間推測）收到訊息時，角色可能先「已讀」、過幾分鐘才回覆並帶一句剛剛在忙什麼——更像真人的回覆節奏</div>
+            </div>
+            <div class="toggle" :class="{ on: char.busyRead }" @click="char.busyRead = !char.busyRead"><div class="toggle-knob"></div></div>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
               <div class="toggle-name">生理期關心</div>
               <div class="toggle-desc">讓這個角色知道你的生理期，聊天時體貼帶到，並在經期前後主動傳訊息關心（需先在「我的設定」開啟週期追蹤）</div>
             </div>
@@ -590,6 +597,7 @@ const char = ref({
   autoDiary: false,
   autoPost: false,
   proactiveMute: false,
+  busyRead: false,
   cycleCare: false,
   missYouEnabled: false,
   dailyQuestionEnabled: false,

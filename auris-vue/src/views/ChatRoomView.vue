@@ -5,7 +5,7 @@
       <div class="chat-hd-back" @click="$router.back()">
         <svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>
       </div>
-      <div class="chat-hd-av" id="chat-av">
+      <div class="chat-hd-av" id="chat-av" @touchstart="startAvatarPress" @touchmove="cancelAvatarPress" @touchend="cancelAvatarPress" @touchcancel="cancelAvatarPress" @mousedown="startAvatarPress" @mousemove="cancelAvatarPress" @mouseup="cancelAvatarPress" @mouseleave="cancelAvatarPress" @contextmenu.prevent>
         <img v-if="cAvatar && cAvatar.startsWith('data:')" :src="cAvatar" style="width:100%;height:100%;object-fit:cover;border-radius:10px">
         <span v-else>{{ cAvatar || '🌸' }}</span>
       </div>
@@ -64,6 +64,9 @@
             <div class="hv-text">{{ m.content }}</div>
           </div>
 
+          <!-- 輕觸互動動作行（P96）：置中系統式短行 -->
+          <div v-else-if="m.type === 'touch'" class="touch-line">{{ touchLineText(m) }}</div>
+
           <!-- User Message -->
           <div v-else-if="m.role === 'user'" class="msg-with-av me-side">
             <div v-if="!isCont(i)" class="msg-av">
@@ -75,14 +78,14 @@
               <img v-if="m.image" :src="m.image" class="msg-image msg-image-me" @click="viewImage(m.image)" />
               <div class="msg-bubble" :class="{ 'long-pressing': pressingMsgId === m.id }" :data-msg-id="m.id" data-role="user" v-html="m.content ? formatContent(m.content, globalStore.chatFormatStyle) : ''" @touchstart="startPress($event, m)" @touchmove="cancelPress" @touchend="cancelPress" @touchcancel="cancelPress" @mousedown="startPress($event, m)" @mousemove="cancelPress" @mouseup="cancelPress" @mouseleave="cancelPress" @contextmenu.prevent v-show="!!m.content"></div>
               <div v-if="m.reaction" class="msg-reaction" @click="removeReaction(m)">{{ m.reaction }}</div>
-              <div v-if="isLastInGroup(i)" class="msg-time">{{ fmtT(m.createdAt) }}</div>
+              <div v-if="isLastInGroup(i)" class="msg-time"><span v-if="showRead(m)" class="msg-read">已讀</span>{{ fmtT(m.createdAt) }}</div>
             </div>
           </div>
 
           <!-- AI Message -->
           <template v-else>
             <div v-if="!isCont(i)" class="msg-with-av">
-              <div class="msg-av">
+              <div class="msg-av" @touchstart="startAvatarPress" @touchmove="cancelAvatarPress" @touchend="cancelAvatarPress" @touchcancel="cancelAvatarPress" @mousedown="startAvatarPress" @mousemove="cancelAvatarPress" @mouseup="cancelAvatarPress" @mouseleave="cancelAvatarPress" @contextmenu.prevent>
                 <img v-if="cAvatar && cAvatar.startsWith('data:')" :src="cAvatar" style="width:100%;height:100%;object-fit:cover;border-radius:8px">
                 <span v-else>{{ cAvatar || '🌸' }}</span>
               </div>
@@ -333,14 +336,27 @@
       </div>
       <div class="msg-sheet-cancel" @click="activeMsg = null">取消</div>
     </div>
+
+    <!-- 輕觸互動選單（P96）：長按角色頭像觸發 -->
+    <div class="msg-sheet-mask show" v-if="showTouchSheet" @click="showTouchSheet = false"></div>
+    <div class="msg-sheet show" v-if="showTouchSheet">
+      <div style="padding:14px 16px 4px;text-align:center;font-size:13px;font-weight:400;color:var(--text-3)">對「{{ cName }}」做點什麼</div>
+      <div class="touch-grid">
+        <div v-for="a in TOUCH_ACTIONS" :key="a.label" class="touch-opt" @click="doTouchAction(a)">
+          <div class="touch-opt-emoji">{{ a.emoji }}</div>
+          <div class="touch-opt-label">{{ a.label }}</div>
+        </div>
+      </div>
+      <div class="msg-sheet-cancel" @click="showTouchSheet = false">取消</div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbIdx, dbDel, dbPut, getSetting } from '../services/db.js';
-import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, summarizeToMemory, hasUnrepliedProactive } from '../services/chatEngine.js';
+import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting } from '../services/db.js';
+import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive } from '../services/chatEngine.js';
 import { formatContent, splitReply } from '../services/format.js';
 import { estimateTokens } from '../services/tokens.js';
 import { globalStore } from '../store/index.js';
@@ -406,6 +422,72 @@ const pressingMsgId = ref(null);
 let pressTimer = null;
 let pressStartXY = null;
 const editingMsgRef = ref(null);
+
+// ── 輕觸互動（P96）──────────────────────────────────────────────────────
+// 長按角色頭像（header／訊息旁）跳出動作選單；動作以 type:'touch' 訊息落庫並進 AI history
+// （content 為第三人稱短句如「（拍了拍你）」），角色針對動作本身即時串流回應。
+const showTouchSheet = ref(false);
+const TOUCH_ACTIONS = [
+  { emoji: '🖐️', label: '拍拍',   ai: '（拍了拍你）',     line: (n) => `你拍了拍 ${n}` },
+  { emoji: '🤗', label: '抱抱',   ai: '（抱住了你）',     line: (n) => `你抱了抱 ${n}` },
+  { emoji: '🫳', label: '摸摸頭', ai: '（摸了摸你的頭）', line: (n) => `你摸了摸 ${n} 的頭` },
+  { emoji: '🤝', label: '牽手',   ai: '（牽起了你的手）', line: (n) => `你牽起了 ${n} 的手` },
+  { emoji: '👉', label: '戳一下', ai: '（戳了戳你）',     line: (n) => `你戳了戳 ${n}` },
+  { emoji: '😘', label: '親親',   ai: '（親了你一下）',   line: (n) => `你親了 ${n} 一下` }
+];
+let avatarPressTimer = null;
+let avatarPressXY = null;
+
+function startAvatarPress(e) {
+  if (isTyping.value) return;
+  const t = e.touches ? e.touches[0] : e;
+  avatarPressXY = { x: t.clientX, y: t.clientY };
+  avatarPressTimer = setTimeout(() => {
+    if (navigator.vibrate) navigator.vibrate(20);
+    showTouchSheet.value = true;
+  }, 380);
+}
+
+function cancelAvatarPress(e) {
+  if (e && (e.type === 'touchmove' || e.type === 'mousemove') && avatarPressXY) {
+    const t = e.touches ? e.touches[0] : e;
+    if (Math.abs(t.clientX - avatarPressXY.x) < 8 && Math.abs(t.clientY - avatarPressXY.y) < 8) return;
+  }
+  if (avatarPressTimer) { clearTimeout(avatarPressTimer); avatarPressTimer = null; }
+  avatarPressXY = null;
+}
+
+function touchLineText(m) {
+  const a = TOUCH_ACTIONS.find(x => x.label === m.touchAction);
+  return a ? a.line(cName.value) : `你對 ${cName.value} ${m.touchAction || ''}`;
+}
+
+async function doTouchAction(action) {
+  showTouchSheet.value = false;
+  if (isTyping.value) return;
+  await cancelBusyPending(); // 已讀不回等待中使用者來互動 → 視同追加訊息，取消延遲
+
+  const touchMsg = { id: 'msg_' + Date.now() + '_touch', charId, role: 'user', type: 'touch', touchAction: action.label, content: action.ai, createdAt: Date.now() };
+  await dbPut('messages', touchMsg);
+  messages.value.push(touchMsg);
+  scrollToBottom();
+
+  isTyping.value = true;
+  const rawMsgs = messages.value.filter(m => m.type !== 'hv');
+  try {
+    const { truncated } = await streamSegmentedReply(
+      (handlers) => generateTouchResponseStream(charId, rawMsgs, handlers, action.label)
+    );
+    if (truncated) window.toast_('⚠ 回覆可能被截斷');
+  } catch (err) {
+    console.error('Touch error:', err);
+    window.toast_('錯誤：' + err.message);
+  } finally {
+    isTyping.value = false;
+    if (pendingProactiveReload) reloadAfterProactive();
+    scheduleProactive();
+  }
+}
 
 // ── Memory Drawer State ──
 const showMemDrawer = ref(false);
@@ -506,6 +588,12 @@ onMounted(async () => {
   if (route.query.msg) scrollToMessage(route.query.msg);
   scheduleProactive();
 
+  // 已讀不回（P96）：有 pending 補回就接手——已過期立即補發、未到期重掛計時器
+  try {
+    const pendingBusy = await getSetting(BUSY_KEY);
+    if (pendingBusy) armBusyTimer(pendingBusy.dueAt);
+  } catch (_) {}
+
   // Listen for background Heart Voices
   window.addEventListener('new-heart-voice', onHeartVoice);
   // 背景派發器寫入主動訊息時，即時把這間聊天室的訊息重撈一次（E）
@@ -516,6 +604,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   clearTimeout(proactiveTimer);
+  clearTimeout(busyTimer); // pending key 留在 settings，由下次進房或 App.vue 背景派發接手
   proactiveController?.abort();
   window.removeEventListener('new-heart-voice', onHeartVoice);
   window.removeEventListener('new-proactive-msg', onProactiveMsg);
@@ -763,7 +852,23 @@ function isCont(i) {
   const prev = messages.value[i - 1];
   if (!prev) return false;
   if (m.type === 'hv' || prev.type === 'hv') return false;
+  if (m.type === 'touch' || prev.type === 'touch') return false; // 動作行是置中系統行，不參與連續分組
   return prev.role === m.role && (m.createdAt - prev.createdAt) < 120000;
+}
+
+// 已讀顯示（P96）：只標「最後一則使用者文字訊息」（LINE 式）。
+// 條件：有 readAt（busy/正常流程標記）或其後已有 assistant 訊息（舊資料免遷移）。
+function showRead(m) {
+  const list = messages.value;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const x = list[i];
+    if (x.role === 'user' && x.type !== 'touch') {
+      if (x.id !== m.id) return false;
+      if (x.readAt) return true;
+      return list.slice(i + 1).some(y => y.role === 'assistant');
+    }
+  }
+  return false;
 }
 
 // 該則是否為同組最後一則（下一則不是它的連續訊息 → 時間掛在這裡，整組結束後才顯示）
@@ -862,16 +967,81 @@ async function streamSegmentedReply(genFn) {
   }
 }
 
+// ── 已讀不回（P96）─────────────────────────────────────────────────────────
+// 角色開啟 busyRead 時，忙碌時段收到訊息有機率「只已讀、不出現輸入中」，數分鐘後才補回。
+// pending 落地在 settings（key: pending_busy_reply_{charId}），關 app 後由下次進房或
+// App.vue 背景派發補發；等待期間使用者再傳訊息／輕觸 → 取消延遲、立即正常回覆。
+let busyTimer = null;
+const BUSY_KEY = 'pending_busy_reply_' + charId;
+
+async function queueBusyReply(userMsg) {
+  const dueAt = Date.now() + (2 + Math.random() * 4) * 60 * 1000; // 2–6 分隨機
+  await setSetting(BUSY_KEY, { dueAt, queuedAt: Date.now(), msgId: userMsg.id });
+  // 0.5–2 秒後才浮現「已讀」（比 typing 慢半拍才像瞄了一眼手機）
+  setTimeout(async () => {
+    try {
+      if (!(await getSetting(BUSY_KEY))) return; // 期間已取消 → 正常流程自己會標
+      const stored = await dbGet('messages', userMsg.id);
+      if (stored) {
+        stored.readAt = Date.now();
+        await dbPut('messages', stored);
+        const live = messages.value.find(x => x.id === userMsg.id);
+        if (live) live.readAt = stored.readAt;
+      }
+    } catch (_) {}
+  }, 500 + Math.random() * 1500);
+  armBusyTimer(dueAt);
+}
+
+function armBusyTimer(dueAt) {
+  clearTimeout(busyTimer);
+  busyTimer = setTimeout(fireBusyReply, Math.max(0, dueAt - Date.now()));
+}
+
+async function cancelBusyPending() {
+  clearTimeout(busyTimer);
+  busyTimer = null;
+  try { if (await getSetting(BUSY_KEY)) await setSetting(BUSY_KEY, null); } catch (_) {}
+}
+
+async function fireBusyReply() {
+  const pending = await getSetting(BUSY_KEY);
+  if (!pending) return;
+  if (isTyping.value || isProactiveGenerating.value) { armBusyTimer(Date.now() + 30000); return; }
+  // 對應的使用者訊息已被刪（清空／編輯重傳）→ 丟棄
+  const anchor = await dbGet('messages', pending.msgId);
+  if (!anchor) { await setSetting(BUSY_KEY, null); return; }
+  await setSetting(BUSY_KEY, null); // 先摘牌再生成，避免與 App.vue 背景派發重複處理
+
+  isTyping.value = true;
+  const rawMsgs = messages.value.filter(m => m.type !== 'hv');
+  try {
+    await streamSegmentedReply((handlers) => generateBusyReplyStream(charId, rawMsgs, handlers));
+  } catch (err) {
+    console.error('Busy reply error:', err);
+  } finally {
+    isTyping.value = false;
+    if (pendingProactiveReload) reloadAfterProactive();
+    scheduleProactive();
+    maybeAutoSummarize();
+  }
+}
+
 async function sendMsg() {
   const content = inputContent.value.trim();
   if ((!content && !pendingImage.value) || isTyping.value) return;
 
+  const wasEditing = !!editingMsgRef.value;
   if (editingMsgRef.value) {
     const toDelete = messages.value.filter(x => x.createdAt >= editingMsgRef.value.createdAt);
     for (const x of toDelete) await dbDel('messages', x.id);
     messages.value = messages.value.filter(x => x.createdAt < editingMsgRef.value.createdAt);
     editingMsgRef.value = null;
   }
+
+  // 已讀不回等待中又傳了訊息 → 取消延遲，本輪立即正常回覆（人被連傳就會回了）
+  const hadBusyPending = !!(await getSetting(BUSY_KEY));
+  if (hadBusyPending) await cancelBusyPending();
 
   const imgToSend = pendingImage.value;
   const userMsg = await sendUserMessage(charId, content, imgToSend);
@@ -880,6 +1050,18 @@ async function sendMsg() {
   pendingImage.value = null;
   autoResize();
   scrollToBottom();
+
+  // 已讀不回擲骰（P96）：帶圖／編輯重傳／已有 pending 時不觸發，維持既有即回體驗
+  if (!imgToSend && !wasEditing && !hadBusyPending && shouldBusyRead(character.value)) {
+    await queueBusyReply(userMsg);
+    return;
+  }
+
+  // 正常流程：開始回覆即視為已讀
+  try {
+    userMsg.readAt = Date.now();
+    await dbPut('messages', { ...userMsg });
+  } catch (_) {}
 
   isTyping.value = true;
   const rawMsgs = messages.value.filter(m => m.type !== 'hv');
@@ -1235,6 +1417,38 @@ async function doRegenerate(m) {
   padding: 12px 0 4px;
   letter-spacing: .04em;
 }
+
+/* ── 輕觸互動（P96）── */
+.touch-line {
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 300;
+  color: var(--text-3);
+  padding: 8px 0 2px;
+  letter-spacing: .04em;
+}
+.touch-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 10px 18px 14px;
+}
+.touch-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform .12s ease, background .15s ease;
+}
+.touch-opt:active { transform: scale(1.12); background: var(--rose-pale); }
+.touch-opt-emoji { font-size: 26px; line-height: 1; }
+.touch-opt-label { font-size: 12px; font-weight: 300; color: var(--text-2, var(--text)); }
+
+/* ── 已讀指示（P96）── */
+.msg-read { margin-right: 5px; color: var(--text-3); }
 
 /* ── Image Attachment ── */
 .chat-img-preview {
