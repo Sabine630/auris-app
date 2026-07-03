@@ -49,6 +49,7 @@ import { getSetting, setSetting, dbAll, dbIdx, dbGet } from './services/db.js';
 import { generateDiary, generatePost } from './services/contentEngine.js';
 import { generateCycleCareMessage, generateScheduleMessage, generateMissYouMessage, generateDailyQuestion, hasUnrepliedProactive, processDueBusyReply } from './services/chatEngine.js';
 import { getCyclePhase } from './services/cycle.js';
+import { localDateKey } from './services/date.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
@@ -168,7 +169,7 @@ watch(() => globalStore.theme, syncRootBg);
 
 async function runDailyAutoGen() {
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateKey();
     const lastDate = await getSetting('last_auto_gen_date');
     if (lastDate === today) return;
     await setSetting('last_auto_gen_date', today);
@@ -214,7 +215,7 @@ async function runProactiveDispatch() {
     // 勿擾時段直接整輪略過（環境問候不該半夜冒出來）
     if (inQuietHours()) return;
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateKey();
     const now = Date.now();
 
     // 生理期觸發判斷（全域，依玩家經期設定）：預測經期開始日 / 經期前 2 天
@@ -274,7 +275,7 @@ async function runScheduleTriggers() {
     const chars = await dbAll('characters');
     const now = new Date();
     const nowHHMM = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    const today = now.toISOString().slice(0, 10);
+    const today = localDateKey(now);
     for (const c of chars) {
       if (!c.scheduleTriggers || !c.scheduleTriggers.length) continue;
       // 角色已暫停所有主動訊息（總開關）

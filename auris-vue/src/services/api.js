@@ -71,11 +71,27 @@ export async function getVertexToken(sa) {
   return _vtok;
 }
 
+// 各 provider 未設定 api_model 時的預設款（僅在 onboarding/設定頁未寫入時作為保底）。
+// 皆為當下該家「中階主力、非 preview」的現行模型；provider 值：openai/anthropic/google/openrouter/vertex。
+export function getDefModel(provider) {
+  if (provider === 'anthropic') return 'claude-sonnet-5';
+  if (provider === 'google') return 'gemini-3.5-flash';
+  if (provider === 'vertex') return 'gemini-2.5-flash';   // Vertex 上以 2.5 為穩定可用款
+  if (provider === 'openrouter') return 'openai/gpt-4o-mini';
+  return 'gpt-5.4-mini';
+}
+
+// GPT-5 系列與 o 系列是「推理型」模型：只接受 temperature 預設值(1)，並會拒絕 frequency/presence_penalty。
+// 對這些模型一律不送取樣參數（送了會 400）。用模型名判斷即可，跨 provider 通用（含 openrouter 的 openai/ 前綴）。
+export function isReasoningModel(model) {
+  return /(?:^|\/)(?:gpt-5|o[1-9])/i.test(model || '');
+}
+
 export async function sendLLMRequest(messages, customConfig = {}) {
   const provider = await getSetting('api_provider');
   const key = await getSetting('api_key');
   let base = await getSetting('api_base');
-  const model = await getSetting('api_model') || 'gpt-4o-mini';
+  const model = await getSetting('api_model') || getDefModel(provider);
 
   if (!key) throw new Error('API 金鑰未設定');
 
@@ -97,8 +113,8 @@ export async function sendLLMRequest(messages, customConfig = {}) {
         parts: [{ text: m.content }]
       })),
       generationConfig: {
-        maxOutputTokens: customConfig.max_tokens || 800,
-        temperature: customConfig.temperature || 0.8
+        maxOutputTokens: customConfig.max_tokens ?? 800,
+        temperature: customConfig.temperature ?? 0.8
       }
     };
     if (systemMsg) body.systemInstruction = { parts: [{ text: systemMsg.content }] };
@@ -110,11 +126,14 @@ export async function sendLLMRequest(messages, customConfig = {}) {
   }
 
   // OpenAI 相容格式（OpenAI / Anthropic / Google AI Studio）
+  // Anthropic 現行款（Sonnet 5 / Opus 4.x）與 OpenAI 推理型（GPT-5/o 系列）都會拒絕非預設 temperature，
+  // 一律不送（值為 undefined 時 JSON.stringify 會自動略過該 key）。串流主聊天的 anthropic 分支本就沒送，這裡對齊。
+  const omitSampling = provider === 'anthropic' || isReasoningModel(model);
   const payload = {
     model,
     messages,
-    max_tokens: customConfig.max_tokens || 800,
-    temperature: customConfig.temperature || 0.8,
+    max_tokens: customConfig.max_tokens ?? 800,
+    temperature: omitSampling ? undefined : (customConfig.temperature ?? 0.8),
   };
 
   let url;
@@ -134,9 +153,9 @@ export async function sendLLMRequest(messages, customConfig = {}) {
     }
     headers['Authorization'] = `Bearer ${key}`;
     url = `${base}/chat/completions`;
-    if (provider === 'openai') {
-      payload.frequency_penalty = customConfig.frequency_penalty || 0.5;
-      payload.presence_penalty = customConfig.presence_penalty || 0.2;
+    if (provider === 'openai' && !isReasoningModel(model)) {
+      payload.frequency_penalty = customConfig.frequency_penalty ?? 0.5;
+      payload.presence_penalty = customConfig.presence_penalty ?? 0.2;
     }
   }
 

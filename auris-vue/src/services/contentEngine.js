@@ -1,6 +1,7 @@
 import { dbGet, dbPut, dbIdx, getSetting } from './db.js';
 import { sendLLMRequest } from './api.js';
 import { timeAnchorLine } from './chatEngine.js';
+import { localDateKey } from './date.js';
 
 function buildRecentChat(msgs, charName, userLabel, count, maxLen) {
   return msgs.slice(0, count).reverse().map(m =>
@@ -221,7 +222,7 @@ export async function generateDiary(charId) {
 
   const n = new Date();
   const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-  const today = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  const today = localDateKey(n);
 
   const sysPrompt = `你是「${c.name}」。個性：${c.persona || ''}。
 今天是 ${n.getFullYear()}年${n.getMonth() + 1}月${n.getDate()}日，星期${weekdays[n.getDay()]}。

@@ -1,4 +1,5 @@
 import { getSetting, setSetting } from './db.js';
+import { localDateKey } from './date.js';
 
 // ── 心情打卡（P96）──────────────────────────────────────────────────────────
 // 使用者每天在首頁標記心情（5 選項＋選填備註），存 settings 表單一 key `mood_log`：
@@ -15,7 +16,7 @@ export const MOODS = [
 ];
 
 export function moodTodayKey() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateKey();
 }
 
 export async function getTodayMood() {

@@ -120,9 +120,9 @@ const MODELS = {
     { id: 'gpt-4o-mini',  name: 'GPT-4o mini',     desc: '前代輕量，廣泛相容' },
   ],
   anthropic: [
-    { id: 'claude-opus-4-7',          name: 'Claude Opus 4.7',   desc: '最新旗艦，最強推理' },
-    { id: 'claude-sonnet-4-6',        name: 'Claude Sonnet 4.6', desc: '推薦：速度與智能兼顧' },
-    { id: 'claude-haiku-4-5-20251001',name: 'Claude Haiku 4.5',  desc: '最快最省' },
+    { id: 'claude-opus-4-8',  name: 'Claude Opus 4.8',   desc: '最新旗艦，最強推理' },
+    { id: 'claude-sonnet-5',  name: 'Claude Sonnet 5',   desc: '推薦：速度與智能兼顧' },
+    { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5',  desc: '最快最省' },
   ],
   google: GOOGLE_MODELS,
   vertex: VERTEX_MODELS,

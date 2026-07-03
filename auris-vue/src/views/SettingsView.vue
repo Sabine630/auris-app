@@ -121,10 +121,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P96
+        Auris · P97
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P96 互動真實感三連發：輕觸互動（長按頭像拍拍/抱抱/摸摸頭…角色即時反應）・心情打卡（首頁標記今日心情，角色會體貼感知）・已讀與已讀不回（訊息顯示已讀；忙碌時段可能過幾分鐘才回，逐角色開關）
+        P97 健檢修正 A：預設模型更新至各家現行款（Claude Sonnet 5／Gemini 3.5 Flash／GPT-5.4 mini）並修好推理型模型（GPT-5/o 系列、Claude 現行款）會拒絕 temperature 而 400 的既有問題・「每天一次」判定改用本地時區（早上打卡/每日一問/自動日記不再因 UTC 偏移 8 小時）・數值參數 fallback 改用 ?? 修掉 0 被吃掉的陷阱
       </div>
     </div>
   </div>

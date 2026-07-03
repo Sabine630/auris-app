@@ -1,5 +1,5 @@
 import { dbGet, dbPut, dbIdx, dbAll, getSetting, setSetting } from './db.js';
-import { fetchWithTimeout, sendLLMRequest, getVertexToken } from './api.js';
+import { fetchWithTimeout, sendLLMRequest, getVertexToken, getDefModel, isReasoningModel } from './api.js';
 import { getCyclePhase, cycleCareContext } from './cycle.js';
 import { splitReply } from './format.js';
 import { estimateTokens } from './tokens.js';
@@ -36,12 +36,6 @@ async function persistReplySegments(charId, fullText, { maxSegments = 3, kind = 
   });
   for (const m of msgs) await dbPut('messages', m);
   return msgs;
-}
-
-function getDefModel(provider) {
-  if (provider === 'anthropic') return 'claude-3-5-sonnet-20240620';
-  if (provider === 'google') return 'gemini-1.5-flash';
-  return 'gpt-4o-mini';
 }
 
 function getDefBase(provider) {
@@ -445,7 +439,7 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
     const r = await fetchWithTimeout(`${base}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: finalSystemPrompt }, ...buildImgHistory('openai')], stream: true })
+      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, temperature: isReasoningModel(model) ? undefined : (c.temperature ?? 0.8), messages: [{ role: 'system', content: finalSystemPrompt }, ...buildImgHistory('openai')], stream: true })
     }, 90000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
     ({ truncated } = await parseSSEStream(r, 'openai', accumulate));
@@ -610,7 +604,7 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
     const r = await fetchWithTimeout(`${base}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, max_tokens: 2000, temperature: c.temperature ?? 0.85, messages: [{ role: 'system', content: proactivePrompt }, ...proactiveHistory], stream: true }),
+      body: JSON.stringify({ model, max_tokens: 2000, temperature: isReasoningModel(model) ? undefined : (c.temperature ?? 0.85), messages: [{ role: 'system', content: proactivePrompt }, ...proactiveHistory], stream: true }),
       signal
     }, 90000);
     if (!r.ok) { const d = await r.json(); throw new Error(d.error?.message || `HTTP ${r.status}`); }
@@ -660,7 +654,7 @@ async function streamWithSystem({ c, provider, model, base, apiKey }, sysPrompt,
     const r = await fetchWithTimeout(`${base}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, max_tokens: maxTokens, temperature: c.temperature ?? 0.85, messages: [{ role: 'system', content: sysPrompt }, ...history], stream: true })
+      body: JSON.stringify({ model, max_tokens: maxTokens, temperature: isReasoningModel(model) ? undefined : (c.temperature ?? 0.85), messages: [{ role: 'system', content: sysPrompt }, ...history], stream: true })
     }, 90000);
     if (!r.ok) { const d = await r.json(); throw new Error(d.error?.message || `HTTP ${r.status}`); }
     ({ truncated } = await parseSSEStream(r, provider, accumulate));
@@ -1030,7 +1024,7 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
     const r = await fetchWithTimeout(base + '/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-      body: JSON.stringify({ model, max_tokens: 4000, temperature: c.temperature ?? 0.8, messages: [{ role: 'system', content: systemPrompt }, ...fallbackHistory], stream: true })
+      body: JSON.stringify({ model, max_tokens: 4000, temperature: isReasoningModel(model) ? undefined : (c.temperature ?? 0.8), messages: [{ role: 'system', content: systemPrompt }, ...fallbackHistory], stream: true })
     }, 90000);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
     onStart?.();

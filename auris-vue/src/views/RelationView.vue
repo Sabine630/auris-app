@@ -79,6 +79,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, getSetting } from '../services/db.js';
+import { localDateKey } from '../services/date.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -98,7 +99,7 @@ onMounted(async () => {
   msgCount.value = msgs.length;
   if (msgs.length) {
     msgs.sort((a, b) => a.createdAt - b.createdAt);
-    firstMsgDate.value = new Date(msgs[0].createdAt).toISOString().slice(0, 10);
+    firstMsgDate.value = localDateKey(new Date(msgs[0].createdAt));
   }
   me.value = await getSetting('me_settings') || {};
 });
