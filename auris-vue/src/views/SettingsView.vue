@@ -121,10 +121,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P97
+        Auris · P98
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P97 健檢修正 A：預設模型更新至各家現行款（Claude Sonnet 5／Gemini 3.5 Flash／GPT-5.4 mini）並修好推理型模型（GPT-5/o 系列、Claude 現行款）會拒絕 temperature 而 400 的既有問題・「每天一次」判定改用本地時區（早上打卡/每日一問/自動日記不再因 UTC 偏移 8 小時）・數值參數 fallback 改用 ?? 修掉 0 被吃掉的陷阱
+        P98 背景派發強化：主動訊息去重改為「生成成功後才寫」＋當日最多重試 3 次（斷網／額度用完不再靜默丟失當天內容）・背景掃描改用索引計數與 cursor（不再每 5 分鐘整包載入聊天記錄，記錄多也不卡）・主動訊息任務描述改單一來源（維護不再漏改）
       </div>
     </div>
   </div>

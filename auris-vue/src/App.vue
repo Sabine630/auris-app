@@ -45,7 +45,7 @@
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from './store/index.js';
-import { getSetting, setSetting, dbAll, dbIdx, dbGet } from './services/db.js';
+import { getSetting, setSetting, dbAll, dbIdx, dbIdxCount, dbGet, dbDel } from './services/db.js';
 import { generateDiary, generatePost } from './services/contentEngine.js';
 import { generateCycleCareMessage, generateScheduleMessage, generateMissYouMessage, generateDailyQuestion, hasUnrepliedProactive, processDueBusyReply } from './services/chatEngine.js';
 import { getCyclePhase } from './services/cycle.js';
@@ -172,20 +172,29 @@ async function runDailyAutoGen() {
     const today = localDateKey();
     const lastDate = await getSetting('last_auto_gen_date');
     if (lastDate === today) return;
-    await setSetting('last_auto_gen_date', today);
+    // 去重 key 改為「跑完之後」才寫（#4）：原本先寫 key 再生成，整批 API 失敗（斷網／額度）
+    // 時當天內容靜默丟失、不再重試。
 
     const chars = await dbAll('characters');
     let count = 0;
+    let hadError = false;
     for (const c of chars) {
       if (c.autoDiary) {
         const diaries = await dbIdx('diary', 'charId', c.id);
         if (!diaries.some(d => d.date === today)) {
-          try { const r = await generateDiary(c.id); if (r) count++; } catch (_) {}
+          try { const r = await generateDiary(c.id); if (r) count++; } catch (_) { hadError = true; }
         }
       }
       if (c.autoPost) {
-        try { const r = await generatePost(c.id); if (r) count++; } catch (_) {}
+        try { const r = await generatePost(c.id); if (r) count++; } catch (_) { hadError = true; }
       }
+    }
+    // 整批全失敗（有嘗試但一則都沒成功）就不寫 key，下次開 app 重試；沒有任何自動項目要跑
+    // （count 0 且無錯）仍寫 key，避免每次開 app 空轉。
+    // 貼文無獨立當日去重，但因 key 只在 count>0（至少一則成功）時寫，重試只發生在「一則都沒成功」時，
+    // 屆時沒有既存貼文可重複——日記另有 diaries.some 天然去重，故無重複風險。
+    if (!(count === 0 && hadError)) {
+      await setSetting('last_auto_gen_date', today);
     }
     if (count > 0) window.toast_?.(`已自動生成今日內容（${count} 則）`);
   } catch (_) {}
@@ -203,6 +212,20 @@ async function lastProactiveAt(charId) {
 function inQuietHours() {
   const h = new Date().getHours();
   return h >= 23 || h < 8;
+}
+
+// 生成成功才寫當天去重 key（#4）；失敗則靠當日重試計數（最多 3 次）——達上限即視同已發，
+// 避免壞掉的設定（斷網／額度用完）每個 min-gap 週期都重打一次 API。
+// last_proactive_ 一律在嘗試前寫，維持「剛嘗試過主動就先別再疊」的 min-gap 語意
+// （連帶讓失敗重試自然被 3 小時間隔錯開，不會每 5 分鐘硬打）。
+async function dispatchProactive({ charId, dedupKey, tryKey, today, now, gen }) {
+  await setSetting('last_proactive_' + charId, now);
+  const rec = await getSetting(tryKey);
+  const count = (rec && rec.date === today ? rec.count : 0) + 1;
+  await setSetting(tryKey, { date: today, count });
+  let ok = false;
+  try { ok = !!(await gen()); } catch (_) {}
+  if (ok || count >= 3) await setSetting(dedupKey, today);
 }
 
 // 統一派發「想你／每日一問／生理期關心」三種環境主動訊息：開 app＋每 5 分鐘各跑一次。
@@ -240,24 +263,23 @@ async function runProactiveDispatch() {
       // 閘門 2：距上一則主動訊息未滿間隔，先不發
       if (now - (await lastProactiveAt(c.id)) < PROACTIVE_MIN_GAP_MS) continue;
 
-      const msgs = await dbIdx('messages', 'charId', c.id);
+      // 只需要「訊息數是否達門檻」，用 index 計數即可，不整包載入（#8）。
+      const msgCount = await dbIdxCount('messages', 'charId', c.id);
 
       // 生理期關心（需有基本對話量，避免對剛建的陌生角色就發）
-      if (cycleTrigger && c.cycleCare && msgs.length >= 3 && (await getSetting('cycle_care_' + c.id)) !== today) {
-        await setSetting('cycle_care_' + c.id, today);
-        await setSetting('last_proactive_' + c.id, now);
-        try { await generateCycleCareMessage(c.id, cycleTrigger); } catch (_) {}
+      if (cycleTrigger && c.cycleCare && msgCount >= 3 && (await getSetting('cycle_care_' + c.id)) !== today) {
+        await dispatchProactive({ charId: c.id, dedupKey: 'cycle_care_' + c.id, tryKey: 'cycle_care_try_' + c.id, today, now, gen: () => generateCycleCareMessage(c.id, cycleTrigger) });
         return; // 全域每輪最多一則
       }
       // 每日一問
-      if (c.dailyQuestionEnabled && msgs.length >= 3 && (await getSetting('daily_q_' + c.id)) !== today) {
-        await setSetting('daily_q_' + c.id, today);
-        await setSetting('last_proactive_' + c.id, now);
-        try { await generateDailyQuestion(c.id); } catch (_) {}
+      if (c.dailyQuestionEnabled && msgCount >= 3 && (await getSetting('daily_q_' + c.id)) !== today) {
+        await dispatchProactive({ charId: c.id, dedupKey: 'daily_q_' + c.id, tryKey: 'daily_q_try_' + c.id, today, now, gen: () => generateDailyQuestion(c.id) });
         return; // 全域每輪最多一則
       }
       // 我想你（每天只擲一次 40% 機率：擲過就寫 key，當天不再重擲，避免「偶爾」變成「幾乎必發」）
-      if (c.missYouEnabled && msgs.length >= 5 && (await getSetting('miss_you_' + c.id)) !== today) {
+      // #4 註記：此處刻意「不」改成成功後才寫 key。miss_you_ 記錄的是「今天擲過骰」而非「發成功」——
+      // 生成失敗就當作今天沒想起，符合功能個性；若改成失敗重試會讓「偶爾想你」失去隨機感。勿誤修。
+      if (c.missYouEnabled && msgCount >= 5 && (await getSetting('miss_you_' + c.id)) !== today) {
         await setSetting('miss_you_' + c.id, today);
         if (Math.random() <= 0.4) {
           await setSetting('last_proactive_' + c.id, now);
@@ -276,6 +298,23 @@ async function runScheduleTriggers() {
     const now = new Date();
     const nowHHMM = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     const today = localDateKey(now);
+
+    // 每日一次：清 7 天前的 sched_sent_/sched_try_ key（#4）。這些 key 是「每角色每時段每天」
+    // 一顆，settings 無前綴查詢、不清會隨天數無限成長。撈全表過濾（一天只跑一次，成本可忽略）。
+    if ((await getSetting('sched_cleanup_date')) !== today) {
+      await setSetting('sched_cleanup_date', today);
+      try {
+        const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - 7);
+        const cutoffKey = localDateKey(cutoff);
+        for (const row of await dbAll('settings')) {
+          const k = row.key;
+          if (!k || (!k.startsWith('sched_sent_') && !k.startsWith('sched_try_'))) continue;
+          const m = k.match(/(\d{4}-\d{2}-\d{2})$/);
+          if (m && m[1] < cutoffKey) await dbDel('settings', k);
+        }
+      } catch (_) {}
+    }
+
     for (const c of chars) {
       if (!c.scheduleTriggers || !c.scheduleTriggers.length) continue;
       // 角色已暫停所有主動訊息（總開關）
@@ -293,11 +332,17 @@ async function runScheduleTriggers() {
         const lateBy = nowMins - triggerMins;
         if (lateBy < -4 || lateBy > 60) continue;
         const key = `sched_sent_${c.id}_${t.time}_${today}`;
-        const sent = await getSetting(key);
-        if (sent) continue;
-        await setSetting(key, true);
+        if (await getSetting(key)) continue;
+        // 去重 key 改成功後才寫（#4）＋當日重試計數（最多 3 次）。定時提醒不受 min-gap 限制，
+        // 失敗時後續 5 分鐘掃描會重試——仍受 -4~+60 分容差視窗約束，超窗自然放棄（明天 key 不同）。
+        // tryKey 已含日期（每日新 key），計數用單純數字即可。
+        const tryKey = `sched_try_${c.id}_${t.time}_${today}`;
+        const tryCount = ((await getSetting(tryKey)) || 0) + 1;
+        await setSetting(tryKey, tryCount);
         await setSetting('last_proactive_' + c.id, Date.now());
-        try { await generateScheduleMessage(c.id, t.desc); } catch (_) {}
+        let ok = false;
+        try { ok = !!(await generateScheduleMessage(c.id, t.desc)); } catch (_) {}
+        if (ok || tryCount >= 3) await setSetting(key, true);
         return; // 本輪只發一則：相近時間的多個定時提醒會在後續 5 分鐘掃描中自然錯開（F）
       }
     }

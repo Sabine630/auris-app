@@ -2,7 +2,7 @@ let db = null;
 
 export function initDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('auris', 6);
+    const r = indexedDB.open('auris', 7);
     r.onupgradeneeded = (e) => {
       const d = e.target.result;
       [
@@ -26,6 +26,15 @@ export function initDB() {
         }
       });
       if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings', { keyPath: 'key' });
+
+      // v7：messages 補建複合 index（charId + createdAt），供背景派發用 cursor 取「某角色最新 N 則」
+      // 與計數查詢，取代每 5 分鐘全量 getAll。用 upgrade transaction 取 store，
+      // 「全新安裝（上面 loop 剛建好）」與「v6 升 v7（既有 store）」兩條路徑皆適用；
+      // IndexedDB 對既有資料加 index 會自動回填，不動既有內容、安全。
+      const ms = e.target.transaction.objectStore('messages');
+      if (!ms.indexNames.contains('charId_createdAt')) {
+        ms.createIndex('charId_createdAt', ['charId', 'createdAt'], { unique: false });
+      }
     };
     r.onsuccess = (e) => {
       db = e.target.result;
@@ -42,6 +51,24 @@ export const dbPut = (s, v) => new Promise((r, j) => { const tx = db.transaction
 export const dbGet = (s, k) => new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); tx.objectStore(s).get(k).onsuccess = e => r(e.target.result); tx.onerror = j; });
 export const dbAll = (s) => new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); tx.objectStore(s).getAll().onsuccess = e => r(e.target.result); tx.onerror = j; });
 export const dbIdx = (s, i, v) => new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); tx.objectStore(s).index(i).getAll(v).onsuccess = e => r(e.target.result); tx.onerror = j; });
+// 用 index 計數（不撈資料本體）。背景派發判斷「訊息數 ≥ N」用它，避免全量 getAll 進記憶體。
+export const dbIdxCount = (s, i, v) => new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); tx.objectStore(s).index(i).count(v).onsuccess = e => r(e.target.result); tx.onerror = j; });
+// 取某角色「最新 N 則」訊息（用複合 index charId_createdAt 逆向 cursor，不整包 getAll）。
+// 回傳陣列以「舊 → 新」排序，與既有 sort((a,b)=>a.createdAt-b.createdAt) 的結果一致。
+// 範圍用 array 前綴界定：[charId] < [charId, 任何值] < [charId, []]，
+// 避免對 createdAt 上界用 Infinity（IndexedDB key 相容性較不確定）。
+export const dbLatestByChar = (charId, n) => new Promise((r, j) => {
+  const tx = db.transaction('messages', 'readonly');
+  const idx = tx.objectStore('messages').index('charId_createdAt');
+  const range = IDBKeyRange.bound([charId], [charId, []]);
+  const out = [];
+  idx.openCursor(range, 'prev').onsuccess = (e) => {
+    const cur = e.target.result;
+    if (cur && out.length < n) { out.push(cur.value); cur.continue(); }
+    else r(out.reverse());
+  };
+  tx.onerror = j;
+});
 export const dbDel = (s, k) => new Promise((r, j) => { const tx = db.transaction(s, 'readwrite'); tx.objectStore(s).delete(k).onsuccess = () => r(); tx.onerror = j; });
 export const dbClear = (s) => new Promise((r, j) => { const tx = db.transaction(s, 'readwrite'); tx.objectStore(s).clear().onsuccess = () => r(); tx.onerror = j; });
 
