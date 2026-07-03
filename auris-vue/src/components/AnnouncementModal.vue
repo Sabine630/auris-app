@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P95 更新公告</div>
+      <div class="ann-badge">P100 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,36 +16,36 @@
               <div class="ann-title">近期更新</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">角色感知天氣了 🌦️</div>
-                  <div class="ann-item-desc">開啟「天氣感知」的角色，會知道你所在地的當下天氣——下雨可能叮嚀你帶傘、晴天可能說說陽光，讓對話多一點臨場感。定位用手機瀏覽器原生功能，天氣資料來自 Open-Meteo，完全免費。</div>
+                  <div class="ann-item-title">長按頭像，親暱互動 🤗</div>
+                  <div class="ann-item-desc">在聊天室長按對方的頭像，可以拍拍、抱抱、摸摸頭…角色會即時對這個動作本身做出反應——害羞、開心、彆扭、吐槽都有可能，看你們的關係與他的個性。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">心聲不再顯示不完整 🔧</div>
-                  <div class="ann-item-desc">修正部分模型（尤其是會「先思考」的推理型模型）生成心聲時被截斷、句子斷在一半的問題。之後新生成的內心話都會完整成句。（已存的舊殘句不會自動修復，可在「心聲 → 管理」手動刪除）</div>
+                  <div class="ann-item-title">今天的心情，角色會在意 🌈</div>
+                  <div class="ann-item-desc">首頁多了「今天的心情」打卡。選一個心情（還能寫一句備註），聊天時角色會自然地感知你當下的狀態，關心得更貼心。沒打卡就完全不影響。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">貼文與留言可以管理了 🗂️</div>
-                  <div class="ann-item-desc">貼文可以「編輯／重新生成／刪除」（卡片或詳情頁右上「⋯」）；每則留言長按可「複製／編輯／刪除」，角色的回覆還能「重新生成」。AI 講錯或不滿意都能就地修掉。</div>
+                  <div class="ann-item-title">已讀不回，更像真人 💬</div>
+                  <div class="ann-item-desc">開啟後，角色在忙碌時段可能「已讀」你的訊息、隔幾分鐘才回，回來時還會順口提一句剛剛在忙什麼。忙碌時段依角色的作息推測。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">角色回覆認得你本人 💬</div>
-                  <div class="ann-item-desc">角色回覆你在貼文下的留言時，會認得「留言的人就是貼文裡稱呼的對象本人」，不再把你當成第三方陌生人（例如用「她」來指你）。</div>
+                  <div class="ann-item-title">群組裡不再失憶 👥</div>
+                  <div class="ann-item-desc">群聊時角色現在會記得自己的背景故事、近況與喜好，回應更貼合人設，不再像換了個人。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">角色更有時間感 🕐</div>
-                  <div class="ann-item-desc">開啟「時間感」的角色，聊天與貼文提到的星期、時段、日期會對齊現在，不再把星期三講成星期四。</div>
+                  <div class="ann-item-title">每日功能校準到你的時區 🕐</div>
+                  <div class="ann-item-desc">每日一問、心情、自動日記的「今天」改用你當地時間判定，不會再在半夜或早上莫名其妙換日。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">範例對話，抓住角色的聲音 🎭</div>
-                  <div class="ann-item-desc">角色設定可填幾組「你說／角色怎麼回」的範例對話，AI 會模仿那種語氣與用詞——這是讓角色「說話像本人」最有效的方式。</div>
+                  <div class="ann-item-title">主動訊息更可靠 🔔</div>
+                  <div class="ann-item-desc">角色的主動關心（生理期關心、每日一問、定時提醒等）遇到斷網或 API 額度用完時，不再默默消失，當天會自動重試。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">貼文回覆更貼合人設 🌸</div>
-                  <div class="ann-item-desc">角色回覆貼文留言時會帶入完整人設（背景／近況／喜好），不再說出與設定矛盾的話。</div>
+                  <div class="ann-item-title">用 Claude 更省一點 💰</div>
+                  <div class="ann-item-desc">使用 Anthropic（Claude）金鑰的人，重複的角色設定會命中快取，token 帳單能省下一些。其他供應商行為不變。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">主動訊息未讀即時亮燈 🔔</div>
-                  <div class="ann-item-desc">角色主動傳訊息時，背景就會即時亮起未讀提示，回到 App 自動清除；群組逾時與失敗也會自動重試。</div>
+                  <div class="ann-item-title">修掉長按頭像的雙重彈窗 🔧</div>
+                  <div class="ann-item-desc">iOS 上長按頭像做互動時，不會再誤觸系統原生的圖片預覽了。</div>
                 </div>
               </div>
             </template>
@@ -55,20 +55,20 @@
               <div class="ann-title">怎麼用</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">管理貼文</div>
-                  <div class="ann-item-desc">在貼文卡片或貼文詳情頁右上角點「⋯」，即可選擇編輯（就地修改內容）、重新生成（讓角色重寫一篇）或刪除。</div>
+                  <div class="ann-item-title">玩親暱互動</div>
+                  <div class="ann-item-desc">在聊天室裡長按對方的頭像，會跳出動作選單（拍拍／抱抱／摸摸頭等），選一個，角色就會針對那個動作即時回應。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">管理留言／回覆</div>
-                  <div class="ann-item-desc">在貼文詳情頁長按某一則留言，會跳出選單：複製、編輯、刪除；如果是角色的回覆，還會多一個「重新生成回覆」（只重生那一則，後面的留言會保留）。</div>
+                  <div class="ann-item-title">今天的心情打卡</div>
+                  <div class="ann-item-desc">首頁的「今天的心情」卡片點一下、選一個心情（可加一句備註）。打卡後會縮成小 chip，想改再點開重選即可。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">開啟角色的時間感</div>
-                  <div class="ann-item-desc">角色設定 → 進階設定，打開「時間感」開關，角色就會依現在的日期、星期、時段來說話與發文。架空／古裝角色可保持關閉。</div>
+                  <div class="ann-item-title">開啟已讀不回</div>
+                  <div class="ann-item-desc">角色設定 → 進階設定，打開「已讀不回」開關，並填好角色的上班／忙碌時段，忙的時候他就可能已讀你、晚點再回。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">填寫範例對話</div>
-                  <div class="ann-item-desc">角色設定 →「說話方式」→ 範例對話，寫幾組「你說／角色怎麼回」，AI 會模仿這種語氣。不必照抄內容，留空會自動略過。</div>
+                  <div class="ann-item-title">開啟生理期關心／每日一問</div>
+                  <div class="ann-item-desc">在角色設定的進階選項裡開啟對應開關，角色就會在合適的時機主動傳訊關心你、或問你一個問題。</div>
                 </div>
               </div>
             </template>
@@ -102,7 +102,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P95</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P100</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
