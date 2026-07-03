@@ -121,10 +121,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P98
+        Auris · P99
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P98 背景派發強化：主動訊息去重改為「生成成功後才寫」＋當日最多重試 3 次（斷網／額度用完不再靜默丟失當天內容）・背景掃描改用索引計數與 cursor（不再每 5 分鐘整包載入聊天記錄，記錄多也不卡）・主動訊息任務描述改單一來源（維護不再漏改）
+        P99 內部重構（行為不變）：新增統一 LLM 呼叫層 llm.js，把原本複製在 5 處呼叫點的 openai/anthropic/google/openrouter/vertex 五叉分支收斂成單一入口 callLLM，新增供應商或改 header 只需動一處・chatEngine 與 api 淨減約 260 行
       </div>
     </div>
   </div>

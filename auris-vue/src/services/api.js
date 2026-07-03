@@ -1,4 +1,4 @@
-import { getSetting } from './db.js';
+import { callLLM, resolveLLMConfig } from './llm.js';
 
 export async function fetchWithTimeout(url, opts = {}, timeoutMs = 90000) {
   const controller = new AbortController();
@@ -87,92 +87,27 @@ export function isReasoningModel(model) {
   return /(?:^|\/)(?:gpt-5|o[1-9])/i.test(model || '');
 }
 
+// 非串流一次性請求的薄包裝（貼文/日記/心聲/摘要/背景主動訊息等走這裡）。
+// provider 分支已全數收斂進 llm.js 的 callLLM；此處只負責拆 system 訊息與帶入預設取樣參數。
 export async function sendLLMRequest(messages, customConfig = {}) {
-  const provider = await getSetting('api_provider');
-  const key = await getSetting('api_key');
-  let base = await getSetting('api_base');
-  const model = await getSetting('api_model') || getDefModel(provider);
+  const config = await resolveLLMConfig();
+  if (!config.apiKey) throw new Error('API 金鑰未設定');
 
-  if (!key) throw new Error('API 金鑰未設定');
+  const sysMsg = messages.find(m => m.role === 'system');
+  const chatMsgs = messages.filter(m => m.role !== 'system');
 
-  const headers = { 'Content-Type': 'application/json' };
-
-  // Vertex AI 走原生格式（contents/parts），與 SillyTavern 相同
-  if (provider === 'vertex') {
-    const sa = JSON.parse(key);
-    const token = await getVertexToken(sa);
-    const region = 'us-central1';
-    const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
-    headers['Authorization'] = `Bearer ${token}`;
-
-    const systemMsg = messages.find(m => m.role === 'system');
-    const chatMsgs = messages.filter(m => m.role !== 'system');
-    const body = {
-      contents: chatMsgs.map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      })),
-      generationConfig: {
-        maxOutputTokens: customConfig.max_tokens ?? 800,
-        temperature: customConfig.temperature ?? 0.8
-      }
-    };
-    if (systemMsg) body.systemInstruction = { parts: [{ text: systemMsg.content }] };
-
-    const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) });
-    const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error?.message || JSON.stringify(data.error) || `HTTP Error ${res.status}`);
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  }
-
-  // OpenAI 相容格式（OpenAI / Anthropic / Google AI Studio）
-  // Anthropic 現行款（Sonnet 5 / Opus 4.x）與 OpenAI 推理型（GPT-5/o 系列）都會拒絕非預設 temperature，
-  // 一律不送（值為 undefined 時 JSON.stringify 會自動略過該 key）。串流主聊天的 anthropic 分支本就沒送，這裡對齊。
-  const omitSampling = provider === 'anthropic' || isReasoningModel(model);
-  const payload = {
-    model,
-    messages,
-    max_tokens: customConfig.max_tokens ?? 800,
-    temperature: omitSampling ? undefined : (customConfig.temperature ?? 0.8),
-  };
-
-  let url;
-  if (provider === 'anthropic') {
-    if (!base) base = 'https://api.anthropic.com/v1';
-    headers['x-api-key'] = key;
-    headers['anthropic-version'] = '2023-06-01';
-    headers['anthropic-dangerous-direct-browser-access'] = 'true';
-    url = `${base}/messages`;
-    payload.system = messages.find(m => m.role === 'system')?.content || '';
-    payload.messages = messages.filter(m => m.role !== 'system');
-  } else {
-    if (!base) {
-      if (provider === 'openai') base = 'https://api.openai.com/v1';
-      else if (provider === 'openrouter') base = 'https://openrouter.ai/api/v1';
-      else base = 'https://generativelanguage.googleapis.com/v1beta/openai';
-    }
-    headers['Authorization'] = `Bearer ${key}`;
-    url = `${base}/chat/completions`;
-    if (provider === 'openai' && !isReasoningModel(model)) {
-      payload.frequency_penalty = customConfig.frequency_penalty ?? 0.5;
-      payload.presence_penalty = customConfig.presence_penalty ?? 0.2;
-    }
-  }
-
-  const res = await fetchWithTimeout(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload)
+  const { fullText } = await callLLM({
+    ...config,
+    system: sysMsg?.content || '',
+    messages: chatMsgs,
+    maxTokens: customConfig.max_tokens ?? 800,
+    temperature: customConfig.temperature ?? 0.8,
+    stream: false,
+    // openai 非推理型沿用固定 penalty 預設（callLLM 內只在 provider==='openai' 時帶上）
+    extra: {
+      frequency_penalty: customConfig.frequency_penalty ?? 0.5,
+      presence_penalty: customConfig.presence_penalty ?? 0.2,
+    },
   });
-
-  const data = await res.json();
-  const errObj = Array.isArray(data) ? data[0]?.error : data.error;
-  if (!res.ok || errObj) {
-    throw new Error(errObj?.message || JSON.stringify(errObj) || `HTTP Error ${res.status}`);
-  }
-
-  if (provider === 'anthropic') {
-    return data.content?.[0]?.text || '';
-  }
-  return data.choices?.[0]?.message?.content || '';
+  return fullText;
 }

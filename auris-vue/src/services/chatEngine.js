@@ -1,5 +1,6 @@
 import { dbGet, dbPut, dbIdx, dbAll, dbLatestByChar, getSetting, setSetting } from './db.js';
-import { fetchWithTimeout, sendLLMRequest, getVertexToken, getDefModel, isReasoningModel } from './api.js';
+import { sendLLMRequest } from './api.js';
+import { callLLM, resolveLLMConfig } from './llm.js';
 import { getCyclePhase, cycleCareContext } from './cycle.js';
 import { splitReply } from './format.js';
 import { estimateTokens } from './tokens.js';
@@ -36,13 +37,6 @@ async function persistReplySegments(charId, fullText, { maxSegments = 3, kind = 
   });
   for (const m of msgs) await dbPut('messages', m);
   return msgs;
-}
-
-function getDefBase(provider) {
-  if (provider === 'anthropic') return 'https://api.anthropic.com/v1';
-  if (provider === 'google') return 'https://generativelanguage.googleapis.com/v1beta/openai';
-  if (provider === 'openrouter') return 'https://openrouter.ai/api/v1';
-  return 'https://api.openai.com/v1';
 }
 
 const LONG_FORM_RE = /(\d{2,}\s*字|\d{2,}\s*words?|[一二三四五六七八九兩幾]百\s*字|[一二兩三]千\s*字|[一二三四五六七八九十兩]+\s*萬\s*字|(寫|說|講|來|編|想|聽|給我).{0,6}(故事|小說|文章|信|詩|散文|劇本|演講|報告|論文|介紹|長篇|短篇|童話|寓言|傳記|日記|劇情)|睡前故事|床邊故事|長一?點|詳細|完整|具體說明|長篇|大綱)/i;
@@ -117,66 +111,14 @@ function getPersonalDateCtx(char, me) {
 
 const CLEAN_END_RE = /[。！？！?.…」』）)」”'”]/;
 
-// ── Shared SSE stream parser ───────────────────────────────────────────────
-async function parseSSEStream(response, provider, onChunk) {
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let truncated = false;
-  let lastEvent = '';
-
-  try {
-    outer: while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t) continue;
-
-        if (provider === 'anthropic') {
-          if (t.startsWith('event:')) { lastEvent = t.slice(6).trim(); continue; }
-          if (!t.startsWith('data:')) continue;
-          try {
-            const obj = JSON.parse(t.slice(5).trim());
-            if (lastEvent === 'content_block_delta' && obj.delta?.type === 'text_delta') onChunk(obj.delta.text || '');
-            if (lastEvent === 'message_delta' && obj.delta?.stop_reason === 'max_tokens') truncated = true;
-          } catch { /* malformed chunk, skip */ }
-        } else {
-          if (!t.startsWith('data:')) continue;
-          const raw = t.slice(5).trim();
-          if (raw === '[DONE]') break outer;
-          try {
-            const obj = JSON.parse(raw);
-            const chunk = obj.choices?.[0]?.delta?.content;
-            if (chunk) onChunk(chunk);
-            const fr = obj.choices?.[0]?.finish_reason;
-            if (fr === 'length' || fr === 'max_tokens') truncated = true;
-          } catch { /* malformed chunk, skip */ }
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  return { truncated };
-}
-
 // ── 1-on-1 Chat Setup ─────────────────────────────────────────────────────
 async function buildAIChatSetup(charId, allMsgs) {
-  const apiKey = await getSetting('api_key');
+  const { provider, model, base, apiKey } = await resolveLLMConfig();
   if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
 
   const c = await dbGet('characters', charId);
   const me = await getSetting('me_settings') || {};
   const formatStyle = await getSetting('chat_format_style');
-  const provider = await getSetting('api_provider') || 'openai';
-  const model = await getSetting('api_model') || getDefModel(provider);
-  const base = (await getSetting('api_base') || getDefBase(provider)).replace(/\/$/, '');
 
   const styleMap = {
     casual: '說話輕鬆自然，像朋友聊天', sweet: '說話甜蜜可愛，偶爾撒嬌',
@@ -371,80 +313,27 @@ export async function sendUserMessage(charId, content, image = null) {
 
 // ── 1-on-1 Chat: Streaming ────────────────────────────────────────────────
 export async function generateAIResponseStream(charId, allMsgs, { onChunk }, imageBase64 = null) {
-  const { c, provider, model, base, apiKey, history, finalSystemPrompt, systemStable, systemVolatile, dynamicMaxTokens } = await buildAIChatSetup(charId, allMsgs);
+  const { c, provider, model, base, apiKey, history, systemStable, systemVolatile, dynamicMaxTokens } = await buildAIChatSetup(charId, allMsgs);
 
   if (c.delay > 0) await new Promise(r => setTimeout(r, c.delay * 1000));
 
-  // 若有圖片，將最後一則 user 訊息改為多模態格式（各家格式不同）
-  const buildImgHistory = (prov) => {
-    if (!imageBase64) return history;
-    const rawB64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-    return history.map((m, i) => {
-      if (i !== history.length - 1 || m.role !== 'user') return m;
-      if (prov === 'anthropic') {
-        return { role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: rawB64 } },
-          { type: 'text', text: m.content || '這是一張圖片，請描述並回應' }
-        ]};
-      }
-      return { role: 'user', content: [
-        { type: 'text', text: m.content || '這是一張圖片，請描述並回應' },
-        { type: 'image_url', image_url: { url: imageBase64 } }
-      ]};
-    });
-  };
+  // Prompt caching：穩定段（角色設定/說話範例/格式規則）設快取點，5 分鐘內的後續訊息重複輸入只收 1 折；
+  // 易變段（時間/世界書/長期記憶）接在快取點之後，不破壞前段快取。非 anthropic 由 callLLM 自動 join 成單一字串。
+  const system = [{ text: systemStable, cache: true }];
+  if (systemVolatile) system.push({ text: systemVolatile });
 
-  let fullText = '';
-  const accumulate = (text) => { fullText += text; onChunk(text); };
-  let truncated = false;
+  const { fullText, truncated: rawTruncated } = await callLLM({
+    provider, model, base, apiKey,
+    system,
+    messages: history,
+    maxTokens: dynamicMaxTokens,
+    temperature: c.temperature ?? 0.8,
+    stream: true,
+    onChunk,
+    image: imageBase64,
+  });
 
-  if (provider === 'vertex') {
-    const sa = JSON.parse(apiKey);
-    const token = await getVertexToken(sa);
-    const region = 'us-central1';
-    const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
-    const rawB64 = imageBase64 ? imageBase64.replace(/^data:image\/\w+;base64,/, '') : null;
-    const body = {
-      contents: history.map((m, i) => {
-        const isLastUser = imageBase64 && i === history.length - 1 && m.role === 'user';
-        if (isLastUser) {
-          return { role: 'user', parts: [
-            { inlineData: { mimeType: 'image/jpeg', data: rawB64 } },
-            { text: m.content || '這是一張圖片，請描述並回應' }
-          ]};
-        }
-        return { role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] };
-      }),
-      systemInstruction: { parts: [{ text: finalSystemPrompt }] },
-      generationConfig: { maxOutputTokens: dynamicMaxTokens, temperature: c.temperature ?? 0.8 }
-    };
-    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 90000);
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
-    const data = await r.json();
-    fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    onChunk(fullText);
-  } else if (provider === 'anthropic') {
-    // Prompt caching：穩定段（角色設定/說話範例/格式規則）設快取點，5 分鐘內的後續訊息重複輸入只收 1 折；
-    // 易變段（時間/世界書/長期記憶）接在快取點之後，不破壞前段快取。穩定段不足最低 token 門檻時 Anthropic 會自動略過快取、不報錯。
-    const systemBlocks = [{ type: 'text', text: systemStable, cache_control: { type: 'ephemeral' } }];
-    if (systemVolatile) systemBlocks.push({ type: 'text', text: systemVolatile });
-    const r = await fetchWithTimeout(`${base}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'prompt-caching-2024-07-31', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, system: systemBlocks, messages: buildImgHistory('anthropic'), stream: true })
-    }, 90000);
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
-    ({ truncated } = await parseSSEStream(r, 'anthropic', accumulate));
-  } else {
-    const r = await fetchWithTimeout(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, max_tokens: dynamicMaxTokens, temperature: isReasoningModel(model) ? undefined : (c.temperature ?? 0.8), messages: [{ role: 'system', content: finalSystemPrompt }, ...buildImgHistory('openai')], stream: true })
-    }, 90000);
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
-    ({ truncated } = await parseSSEStream(r, 'openai', accumulate));
-  }
-
+  let truncated = rawTruncated;
   if (!truncated && fullText) {
     const lastChar = fullText.trim().slice(-1);
     if (fullText.length >= dynamicMaxTokens * 0.4 && !CLEAN_END_RE.test(lastChar)) truncated = true;
@@ -579,44 +468,16 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
 
   const proactiveHistory = buildProactiveHistory(history, task, active);
 
-  let fullText = '';
-  const accumulate = (text) => { fullText += text; onChunk(text); };
-  let truncated = false;
-
-  if (provider === 'vertex') {
-    const sa = JSON.parse(apiKey);
-    const token = await getVertexToken(sa);
-    const region = 'us-central1';
-    const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
-    const body = {
-      contents: proactiveHistory.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-      systemInstruction: { parts: [{ text: proactivePrompt }] },
-      generationConfig: { maxOutputTokens: 2000, temperature: c.temperature ?? 0.85 }
-    };
-    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body), signal }, 90000);
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
-    const data = await r.json();
-    fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    onChunk(fullText);
-  } else if (provider === 'anthropic') {
-    const r = await fetchWithTimeout(`${base}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model, max_tokens: 2000, system: proactivePrompt, messages: proactiveHistory, stream: true }),
-      signal
-    }, 90000);
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
-    ({ truncated } = await parseSSEStream(r, 'anthropic', accumulate));
-  } else {
-    const r = await fetchWithTimeout(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, max_tokens: 2000, temperature: isReasoningModel(model) ? undefined : (c.temperature ?? 0.85), messages: [{ role: 'system', content: proactivePrompt }, ...proactiveHistory], stream: true }),
-      signal
-    }, 90000);
-    if (!r.ok) { const d = await r.json(); throw new Error(d.error?.message || `HTTP ${r.status}`); }
-    ({ truncated } = await parseSSEStream(r, provider, accumulate));
-  }
+  const { fullText, truncated } = await callLLM({
+    provider, model, base, apiKey,
+    system: proactivePrompt,
+    messages: proactiveHistory,
+    maxTokens: 2000,
+    temperature: c.temperature ?? 0.85,
+    stream: true,
+    onChunk,
+    signal,
+  });
 
   let msgs = [];
   if (fullText.trim()) {
@@ -630,43 +491,15 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
 // 共用串流呼叫：以指定 system prompt＋history 打一次串流生成（vertex 不支援串流、一次回）。
 // touch 回應與已讀不回補回都走這裡，避免重複三家 provider 的分支。
 async function streamWithSystem({ c, provider, model, base, apiKey }, sysPrompt, history, { onChunk, maxTokens = 2000 }) {
-  let fullText = '';
-  const accumulate = (text) => { fullText += text; onChunk(text); };
-  let truncated = false;
-
-  if (provider === 'vertex') {
-    const sa = JSON.parse(apiKey);
-    const token = await getVertexToken(sa);
-    const region = 'us-central1';
-    const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
-    const body = {
-      contents: history.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-      systemInstruction: { parts: [{ text: sysPrompt }] },
-      generationConfig: { maxOutputTokens: maxTokens, temperature: c.temperature ?? 0.85 }
-    };
-    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 90000);
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
-    const data = await r.json();
-    fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    onChunk(fullText);
-  } else if (provider === 'anthropic') {
-    const r = await fetchWithTimeout(`${base}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model, max_tokens: maxTokens, system: sysPrompt, messages: history, stream: true })
-    }, 90000);
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
-    ({ truncated } = await parseSSEStream(r, 'anthropic', accumulate));
-  } else {
-    const r = await fetchWithTimeout(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, max_tokens: maxTokens, temperature: isReasoningModel(model) ? undefined : (c.temperature ?? 0.85), messages: [{ role: 'system', content: sysPrompt }, ...history], stream: true })
-    }, 90000);
-    if (!r.ok) { const d = await r.json(); throw new Error(d.error?.message || `HTTP ${r.status}`); }
-    ({ truncated } = await parseSSEStream(r, provider, accumulate));
-  }
-  return { fullText, truncated };
+  return callLLM({
+    provider, model, base, apiKey,
+    system: sysPrompt,
+    messages: history,
+    maxTokens,
+    temperature: c.temperature ?? 0.85,
+    stream: true,
+    onChunk,
+  });
 }
 
 // ── 1-on-1 輕觸互動回應：Streaming（P96）─────────────────────────────────
@@ -926,11 +759,8 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
 
   const me = await getSetting('me_settings') || {};
   const formatStyle = await getSetting('chat_format_style');
-  const apiKey = await getSetting('api_key');
+  const { provider, model, base, apiKey } = await resolveLLMConfig();
   if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
-  const provider = await getSetting('api_provider') || 'openai';
-  const model = await getSetting('api_model') || getDefModel(provider);
-  const base = (await getSetting('api_base') || getDefBase(provider)).replace(/\/$/, '');
 
   const validChars = members.filter(x => x.id);
   const otherChars = validChars.filter(oc => oc.id !== c.id).map(oc => oc.name).join('、');
@@ -1003,43 +833,16 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
 
   const fallbackHistory = history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : 'こんにちは' }];
 
-  let fullText = '';
-
-  if (provider === 'vertex') {
-    const sa = JSON.parse(apiKey);
-    const token = await getVertexToken(sa);
-    const region = 'us-central1';
-    const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${region}/publishers/google/models/${model}:generateContent`;
-    const body = {
-      contents: fallbackHistory.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      generationConfig: { maxOutputTokens: 4000, temperature: c.temperature ?? 0.8 }
-    };
-    const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }, 90000);
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
-    onStart?.();
-    const data = await r.json();
-    fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    onChunk(fullText);
-  } else if (provider === 'anthropic') {
-    const r = await fetchWithTimeout(base + '/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model, max_tokens: 4000, system: systemPrompt, messages: fallbackHistory, stream: true })
-    }, 90000);
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
-    onStart?.();
-    await parseSSEStream(r, 'anthropic', (text) => { fullText += text; onChunk(text); });
-  } else {
-    const r = await fetchWithTimeout(base + '/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-      body: JSON.stringify({ model, max_tokens: 4000, temperature: isReasoningModel(model) ? undefined : (c.temperature ?? 0.8), messages: [{ role: 'system', content: systemPrompt }, ...fallbackHistory], stream: true })
-    }, 90000);
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
-    onStart?.();
-    await parseSSEStream(r, 'openai', (text) => { fullText += text; onChunk(text); });
-  }
+  const { fullText } = await callLLM({
+    provider, model, base, apiKey,
+    system: systemPrompt,
+    messages: fallbackHistory,
+    maxTokens: 4000,
+    temperature: c.temperature ?? 0.8,
+    stream: true,
+    onChunk,
+    onStart,
+  });
 
   const cleanedText = cleanGroupAIText(fullText.trim(), c, validChars);
 
