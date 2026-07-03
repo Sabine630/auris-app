@@ -4,3 +4,11 @@ node_modules/
 Auris 使用說明.md
 使用說明截圖/
 .claude/
+
+# 正式版由 GitHub Actions 自 auris-vue/dist 部署，專案根目錄不再放 build 成品（P97-P100 整理批次）。
+# 防止舊習慣 `cp -r dist/* ..` 意外把死成品重新加回版控。
+/assets/
+/index.html
+/404.html
+/favicon.svg
+/icons.svg

@@ -53,24 +53,15 @@
 ```bash
 git add <files>
 git commit -m "Fix PXX: 摘要"
-git push origin dev   # Vercel 自動部署到測試版
+git push origin dev   # Vercel 自動部署測試版；GitHub Actions（ci.yml）自動跑 test＋build
 ```
 
 ### 發布正式版（使用者確認後才執行）
+正式版由 **GitHub Actions**（`.github/workflows/deploy.yml`）自動 build＋部署——來源 `auris-vue/dist`，**不再手動 build／copy 到根目錄、也不需清舊 hash**（自 2026-05-20 起如此，P97-P100 整理批次移除了根目錄冗餘成品）。發布只是把 `dev` 合進 `main` 再推：
 ```bash
-# 1. Build
-cd auris-vue && npm run build
-
-# 2. Copy to root
-cp -r dist/* ..
-
-# 3. Clean old assets
-git rm assets/index-{舊hash}.{css,js}
-
-# 4. Stage & commit & push main
-git add -A
-git commit -m "Fix PXX: 摘要"
-git push origin main   # 更新 GitHub Pages 正式版
+# 使用者明確確認後：
+git checkout main && git merge dev
+git push origin main   # Actions 自動 build（auris-vue/dist）並部署 GitHub Pages 正式版
 ```
 
 **推上任何分支前必須先問使用者是否確認推送。**
@@ -80,9 +71,9 @@ git push origin main   # 更新 GitHub Pages 正式版
 ## 專案架構速查
 
 - **Vue 源碼**：`auris-vue/src/`
-- **Build 輸出**：直接 copy 到專案根目錄（`assets/`, `index.html`）
-- **測試版部署**：Vercel，監聽 `dev` 分支自動部署（`auris-app-git-dev-sabine630-6243s-projects.vercel.app`）
-- **正式版部署**：GitHub Pages，`main` 分支（`sabine630.github.io/auris-app`）
+- **Build 輸出**：`auris-vue/dist/`（正式版由 GitHub Actions 自 dist 部署，**不再 copy 到專案根目錄**）
+- **測試版部署**：Vercel，監聽 `dev` 分支自動部署（`auris-app-git-dev-sabine630-6243s-projects.vercel.app`）；`dev` push 另由 GitHub Actions `ci.yml` 跑 test＋build
+- **正式版部署**：GitHub Pages，GitHub Actions `deploy.yml`（`main` 分支自動 build `auris-vue/dist`，`sabine630.github.io/auris-app`）
 - **Archive（舊版 HTML 單檔）**：`archive/` — 唯讀參考，不修改
 
 ## 重要檔案對照
