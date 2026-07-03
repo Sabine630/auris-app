@@ -1419,6 +1419,17 @@ async function doRegenerate(m) {
 }
 
 /* ── 輕觸互動（P96）── */
+/* 頭像要接長按手勢：擋掉 iOS 長按 <img> 的原生圖片預覽（touch-callout）與選取/拖曳，
+   並讓 img 不吃事件（pointer-events:none）→ 觸控落在容器 div 上，才不會又跳系統預覽又開選單 */
+.chat-hd-av, .msg-av {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.chat-hd-av img, .msg-av img {
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
 .touch-line {
   text-align: center;
   font-size: 11.5px;

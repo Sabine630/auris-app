@@ -121,10 +121,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P99
+        Auris · P100
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P99 內部重構（行為不變）：新增統一 LLM 呼叫層 llm.js，把原本複製在 5 處呼叫點的 openai/anthropic/google/openrouter/vertex 五叉分支收斂成單一入口 callLLM，新增供應商或改 header 只需動一處・chatEngine 與 api 淨減約 260 行
+        P100 省錢＋品質：主動訊息／輕觸／已讀補回／生理期關心／每日一問等全面套用 anthropic prompt cache 穩定段快取（與一般聊天共用同一份快取，5 分鐘內重複輸入只收 1 折）・群聊補上背景故事／近況／喜好／時間感（角色在群組不再失憶）・歷史單則長文截斷（最近 4 則保留全文，更早的超過 600 字截頭，省 token）・修正長按頭像誤觸 iOS 原生圖片預覽（雙重彈出）
       </div>
     </div>
   </div>

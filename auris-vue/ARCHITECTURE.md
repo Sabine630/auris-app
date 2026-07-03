@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-03（P99）
+> 最後更新：2026-07-03（P100）
 
 ---
 
@@ -374,6 +374,19 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P100（2026-07-03）省錢＋品質：prompt cache 全覆蓋・群聊補人設・歷史長文截斷
+
+- **prompt cache 全覆蓋（#6）**：新增 `cacheSystem(systemStable, systemVolatile, tail)`——組 `[{ text: systemStable, cache:true }, { text: systemVolatile + tail }]`。P99 前只有一般聊天設快取點；本版讓 7 個主動/互動函式（proactive／touch／busy／cycleCare／schedule／missYou／dailyQuestion）改傳 blocks，穩定段前綴與一般聊天相同 → anthropic 共用同一份快取。任務尾段一律進易變段。背景四函式（cycleCare/schedule/missYou/dailyQuestion）順勢由 `sendLLMRequest` 改直呼 `callLLM({ stream:false })`。非 anthropic 由 `callLLM` join 回原字串、逐字不變。`buildAIChatSetup` 不再回傳 `finalSystemPrompt`（已無消費者）。
+- **群聊補人設與時間感（#10）**：`buildGroupChatSetup` 補注入背景故事／近況／喜好／時間錨（`timeAware` 開時），各項有才加；刻意不加長期記憶・世界書・天氣・作息（群聊 token × 人數，維持輕量）。
+- **歷史單則長文截斷（#9）**：`buildAIChatSetup` history——最近 `KEEP_FULL`（4）則保留全文，更早的單則超過 `HIST_MSG_CAP`（600 字元）截頭加「…（後略）」。群聊 history 不動。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/chatEngine.js` | `cacheSystem` helper；7 個主動/互動函式改傳 cache blocks；`buildGroupChatSetup` 補人設/時間錨；`buildAIChatSetup` history 單則截斷；移除 `finalSystemPrompt` |
+| `views/SettingsView.vue` | P99 → P100 |
+
+---
 
 ### P99（2026-07-03）統一 LLM 呼叫層：provider 分支收斂單一來源（純重構）
 

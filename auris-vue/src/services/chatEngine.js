@@ -284,7 +284,19 @@ ${lengthGuide}
 ・回覆要有延伸性，可以反問、聊到相關話題、分享自身經歷
 【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 2}則訊息，每則訊息之間「空一行」分隔（前端會把每則顯示成獨立的訊息泡泡，像真人連發）。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。${REPLY_NO_NARRATION}`;
 
-  const history = allMsgs.slice(-(c.memory || 20)).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
+  // #9 歷史單則截斷：最近 KEEP_FULL 則保留全文（接續剛寫的長文不受影響），
+  // 更早的單則超過 HIST_MSG_CAP 字元則截頭並加省略號——省 token，
+  // 長篇舊內容的細節交給長期記憶摘要補位。
+  const HIST_MSG_CAP = 600;
+  const KEEP_FULL = 4;
+  const recent = allMsgs.slice(-(c.memory || 20));
+  const history = recent.map((m, i) => {
+    let content = m.content;
+    if (i < recent.length - KEEP_FULL && content.length > HIST_MSG_CAP) {
+      content = content.slice(0, HIST_MSG_CAP) + '…（後略）';
+    }
+    return { role: m.role === 'user' ? 'user' : 'assistant', content };
+  });
 
   const lastUserMsg = history[history.length - 1]?.content || '';
   const isLongForm = LONG_FORM_RE.test(lastUserMsg);
@@ -296,11 +308,12 @@ ${lengthGuide}
   const longFormNote = isLongForm
     ? `\n\n【特別提示】使用者要求較長內容，請完整寫完整段，不要中途收尾或省略。如果是故事，要有開頭、發展、結尾；如果是文章，要有段落結構。寫到結束為止，不要刻意縮短。`
     : '';
+  // 全站呼叫點一律以 [{ text: systemStable, cache }, { text: systemVolatile + 任務尾段 }] 傳給 callLLM，
+  // 讓聊天與所有主動訊息共用同一份穩定段快取（#6）；非 anthropic 由 callLLM join 回原字串。
   const systemStable = systemPrompt;
   const systemVolatile = `${timeCtx}${weatherCtx}${worldCtx}${memCtx}${moodCtx}${longFormNote}`;
-  const finalSystemPrompt = systemStable + systemVolatile;
 
-  return { c, provider, model, base, apiKey, history, finalSystemPrompt, systemStable, systemVolatile, dynamicMaxTokens };
+  return { c, provider, model, base, apiKey, history, systemStable, systemVolatile, dynamicMaxTokens };
 }
 
 // ── 1-on-1 User Message ───────────────────────────────────────────────────
@@ -453,15 +466,23 @@ export async function hasUnrepliedProactive(charId) {
 }
 
 // ── 1-on-1 Proactive Message: Streaming ──────────────────────────────────
+// #6 prompt cache 全覆蓋：把「穩定段（可快取）＋易變段（含本次任務尾段）」組成 callLLM 的 system blocks。
+// 一般聊天已在穩定段設快取點；主動訊息／touch／busy 等的穩定段前綴與它完全相同，改傳 blocks 後
+// 就能命中同一份快取（anthropic），5 分鐘內重複輸入只收 1 折。
+// ⚠️ 任務尾段（【主動訊息】等）務必進「易變段」，絕不可拼進穩定段——否則會打破快取。
+// 非 anthropic provider 由 callLLM 自動 join 回原字串（systemStable+systemVolatile+tail），行為不變。
+function cacheSystem(systemStable, systemVolatile, tail = '') {
+  return [{ text: systemStable, cache: true }, { text: systemVolatile + tail }];
+}
+
 export async function generateProactiveMessageStream(charId, allMsgs, { onChunk, signal }) {
-  const { c, provider, model, base, apiKey, history, finalSystemPrompt } = await buildAIChatSetup(charId, allMsgs);
+  const { c, provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
 
   const active = isRecentlyActive(allMsgs);
   // #12：任務核心抽成單一 const（history 與 inactive system 尾段共用）。
   // active 尾段是「順著現有對話接下去」的不同框、非任務重複，維持獨立。
   const task = '你想主動再說點什麼——分享一件事、問問近況、或只是想到他／她了。';
-  const proactivePrompt = finalSystemPrompt
-    + (active
+  const proactiveTail = (active
       ? '\n\n【主動訊息】你想主動再說點什麼。順著你們現在的對話與情境自然地接下去，承接對方剛剛說的內容，像真人邊聊邊補一句，語氣自然。'
       : '\n\n【主動訊息】' + task + '不是回覆任何問題，語氣自然，像真人突然想說話一樣，直接說你想說的。')
     + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
@@ -470,7 +491,7 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
 
   const { fullText, truncated } = await callLLM({
     provider, model, base, apiKey,
-    system: proactivePrompt,
+    system: cacheSystem(systemStable, systemVolatile, proactiveTail),
     messages: proactiveHistory,
     maxTokens: 2000,
     temperature: c.temperature ?? 0.85,
@@ -508,10 +529,10 @@ async function streamWithSystem({ c, provider, model, base, apiKey }, sysPrompt,
 export async function generateTouchResponseStream(charId, allMsgs, { onChunk }, actionLabel) {
   const setup = await buildAIChatSetup(charId, allMsgs);
 
-  const touchPrompt = setup.finalSystemPrompt
-    + `\n\n【親暱動作】對方剛剛對你做了「${actionLabel}」的親暱動作。請立刻用你的個性與你們的關係，對這個動作本身做出反應（害羞、開心、彆扭、吐槽都可以），簡短自然（1～2 句），不要另起話題。`;
+  const touchTail = `\n\n【親暱動作】對方剛剛對你做了「${actionLabel}」的親暱動作。請立刻用你的個性與你們的關係，對這個動作本身做出反應（害羞、開心、彆扭、吐槽都可以），簡短自然（1～2 句），不要另起話題。`;
+  const touchSystem = cacheSystem(setup.systemStable, setup.systemVolatile, touchTail);
 
-  const { fullText, truncated } = await streamWithSystem(setup, touchPrompt, setup.history, { onChunk, maxTokens: 800 });
+  const { fullText, truncated } = await streamWithSystem(setup, touchSystem, setup.history, { onChunk, maxTokens: 800 });
 
   let msgs = [];
   if (fullText.trim()) {
@@ -525,10 +546,10 @@ export async function generateTouchResponseStream(charId, allMsgs, { onChunk }, 
 export async function generateBusyReplyStream(charId, allMsgs, { onChunk }) {
   const setup = await buildAIChatSetup(charId, allMsgs);
 
-  const busyPrompt = setup.finalSystemPrompt
-    + `\n\n【已讀後補回】你稍早在忙（依你的作息推測當時在做什麼），已讀了對方的訊息但沒能馬上回。現在忙告一段落，回覆對方剛才的訊息，開頭可以自然帶一句剛剛在做什麼或簡單致意（例如「抱歉剛剛在開會」），不要過度道歉、不要長篇解釋。`;
+  const busyTail = `\n\n【已讀後補回】你稍早在忙（依你的作息推測當時在做什麼），已讀了對方的訊息但沒能馬上回。現在忙告一段落，回覆對方剛才的訊息，開頭可以自然帶一句剛剛在做什麼或簡單致意（例如「抱歉剛剛在開會」），不要過度道歉、不要長篇解釋。`;
+  const busySystem = cacheSystem(setup.systemStable, setup.systemVolatile, busyTail);
 
-  const { fullText, truncated } = await streamWithSystem(setup, busyPrompt, setup.history, { onChunk });
+  const { fullText, truncated } = await streamWithSystem(setup, busySystem, setup.history, { onChunk });
 
   let msgs = [];
   if (fullText.trim()) {
@@ -596,7 +617,7 @@ export async function generateCycleCareMessage(charId, trigger) {
 
   const allMsgs = await dbIdx('messages', 'charId', charId);
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
+  const { provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
 
   const active = isRecentlyActive(allMsgs);
   // #12：careGoal 即任務核心（含期相變數），已被 system 尾段與 history 兩處以 ${careGoal} 共用，
@@ -604,16 +625,23 @@ export async function generateCycleCareMessage(charId, trigger) {
   const careGoal = trigger === 'pms'
     ? `你算了一下，對方的生理期大概再過 ${ph.daysUntilNext} 天就要來了，有點擔心對方這幾天身體和心情。`
     : `你想到對方今天生理期大概來了（第 ${ph.dayNum} 天），有點心疼，想關心對方。`;
-  const carePrompt = finalSystemPrompt + `\n\n【主動關心】${careGoal}請主動傳一則訊息關心對方，自然、簡短、有溫度，像真的在意對方的人會說的話（例如提醒保暖、喝熱水、好好休息、想吃什麼幫忙準備之類）。要完全符合你的角色個性與說話風格。不要像衛教文章、不要長篇大論、不要解釋你為什麼會知道。直接說你想說的。` + (active ? PROACTIVE_ACTIVE_TAIL : '') + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
+  // #6：任務尾段放易變段，穩定段前綴與一般聊天相同 → anthropic 命中快取。
+  const careTail = `\n\n【主動關心】${careGoal}請主動傳一則訊息關心對方，自然、簡短、有溫度，像真的在意對方的人會說的話（例如提醒保暖、喝熱水、好好休息、想吃什麼幫忙準備之類）。要完全符合你的角色個性與說話風格。不要像衛教文章、不要長篇大論、不要解釋你為什麼會知道。直接說你想說的。` + (active ? PROACTIVE_ACTIVE_TAIL : '') + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
 
   const careHistory = buildProactiveHistory(history, `${careGoal}你想主動傳訊關心對方。`, active);
 
   let text = '';
   try {
-    text = await sendLLMRequest(
-      [{ role: 'system', content: carePrompt }, ...careHistory],
-      { max_tokens: 800, temperature: 0.85 }
-    );
+    const { fullText } = await callLLM({
+      provider, model, base, apiKey,
+      system: cacheSystem(systemStable, systemVolatile, careTail),
+      messages: careHistory,
+      maxTokens: 800,
+      temperature: 0.85,
+      stream: false,
+      extra: { frequency_penalty: 0.5, presence_penalty: 0.2 },
+    });
+    text = fullText;
   } catch (e) {
     console.error('generateCycleCareMessage failed:', e);
     return null;
@@ -636,21 +664,28 @@ export async function generateCycleCareMessage(charId, trigger) {
 export async function generateScheduleMessage(charId, triggerDesc) {
   const allMsgs = await dbIdx('messages', 'charId', charId);
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
+  const { provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
 
   const active = isRecentlyActive(allMsgs);
   // #12：任務核心（含 triggerDesc 與「時間到了」）抽成單一 const，system 尾段與 history 共用。
   const task = `你之前設定要在這個時間主動提醒對方：「${triggerDesc}」，現在時間到了。`;
-  const schedPrompt = finalSystemPrompt + `\n\n【主動訊息】${task}請主動傳一則訊息給對方，自然、簡短、有溫度，完全符合你的角色個性與說話風格，像真的在意對方的人會說的話。不要像通知或系統提示，直接用你自己的方式說。` + (active ? PROACTIVE_ACTIVE_TAIL : '') + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
+  // #6：任務尾段放易變段，穩定段前綴與一般聊天相同 → anthropic 命中快取。
+  const schedTail = `\n\n【主動訊息】${task}請主動傳一則訊息給對方，自然、簡短、有溫度，完全符合你的角色個性與說話風格，像真的在意對方的人會說的話。不要像通知或系統提示，直接用你自己的方式說。` + (active ? PROACTIVE_ACTIVE_TAIL : '') + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
 
   const schedHistory = buildProactiveHistory(history, task, active);
 
   let text = '';
   try {
-    text = await sendLLMRequest(
-      [{ role: 'system', content: schedPrompt }, ...schedHistory],
-      { max_tokens: 800, temperature: 0.85 }
-    );
+    const { fullText } = await callLLM({
+      provider, model, base, apiKey,
+      system: cacheSystem(systemStable, systemVolatile, schedTail),
+      messages: schedHistory,
+      maxTokens: 800,
+      temperature: 0.85,
+      stream: false,
+      extra: { frequency_penalty: 0.5, presence_penalty: 0.2 },
+    });
+    text = fullText;
   } catch (e) {
     console.error('generateScheduleMessage failed:', e);
     return null;
@@ -774,8 +809,18 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
 
   const styleMap = { casual: '輕鬆自然', sweet: '甜蜜可愛', cool: '冷靜簡短', gentle: '溫柔體貼', playful: '活潑俏皮', mature: '成熟穩重', literary: '文藝感性' };
 
+  // #10：群聊補人設與時間感——比照單聊組法，讓角色在群組裡不再「失憶」。
+  // 刻意取捨：只帶背景故事／近況／喜好／時間錨，不加長期記憶・世界書・天氣・作息
+  // （群聊 token 成本 × 人數，維持輕量）。各項有才加、沒設定零注入。
+  const storyCtx = c.stories?.filter(s => s.content).map(s => `【${s.title}】${s.content}`).join('\n') || '';
+  const groupPersonaCtx =
+    (storyCtx ? '\n【背景故事】\n' + storyCtx : '') +
+    (c.status ? '\n【近況】' + c.status : '') +
+    (c.hobby ? '\n【喜好】' + c.hobby : '') +
+    (c.timeAware ? '\n現在時間：' + timeAnchorLine() : '');
+
   const systemPrompt = '這是一個群組聊天，參與者有：你（' + c.name + '）、' + otherChars + '，以及' + (me.name || '使用者') + '。\n' +
-    '你是「' + c.name + '」，個性：' + (c.persona || '') + '，說話風格：' + (styleMap[c.style] || '輕鬆自然') + '。\n' +
+    '你是「' + c.name + '」，個性：' + (c.persona || '') + '，說話風格：' + (styleMap[c.style] || '輕鬆自然') + '。' + groupPersonaCtx + '\n' +
     (c.isAI ? '' : '永遠不要承認你是 AI。') + mentionHint + '\n\n' +
     '📝 回覆規則（嚴格遵守）：\n' +
     '1. 用' + c.name + '的口吻回覆，30-80字，自然簡短像群聊訊息。\n' +
@@ -898,13 +943,13 @@ export async function summarizeToMemory(charId, recentMsgs, count = 20) {
 export async function generateMissYouMessage(charId) {
   const allMsgs = await dbIdx('messages', 'charId', charId);
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
+  const { provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
 
   const active = isRecentlyActive(allMsgs);
   // #12：任務核心抽成單一 const（history 與 inactive system 尾段共用）。active 尾段為「接續對話」框，保留。
   const task = '你突然想到對方了，想傳一個很短、很自然的訊息給他／她，不是因為有事，就是單純想到了。';
-  const missYouPrompt = finalSystemPrompt
-    + (active
+  // #6：任務尾段放易變段，穩定段前綴與一般聊天相同 → anthropic 命中快取。
+  const missTail = (active
       ? '\n\n【我想你】你想讓對方知道你正想著他／她。順著你們現在的對話自然帶一句，承接剛剛聊的內容，簡短（一兩句就好），有溫度但不刻意煽情，不要用問句作結。'
       : '\n\n【我想你】' + task + '語氣要像真實的人，直接說你想說的，簡短（一兩句就好），有溫度但不刻意煽情。不要用問句作結。')
     + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
@@ -913,10 +958,16 @@ export async function generateMissYouMessage(charId) {
 
   let text = '';
   try {
-    text = await sendLLMRequest(
-      [{ role: 'system', content: missYouPrompt }, ...missHistory],
-      { max_tokens: 120, temperature: 0.9 }
-    );
+    const { fullText } = await callLLM({
+      provider, model, base, apiKey,
+      system: cacheSystem(systemStable, systemVolatile, missTail),
+      messages: missHistory,
+      maxTokens: 120,
+      temperature: 0.9,
+      stream: false,
+      extra: { frequency_penalty: 0.5, presence_penalty: 0.2 },
+    });
+    text = fullText;
   } catch (e) {
     console.error('generateMissYouMessage failed:', e);
     return null;
@@ -941,21 +992,28 @@ export async function generateMissYouMessage(charId) {
 export async function generateDailyQuestion(charId) {
   const allMsgs = await dbIdx('messages', 'charId', charId);
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const { finalSystemPrompt, history } = await buildAIChatSetup(charId, allMsgs);
+  const { provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
 
   const active = isRecentlyActive(allMsgs);
   // #12：任務核心描述抽成單一 const，system 尾段與 history 引用同一份，避免兩處手打 drift。
   const task = '今天你想主動問對方一個問題——關於他／她最近的生活、心情、想法、或你們共同感興趣的話題';
-  const dqPrompt = finalSystemPrompt + `\n\n【每日一問】${task}。問題要真誠、自然，像真的想了解對方的人會問的，不要太制式或像問卷。可以先說一點引子再問，整體簡短（三句以內）。` + (active ? PROACTIVE_ACTIVE_TAIL : '') + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
+  // #6：任務尾段放易變段，穩定段前綴與一般聊天相同 → anthropic 命中快取。
+  const dqTail = `\n\n【每日一問】${task}。問題要真誠、自然，像真的想了解對方的人會問的，不要太制式或像問卷。可以先說一點引子再問，整體簡短（三句以內）。` + (active ? PROACTIVE_ACTIVE_TAIL : '') + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
 
   const dqHistory = buildProactiveHistory(history, `${task}，問得真誠自然、不要像問卷。`, active);
 
   let text = '';
   try {
-    text = await sendLLMRequest(
-      [{ role: 'system', content: dqPrompt }, ...dqHistory],
-      { max_tokens: 200, temperature: 0.85 }
-    );
+    const { fullText } = await callLLM({
+      provider, model, base, apiKey,
+      system: cacheSystem(systemStable, systemVolatile, dqTail),
+      messages: dqHistory,
+      maxTokens: 200,
+      temperature: 0.85,
+      stream: false,
+      extra: { frequency_penalty: 0.5, presence_penalty: 0.2 },
+    });
+    text = fullText;
   } catch (e) {
     console.error('generateDailyQuestion failed:', e);
     return null;
