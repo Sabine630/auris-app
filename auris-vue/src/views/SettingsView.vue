@@ -46,6 +46,15 @@
       </div>
     </div>
 
+    <div class="sg-label">教學</div>
+    <div class="sg">
+      <div class="sr" @click="openGuide">
+        <div class="sr-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+        <div class="sr-text">使用教學</div>
+        <div class="sr-val" style="color:var(--rose)">互動示範</div><div class="sr-chev">›</div>
+      </div>
+    </div>
+
     <div class="sg-label">外觀</div>
     <div class="sg">
       <div style="padding:14px 16px">
@@ -121,10 +130,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P101
+        Auris · P102
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P101 聊天室排版修復：自己氣泡的「對話」改白色加粗（原本與玫瑰底色相近而看不清）・修正模型硬斷句中的孤立換行（容忍換行前後空格與 \r\n、英數換行補回空格）・定時提醒／生理期關心／想你／每日一問等主動訊息改與一般回覆一樣切成連發泡泡（動作旁白與「對話」各自成泡泡，不再糊成一大顆）・偵測上游模型拒絕生成的 meta 回覆（「我無法繼續…」）改為不落庫、顯示系統提示與「重新生成」，不再污染聊天記錄與後續上下文
+        P102 新增互動教學示範模式：設定頁「使用教學」或網址帶 ?demo=1 即可進入。直接複用真實畫面元件（App 一改示範自動同步、零截圖），預載「夜雨／小晴」虛構示範資料，跑在隔離的 auris-demo 資料庫、碰不到你的真實資料；所有 AI 回覆改用假腳本、免金鑰、不外連。右下角「教學」鈕會依當前頁面顯示螢幕感知說明。旗標關閉時對正式 App 行為零影響
       </div>
     </div>
   </div>
@@ -135,6 +144,12 @@ import { ref, onMounted } from 'vue';
 import { globalStore } from '../store/index.js';
 import { getSetting, setSetting, exportAllData, importAllData } from '../services/db.js';
 import { geocodeCity, reverseGeocode } from '../services/weather.js';
+import { demoEntryUrl } from '../services/demoMode.js';
+
+// 使用教學：另開一個分頁進入 ?demo=1 互動示範，不影響目前的真實 App 分頁。
+function openGuide() {
+  window.open(demoEntryUrl(), '_blank');
+}
 
 const themes = [
   {id:'cream', name:'奶白', bg:'#f7f5f2', surface:'#fff',    rose:'#c9887a', text:'#2a2420'},

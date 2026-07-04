@@ -4,6 +4,8 @@
 // 不必再改散落各處的三叉分支。本層為純搬運：送出的 request body 與回應處理與改版前語意等價。
 import { getSetting } from './db.js';
 import { fetchWithTimeout, getVertexToken, getDefModel, isReasoningModel } from './api.js';
+import { isDemo } from './demoMode.js';
+import { demoReply } from './demoData.js';
 
 const VERTEX_REGION = 'us-central1';
 
@@ -135,6 +137,22 @@ export async function callLLM({
   stream = false, onChunk, onStart, signal,
   image = null, extra = null,
 }) {
+  // ── Demo/教學模式：攔下所有 AI 呼叫，回假腳本（免金鑰、不外連）──────────────
+  // 相容串流與非串流：串流時先 onStart，再把假文字分成小段逐塊吐出，重現打字機效果。
+  if (isDemo()) {
+    const fullText = demoReply({ system, messages });
+    if (stream) {
+      onStart?.();
+      const chunks = fullText.match(/[\s\S]{1,3}/g) || [fullText];
+      for (const c of chunks) {
+        onChunk?.(c);
+        // 稍微拉開間隔，讓逐字動畫看得出來（不阻塞太久）。
+        await new Promise(r => setTimeout(r, 24));
+      }
+    }
+    return { fullText, truncated: false };
+  }
+
   // ── Vertex AI：原生 contents/parts 格式（不支援串流，一次回整段）──────────
   if (provider === 'vertex') {
     const sa = JSON.parse(apiKey);

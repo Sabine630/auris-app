@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-04（P101）
+> 最後更新：2026-07-04（P102）
 
 ---
 
@@ -374,6 +374,28 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P102（2026-07-04）互動教學示範模式（Demo 沙盒）
+
+複用真實 Vue 畫面元件的教學模式，靠 `?demo=1` 進入。不改現有 view/store 的既有行為，旗標關閉時對正式 App 零影響。
+
+- **旗標（`services/demoMode.js`，新增）**：`isDemo()` 首次見 `?demo=1`（query 或 hash）寫入 sessionStorage 黏著整個分頁（vue-router 導頁常掉 query，故靠 sessionStorage）。另 `demoEntryUrl()`（帶 `BASE_URL`）、`exitDemo()`。
+- **資料庫隔離（`services/db.js`）**：`initDB` 開 DB 名稱改 `isDemo() ? 'auris-demo' : 'auris'`。其餘讀寫吃 module 級 `db` 自動隔離，碰不到真實資料（sentinel 實測：demo seed 後真 `auris` characters 仍為 0）。
+- **AI 攔截（`services/llm.js`）**：`callLLM` 開頭加 `if (isDemo())` 守衛，回 `demoReply()` 假文字；串流時 `onStart` → 分段 `onChunk`（打字機效果）→ `{ fullText, truncated:false }`。免金鑰、不外連。
+- **示範資料（`services/demoData.js`，新增）**：夜雨／小晴示範世界（角色／訊息／心聲／記憶／貼文／日記／夢／通知／世界書／群組／願望／備忘）。`seedDemoIfEmpty()` 在 demo DB 無角色時灌入，並設 `onboarding_done`＋`last_seen_announcement='P100'` → App.vue 引導與公告判斷自然略過（免改 App.vue）。`demoReply({ system, messages })` 依 system 關鍵字（日記／夢／貼文／心聲／總結／每日一問）回對應題材，預設回聊天語氣。
+- **教學面板（`components/DemoTeachingPanel.vue`＋`services/demoGuideContent.js`，新增）**：`main.js` demo 分支於主 app mount 後，另建節點把面板當第二個 Vue app 掛上（共用同一 router 讀 `route.name`），完全不動 App.vue。角落浮動「教學」鈕，開啟底部面板顯示當前頁的螢幕感知說明（route name → `{ title, body[] }`，文案取自使用手冊）。面板根綁 `globalStore.theme` 的 `data-theme` 以正確套用主題色。
+- **入口**：`SettingsView.vue` 加「使用教學」列（另開分頁進 `?demo=1`）；或直接用 `?demo=1` 網址（可放官網／分享）。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/demoMode.js` | 新增：`isDemo` / `demoEntryUrl` / `exitDemo` |
+| `services/demoData.js` | 新增：示範 seed＋`seedDemoIfEmpty`＋假 AI `demoReply` |
+| `services/demoGuideContent.js` | 新增：route→螢幕感知教學文案＋fallback |
+| `components/DemoTeachingPanel.vue` | 新增：浮動教學鈕＋底部螢幕感知面板 |
+| `services/db.js` | `initDB` 開 DB 名稱依 `isDemo()` 切 `auris-demo` |
+| `services/llm.js` | `callLLM` 開頭加 demo 假回覆守衛（相容串流/非串流） |
+| `main.js` | demo 分支：mount 前 seed、mount 後掛載教學面板 |
+| `views/SettingsView.vue` | 「使用教學」入口列；版號 P101 → P102 |
 
 ### P101（2026-07-04）聊天室排版修復：氣泡配色・句中換行・主動訊息切泡泡・拒絕回覆
 

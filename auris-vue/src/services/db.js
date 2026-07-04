@@ -1,8 +1,11 @@
+import { isDemo } from './demoMode.js';
+
 let db = null;
 
 export function initDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('auris', 7);
+    // Demo/教學模式走完全獨立的資料庫，碰不到使用者真實的 'auris' 資料。
+    const r = indexedDB.open(isDemo() ? 'auris-demo' : 'auris', 7);
     r.onupgradeneeded = (e) => {
       const d = e.target.result;
       [
