@@ -121,10 +121,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P100
+        Auris · P101
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P100 省錢＋品質：主動訊息／輕觸／已讀補回／生理期關心／每日一問等全面套用 anthropic prompt cache 穩定段快取（與一般聊天共用同一份快取，5 分鐘內重複輸入只收 1 折）・群聊補上背景故事／近況／喜好／時間感（角色在群組不再失憶）・歷史單則長文截斷（最近 4 則保留全文，更早的超過 600 字截頭，省 token）・修正長按頭像誤觸 iOS 原生圖片預覽（雙重彈出）
+        P101 聊天室排版修復：自己氣泡的「對話」改白色加粗（原本與玫瑰底色相近而看不清）・修正模型硬斷句中的孤立換行（容忍換行前後空格與 \r\n、英數換行補回空格）・定時提醒／生理期關心／想你／每日一問等主動訊息改與一般回覆一樣切成連發泡泡（動作旁白與「對話」各自成泡泡，不再糊成一大顆）・偵測上游模型拒絕生成的 meta 回覆（「我無法繼續…」）改為不落庫、顯示系統提示與「重新生成」，不再污染聊天記錄與後續上下文
       </div>
     </div>
   </div>

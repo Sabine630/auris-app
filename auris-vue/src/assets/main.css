@@ -563,6 +563,15 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .msg-quote{
   color:var(--rose);
 }
+/* 自己氣泡是玫瑰底白字：「對話」染玫瑰色會與底色相近而看不清，改白色加粗；
+   *動作* 旁白改半透明白，維持與對話的層次差。 */
+.msg.me .msg-bubble .msg-quote{
+  color:#fff;
+  font-weight:500;
+}
+.msg.me .msg-bubble .msg-action{
+  color:rgba(255,255,255,.78);
+}
 .hv-text{
   font-family:var(--font-serif);font-style:italic;
   font-size:12px;font-weight:300;

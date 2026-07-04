@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-03（P100）
+> 最後更新：2026-07-04（P101）
 
 ---
 
@@ -374,6 +374,23 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P101（2026-07-04）聊天室排版修復：氣泡配色・句中換行・主動訊息切泡泡・拒絕回覆
+
+- **句中孤立換行合併升級（`format.js`）**：`formatContent` 的換行清洗改先正規化 `\r\n`／`\r`→`\n`，合併規則容忍換行前後空白、改用 lookahead 不吃右側字元（連續單行 `A\nB\nC` 可逐一合併），英數↔英數之間補回空格。段落空行 `\n\n` 仍保留。修「吃午餐了\n沒。」被腰斬類問題。
+- **背景主動訊息切泡泡（`chatEngine.js`）**：新增 `persistProactive(charId, text, { kind, notifPrefix, notifText })`——內部走 `persistReplySegments` 把生成文字切連發泡泡、依段數累加未讀、建通知、派 `new-proactive-msg`。cycleCare／schedule／missYou／dailyQuestion 四函式改用它（原本整段存單則、動作＋對話糊成一顆）。
+- **拒絕回覆偵測（`chatEngine.js`／`ChatRoomView.vue`）**：新增 `isRefusalReply()`＋`REFUSAL_OPENER_RE`（啟發式：拒絕語開門見山且全文無「」／`*動作*` → 判為上游 meta 拒絕）。`generateAIResponseStream` 命中則不落庫、不觸發心聲、回傳 `refused`。`ChatRoomView` 的 `streamSegmentedReply` 透傳 `refused`，收到時顯示 `refusalNotice` 系統提示＋`retryAfterRefusal` 重新生成。app 端無內容過濾，尺度由使用者選用的 provider／模型決定。
+
+| 檔案 | 變更 |
+|------|------|
+| `assets/main.css` | 自己氣泡 `.msg-quote` 白色加粗、`.msg-action` 半透明白 |
+| `services/format.js` | 換行合併升級（`\r\n` 正規化、容忍空白、lookahead、英數補空格） |
+| `services/chatEngine.js` | `persistProactive` helper；四背景主動訊息切泡泡；`isRefusalReply`／`REFUSAL_OPENER_RE`；`generateAIResponseStream` 回傳 `refused` |
+| `views/ChatRoomView.vue` | `streamSegmentedReply` 透傳 `refused`；`retryAfterRefusal`／`refusalNotice` 提示與樣式 |
+| `services/__tests__/format.test.js` | +8 換行合併案例 |
+| `views/SettingsView.vue` | P100 → P101 |
+
+---
 
 ### P100（2026-07-03）省錢＋品質：prompt cache 全覆蓋・群聊補人設・歷史長文截斷
 

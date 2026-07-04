@@ -112,6 +112,12 @@
           </div>
         </div>
 
+        <!-- 上游模型拒絕生成時的系統提示（拒絕回覆不落庫、不進上下文）-->
+        <div v-if="refusalNotice" class="refusal-notice">
+          <div class="refusal-text">對方沒有接續這個方向。換個說法、或再試一次；也可以到 API 設定換一個模型。</div>
+          <button class="refusal-retry" @click="retryAfterRefusal" :disabled="isTyping">重新生成</button>
+        </div>
+
       </div>
     </div>
 
@@ -369,6 +375,7 @@ const messages = ref([]);
 const character = ref(null);
 const inputContent = ref('');
 const isTyping = ref(false);
+const refusalNotice = ref(false); // 上游模型拒絕生成時顯示「重新生成」提示（拒絕回覆不落庫）
 const showMenu = ref(false);
 const showDataMenu = ref(false);
 const showClearConfirm = ref(false);
@@ -938,7 +945,7 @@ async function streamSegmentedReply(genFn) {
     }
   };
   try {
-    const { msgs, truncated } = await genFn({
+    const { msgs, truncated, refused } = await genFn({
       onChunk(text) {
         buffer += text;
         const segs = splitReply(buffer, maxSeg);
@@ -960,7 +967,7 @@ async function streamSegmentedReply(genFn) {
     removeLive();
     const out = msgs || [];
     if (out.length) { messages.value.push(...out); scrollToBottom(); }
-    return { msgs: out, truncated };
+    return { msgs: out, truncated, refused };
   } catch (err) {
     removeLive();
     throw err;
@@ -1063,17 +1070,21 @@ async function sendMsg() {
     await dbPut('messages', { ...userMsg });
   } catch (_) {}
 
+  refusalNotice.value = false;
   isTyping.value = true;
   const rawMsgs = messages.value.filter(m => m.type !== 'hv');
 
   try {
-    const { msgs, truncated } = await streamSegmentedReply(
+    const { msgs, truncated, refused } = await streamSegmentedReply(
       (handlers) => generateAIResponseStream(charId, rawMsgs, handlers, imgToSend)
     );
-    if (!msgs.length) {
+    if (refused) {
+      refusalNotice.value = true;
+    } else if (!msgs.length) {
       window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
+    } else if (truncated) {
+      window.toast_('⚠ 回覆可能被截斷，可長按訊息「重新生成回覆」');
     }
-    if (truncated) window.toast_('⚠ 回覆可能被截斷，可長按訊息「重新生成回覆」');
   } catch (err) {
     console.error('Chat error:', err);
     window.toast_('錯誤：' + err.message);
@@ -1385,17 +1396,47 @@ async function doRegenerate(m) {
   for (const x of toDelete) await dbDel('messages', x.id);
   messages.value = messages.value.filter(x => x.createdAt < m.createdAt);
 
+  refusalNotice.value = false;
   isTyping.value = true;
   const rawMsgs = messages.value.filter(x => x.type !== 'hv');
 
   try {
-    const { msgs, truncated } = await streamSegmentedReply(
+    const { msgs, truncated, refused } = await streamSegmentedReply(
       (handlers) => generateAIResponseStream(charId, rawMsgs, handlers)
     );
-    if (!msgs.length) {
+    if (refused) {
+      refusalNotice.value = true;
+    } else if (!msgs.length) {
       window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
+    } else if (truncated) {
+      window.toast_('⚠ 回覆可能被截斷');
     }
-    if (truncated) window.toast_('⚠ 回覆可能被截斷');
+  } catch (err) {
+    console.error('Chat error:', err);
+    window.toast_('錯誤：' + err.message);
+  } finally {
+    isTyping.value = false;
+  }
+}
+
+// 上游模型拒絕生成時的「再試一次」：不落庫的拒絕回覆已被丟棄，這裡就同一份上下文重打。
+// 拒絕有隨機性，重骰常常就過了；換模型（API 設定）則是更根本的解法。
+async function retryAfterRefusal() {
+  if (isTyping.value) return;
+  refusalNotice.value = false;
+  isTyping.value = true;
+  const rawMsgs = messages.value.filter(x => x.type !== 'hv');
+  try {
+    const { msgs, truncated, refused } = await streamSegmentedReply(
+      (handlers) => generateAIResponseStream(charId, rawMsgs, handlers)
+    );
+    if (refused) {
+      refusalNotice.value = true;
+    } else if (!msgs.length) {
+      window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
+    } else if (truncated) {
+      window.toast_('⚠ 回覆可能被截斷');
+    }
   } catch (err) {
     console.error('Chat error:', err);
     window.toast_('錯誤：' + err.message);
@@ -1437,6 +1478,44 @@ async function doRegenerate(m) {
   color: var(--text-3);
   padding: 8px 0 2px;
   letter-spacing: .04em;
+}
+/* 上游模型拒絕生成的系統提示（置中、低調，附重新生成按鈕）*/
+.refusal-notice {
+  align-self: center;
+  max-width: 82%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 4px;
+  padding: 12px 16px;
+  border: .5px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--sh);
+  animation: fade-in .2s ease;
+}
+.refusal-text {
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--text-3);
+  line-height: 1.55;
+  text-align: center;
+}
+.refusal-retry {
+  padding: 6px 18px;
+  border: none;
+  border-radius: 14px;
+  background: var(--rose);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 400;
+  font-family: inherit;
+  cursor: pointer;
+}
+.refusal-retry:disabled {
+  opacity: .5;
+  cursor: default;
 }
 .touch-grid {
   display: grid;

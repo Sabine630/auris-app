@@ -32,6 +32,41 @@ describe('formatContent — XSS 防線', () => {
   });
 });
 
+// 孤立換行合併：句中被模型硬斷的換行要收掉，段落空行（\n\n）要保留。
+describe('formatContent — 孤立換行合併', () => {
+  it('中文句中孤立換行被合併（無空格）', () => {
+    expect(formatContent('吃午餐了\n沒。')).toBe('吃午餐了沒。');
+  });
+
+  it('容忍換行前的半形空格', () => {
+    expect(formatContent('吃午餐了 \n沒。')).toBe('吃午餐了沒。');
+  });
+
+  it('容忍換行後的半形空格', () => {
+    expect(formatContent('吃午餐了\n 沒。')).toBe('吃午餐了沒。');
+  });
+
+  it('\\r\\n 正規化後也能合併', () => {
+    expect(formatContent('吃午餐了\r\n沒。')).toBe('吃午餐了沒。');
+  });
+
+  it('連續單行 A\\nB\\nC 逐一合併', () => {
+    expect(formatContent('一\n二\n三')).toBe('一二三');
+  });
+
+  it('英數↔英數之間補回一個空格', () => {
+    expect(formatContent('hello\nworld')).toBe('hello world');
+  });
+
+  it('段落空行（\\n\\n）保留、不被合併', () => {
+    expect(formatContent('第一段\n\n第二段')).toBe('第一段<br><br>第二段');
+  });
+
+  it('\\r\\n\\r\\n 段落空行正規化後仍保留', () => {
+    expect(formatContent('第一段\r\n\r\n第二段')).toBe('第一段<br><br>第二段');
+  });
+});
+
 describe('formatContent — enableRich 富文本', () => {
   it('*動作* 轉成 <em class="msg-action">', () => {
     expect(formatContent('*揮手*', true)).toBe('<em class="msg-action">揮手</em>');

@@ -39,6 +39,22 @@ async function persistReplySegments(charId, fullText, { maxSegments = 3, kind = 
   return msgs;
 }
 
+// 背景主動訊息落庫共用：把生成文字切成連發泡泡（動作旁白／「對話」各自成泡泡，與一般回覆一致），
+// 累加未讀、建通知、通知開著的聊天室即時撈。回傳最後一顆泡泡（呼叫端只做 truthy 判斷）。
+async function persistProactive(charId, text, { kind, notifPrefix, notifText }) {
+  const c = await dbGet('characters', charId);
+  if (!c) return null;
+  const msgs = await persistReplySegments(charId, text.trim(), { maxSegments: c.maxMsg || 2, kind });
+  if (!msgs.length) return null;
+  c.unreadCount = (c.unreadCount || 0) + msgs.length;
+  c.hasUnread = true;
+  await dbPut('characters', JSON.parse(JSON.stringify(c)));
+  await dbPut('notifications', { id: notifPrefix + Date.now(), charId, type: 'chat', targetId: charId, messageId: msgs[0].id, text: notifText, read: false, createdAt: Date.now() });
+  // 開著的聊天室即時撈出這些背景訊息（E）
+  try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
+  return msgs[msgs.length - 1];
+}
+
 const LONG_FORM_RE = /(\d{2,}\s*字|\d{2,}\s*words?|[一二三四五六七八九兩幾]百\s*字|[一二兩三]千\s*字|[一二三四五六七八九十兩]+\s*萬\s*字|(寫|說|講|來|編|想|聽|給我).{0,6}(故事|小說|文章|信|詩|散文|劇本|演講|報告|論文|介紹|長篇|短篇|童話|寓言|傳記|日記|劇情)|睡前故事|床邊故事|長一?點|詳細|完整|具體說明|長篇|大綱)/i;
 
 // 節日/季節感知：回傳當下的季節與節日提示字串，注入 system prompt 讓角色有時節感
@@ -324,6 +340,21 @@ export async function sendUserMessage(charId, content, image = null) {
   return userMsg;
 }
 
+// 模型拒絕生成的 meta 回覆（上游供應商內容政策所致，非本 app 過濾）。這類「我無法繼續…」
+// 出戲文字若落庫會永久破壞沉浸感、還會污染後續上下文，故命中則不落庫、改由 UI 提示重新生成。
+// 特徵：以拒絕語開門見山，且全文無「」對話與 *動作* 標記（純說教式 meta 文字）——
+// 藉此與「角色在戲裡說『我不能答應你』」這種正常演出區分，降低誤判。
+const REFUSAL_OPENER_RE = /^\s*(很?抱歉[，,]?\s*(但|我)|我(很)?(無法|不能|沒?辦法|不會)(繼續|協助|幫|提供|寫|生成|描述|扮演|回應)|我不(能|會)(幫|協助|提供)|作為(一個)?\s*(AI|人工智慧|語言模型|大型語言)|I['’]?m sorry|I can(no|['’])t|I cannot|I am (unable|not able)|I['’]?m not able|I won['’]?t\s)/i;
+
+function isRefusalReply(text) {
+  const t = (text || '').trim();
+  if (!t) return false;
+  if (!REFUSAL_OPENER_RE.test(t)) return false;
+  // 有「」對話或 *動作* 表示是在演、不是 meta 拒絕 → 放行
+  if (/[「」]/.test(t) || /\*[^*\n]+\*/.test(t)) return false;
+  return true;
+}
+
 // ── 1-on-1 Chat: Streaming ────────────────────────────────────────────────
 export async function generateAIResponseStream(charId, allMsgs, { onChunk }, imageBase64 = null) {
   const { c, provider, model, base, apiKey, history, systemStable, systemVolatile, dynamicMaxTokens } = await buildAIChatSetup(charId, allMsgs);
@@ -352,12 +383,15 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
     if (fullText.length >= dynamicMaxTokens * 0.4 && !CLEAN_END_RE.test(lastChar)) truncated = true;
   }
 
+  // 上游拒絕生成 → 不落庫、不觸發心聲，交還 refused 讓 UI 提示重新生成（不污染上下文）。
+  const refused = isRefusalReply(fullText);
+
   let msgs = [];
-  if (fullText) {
+  if (fullText && !refused) {
     msgs = await persistReplySegments(charId, fullText, { maxSegments: c.maxMsg || 2 });
     if (c.heartVoice) generateHeartVoice(c, allMsgs, fullText).catch(() => {});
   }
-  return { msgs, truncated };
+  return { msgs, truncated, refused };
 }
 
 // ── 主動訊息共用工具 ───────────────────────────────────────────────────────
@@ -648,15 +682,7 @@ export async function generateCycleCareMessage(charId, trigger) {
   }
   if (!text || !text.trim()) return null;
 
-  const msg = { id: 'msg_' + Date.now() + '_care', charId, role: 'assistant', content: text.trim(), kind: 'cycleCare', createdAt: Date.now() };
-  await dbPut('messages', msg);
-  c.unreadCount = (c.unreadCount || 0) + 1;
-  c.hasUnread = true;
-  await dbPut('characters', JSON.parse(JSON.stringify(c)));
-  await dbPut('notifications', { id: 'notif_care_' + Date.now(), charId, type: 'chat', targetId: charId, messageId: msg.id, text: '傳了一則訊息關心你', read: false, createdAt: Date.now() });
-  // 開著的聊天室即時撈出這則背景訊息（E）
-  try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
-  return msg;
+  return await persistProactive(charId, text, { kind: 'cycleCare', notifPrefix: 'notif_care_', notifText: '傳了一則訊息關心你' });
 }
 
 // ── 作息時段主動訊息（背景生成，非串流）──────────────────────────────────────
@@ -692,16 +718,7 @@ export async function generateScheduleMessage(charId, triggerDesc) {
   }
   if (!text || !text.trim()) return null;
 
-  const c = await dbGet('characters', charId);
-  const msg = { id: 'msg_' + Date.now() + '_sched', charId, role: 'assistant', content: text.trim(), kind: 'schedule', createdAt: Date.now() };
-  await dbPut('messages', msg);
-  c.unreadCount = (c.unreadCount || 0) + 1;
-  c.hasUnread = true;
-  await dbPut('characters', JSON.parse(JSON.stringify(c)));
-  await dbPut('notifications', { id: 'notif_sched_' + Date.now(), charId, type: 'chat', targetId: charId, messageId: msg.id, text: '傳了一則訊息給你', read: false, createdAt: Date.now() });
-  // 開著的聊天室即時撈出這則背景訊息（E），避免之後重開才「插進歷史中間」
-  try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
-  return msg;
+  return await persistProactive(charId, text, { kind: 'schedule', notifPrefix: 'notif_sched_', notifText: '傳了一則訊息給你' });
 }
 
 // ── Heart Voice Logic ─────────────────────────────────────────────────────
@@ -974,16 +991,7 @@ export async function generateMissYouMessage(charId) {
   }
   if (!text || !text.trim()) return null;
 
-  const c = await dbGet('characters', charId);
-  const msg = { id: 'msg_' + Date.now() + '_miss', charId, role: 'assistant', content: text.trim(), kind: 'missYou', createdAt: Date.now() };
-  await dbPut('messages', msg);
-  c.unreadCount = (c.unreadCount || 0) + 1;
-  c.hasUnread = true;
-  await dbPut('characters', JSON.parse(JSON.stringify(c)));
-  await dbPut('notifications', { id: 'notif_miss_' + Date.now(), charId, type: 'chat', targetId: charId, messageId: msg.id, text: '突然想到你了', read: false, createdAt: Date.now() });
-  // 開著的聊天室即時撈出這則背景訊息（E）
-  try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
-  return msg;
+  return await persistProactive(charId, text, { kind: 'missYou', notifPrefix: 'notif_miss_', notifText: '突然想到你了' });
 }
 
 // ── 每日一問（背景生成，非串流）──────────────────────────────────────────
@@ -1020,14 +1028,5 @@ export async function generateDailyQuestion(charId) {
   }
   if (!text || !text.trim()) return null;
 
-  const c = await dbGet('characters', charId);
-  const msg = { id: 'msg_' + Date.now() + '_dq', charId, role: 'assistant', content: text.trim(), kind: 'dailyQuestion', createdAt: Date.now() };
-  await dbPut('messages', msg);
-  c.unreadCount = (c.unreadCount || 0) + 1;
-  c.hasUnread = true;
-  await dbPut('characters', JSON.parse(JSON.stringify(c)));
-  await dbPut('notifications', { id: 'notif_dq_' + Date.now(), charId, type: 'chat', targetId: charId, messageId: msg.id, text: '今天想問你一個問題', read: false, createdAt: Date.now() });
-  // 開著的聊天室即時撈出這則背景訊息（E）
-  try { window.dispatchEvent(new CustomEvent('new-proactive-msg', { detail: { charId } })); } catch (_) {}
-  return msg;
+  return await persistProactive(charId, text, { kind: 'dailyQuestion', notifPrefix: 'notif_dq_', notifText: '今天想問你一個問題' });
 }
