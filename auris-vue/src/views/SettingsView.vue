@@ -130,10 +130,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P102
+        Auris · P103
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P102 新增互動教學示範模式：設定頁「使用教學」或網址帶 ?demo=1 即可進入。直接複用真實畫面元件（App 一改示範自動同步、零截圖），預載「夜雨／小晴」虛構示範資料，跑在隔離的 auris-demo 資料庫、碰不到你的真實資料；所有 AI 回覆改用假腳本、免金鑰、不外連。右下角「教學」鈕會依當前頁面顯示螢幕感知說明。旗標關閉時對正式 App 行為零影響
+        P103 聊天室排版重診修復：帶頭像的第一顆泡泡被雙重 74% 壓縮而比後續泡泡窄、短句還會無故折行（「吃晚餐了沒」變兩行）——修正後首顆與後續泡泡同寬、右緣對齊；經實測重診，模型的單一換行是刻意分行，P56/P101 的「孤立換行合併」反而把分行黏成一長串——改為保留原始分行；主動訊息冷場分支原本明文叫模型「不要接續舊話題、問問近況」導致劇情演到一半卻傳出「今天做什麼了」這種出戲問候——改為可開新話題但必須與前文情境相容
       </div>
     </div>
   </div>

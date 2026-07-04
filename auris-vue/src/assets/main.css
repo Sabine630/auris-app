@@ -159,7 +159,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   .ph{padding:0 14px}
   .chat-msgs{padding:10px 12px 8px}
   .msg{max-width:80%}
-  .msg-with-av{max-width:80%}
+  .msg-with-av{max-width:calc(80% + 33px)} /* P103：同主規則，含頭像列，避免內層泡泡被雙重壓縮 */
   .tg3{grid-template-columns:1fr 1fr 1fr}
   .nav{height:72px}
   .ni{padding:4px 2px}
@@ -476,8 +476,14 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .msg.me{align-self:flex-end;align-items:flex-end;margin-top:6px}
 .msg.them{align-self:flex-start;align-items:flex-start}
 
-/* 帶頭像的訊息行（第一條） */
-.msg-with-av{display:flex;align-items:flex-end;gap:7px;max-width:74%;align-self:flex-start}
+/* 帶頭像的訊息行（第一條）。
+   P103：max-width 含頭像列（74% + 33px 頭像區），並解除內層 .msg 的 74% 上限——
+   否則 74%×74% 雙重壓縮＋「shrink-to-fit 父容器 × 百分比 max-width 子元素」的循環收縮，
+   會把第一顆泡泡掐到比後續 .msg-cont 窄一截，短句（如「吃晚餐了沒」）還會在
+   iPhone 3x 亞像素下無故折行——P56/P101 誤診為「模型硬斷句」的腰斬其實是這裡。
+   修正後首顆與 .msg-cont 泡泡上限同為 74%、右緣對齊。 */
+.msg-with-av{display:flex;align-items:flex-end;gap:7px;max-width:calc(74% + 33px);align-self:flex-start}
+.msg-with-av .msg{max-width:none;min-width:0}
 .msg-av{width:26px;height:26px;border-radius:8px;background:var(--rose-pale);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
 .msg-av-spacer{width:26px;flex-shrink:0} /* 連續訊息用的佔位 */
 

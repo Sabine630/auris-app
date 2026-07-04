@@ -32,38 +32,45 @@ describe('formatContent — XSS 防線', () => {
   });
 });
 
-// 孤立換行合併：句中被模型硬斷的換行要收掉，段落空行（\n\n）要保留。
-describe('formatContent — 孤立換行合併', () => {
-  it('中文句中孤立換行被合併（無空格）', () => {
-    expect(formatContent('吃午餐了\n沒。')).toBe('吃午餐了沒。');
+// 換行處理（P103 重診改版）：模型的單 \n 是刻意分行（實證：「今天心情看起來不錯\n做什麼了」
+// 是兩句），P56/P101 的「合併孤立換行」把刻意分行黏成一長串。當年「句中被腰斬」其實是
+// .msg-with-av 雙重 74% 壓縮的 CSS bug（已修）。P103 起【保留】所有單一換行，
+// 只做 \r 正規化、行尾空白清理、3+ 連續換行收斂。
+describe('formatContent — 換行保留（P103）', () => {
+  it('單一換行保留為 <br>，不再合併', () => {
+    expect(formatContent('吃午餐了\n沒。')).toBe('吃午餐了<br>沒。');
   });
 
-  it('容忍換行前的半形空格', () => {
-    expect(formatContent('吃午餐了 \n沒。')).toBe('吃午餐了沒。');
+  it('刻意分行的兩句各自成行（P103 實證案例）', () => {
+    expect(formatContent('今天心情看起來不錯\n做什麼了')).toBe('今天心情看起來不錯<br>做什麼了');
   });
 
-  it('容忍換行後的半形空格', () => {
-    expect(formatContent('吃午餐了\n 沒。')).toBe('吃午餐了沒。');
+  it('行尾空白清掉、換行保留（「字 \\n字」）', () => {
+    expect(formatContent('吃午餐了 \n沒。')).toBe('吃午餐了<br>沒。');
   });
 
-  it('\\r\\n 正規化後也能合併', () => {
-    expect(formatContent('吃午餐了\r\n沒。')).toBe('吃午餐了沒。');
+  it('\\r\\n 正規化成 <br>', () => {
+    expect(formatContent('吃午餐了\r\n沒。')).toBe('吃午餐了<br>沒。');
   });
 
-  it('連續單行 A\\nB\\nC 逐一合併', () => {
-    expect(formatContent('一\n二\n三')).toBe('一二三');
+  it('連續單行 A\\nB\\nC 各自成行', () => {
+    expect(formatContent('一\n二\n三')).toBe('一<br>二<br>三');
   });
 
-  it('英數↔英數之間補回一個空格', () => {
-    expect(formatContent('hello\nworld')).toBe('hello world');
+  it('英文單行換行也保留', () => {
+    expect(formatContent('hello\nworld')).toBe('hello<br>world');
   });
 
-  it('段落空行（\\n\\n）保留、不被合併', () => {
+  it('段落空行（\\n\\n）保留', () => {
     expect(formatContent('第一段\n\n第二段')).toBe('第一段<br><br>第二段');
   });
 
   it('\\r\\n\\r\\n 段落空行正規化後仍保留', () => {
     expect(formatContent('第一段\r\n\r\n第二段')).toBe('第一段<br><br>第二段');
+  });
+
+  it('3 個以上連續換行收斂成一個空行', () => {
+    expect(formatContent('第一段\n\n\n\n第二段')).toBe('第一段<br><br>第二段');
   });
 });
 
