@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P100 更新公告</div>
+      <div class="ann-badge">P103 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,36 +16,24 @@
               <div class="ann-title">近期更新</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">長按頭像，親暱互動 🤗</div>
-                  <div class="ann-item-desc">在聊天室長按對方的頭像，可以拍拍、抱抱、摸摸頭…角色會即時對這個動作本身做出反應——害羞、開心、彆扭、吐槽都有可能，看你們的關係與他的個性。</div>
+                  <div class="ann-item-title">全新「使用教學」互動示範 🎓</div>
+                  <div class="ann-item-desc">設定頁多了「使用教學」——一個可以放心亂點的示範模式，用虛構角色實際操作整個 App。AI 回覆是內建的示範腳本，不需要金鑰、不會呼叫你的 API、更碰不到你的真實資料。右下角的「教學」鈕會依你所在的頁面說明這一頁怎麼用。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">今天的心情，角色會在意 🌈</div>
-                  <div class="ann-item-desc">首頁多了「今天的心情」打卡。選一個心情（還能寫一句備註），聊天時角色會自然地感知你當下的狀態，關心得更貼心。沒打卡就完全不影響。</div>
+                  <div class="ann-item-title">聊天泡泡排版大修 💬</div>
+                  <div class="ann-item-desc">修正帶頭像的第一顆泡泡比後面窄一截、短句被無故折成兩行的老問題；訊息的分行現在會照角色原本的斷句顯示，不再被黏成一長串。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">已讀不回，更像真人 💬</div>
-                  <div class="ann-item-desc">開啟後，角色在忙碌時段可能「已讀」你的訊息、隔幾分鐘才回，回來時還會順口提一句剛剛在忙什麼。忙碌時段依角色的作息推測。</div>
+                  <div class="ann-item-title">自己訊息裡的「對話」看得清了 🎨</div>
+                  <div class="ann-item-desc">動作排版開啟時，自己玫瑰色氣泡中「」內的文字改成白色加粗，不再與底色融在一起。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">群組裡不再失憶 👥</div>
-                  <div class="ann-item-desc">群聊時角色現在會記得自己的背景故事、近況與喜好，回應更貼合人設，不再像換了個人。</div>
+                  <div class="ann-item-title">主動訊息更自然、不出戲 🔔</div>
+                  <div class="ann-item-desc">定時提醒、生理期關心、想你、每日一問改成像真人一樣的連發短泡泡；而且隔一陣子沒聊時，角色主動開口不會再無視你們剛剛的劇情、突然像分開一整天那樣問候。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">每日功能校準到你的時區 🕐</div>
-                  <div class="ann-item-desc">每日一問、心情、自動日記的「今天」改用你當地時間判定，不會再在半夜或早上莫名其妙換日。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">主動訊息更可靠 🔔</div>
-                  <div class="ann-item-desc">角色的主動關心（生理期關心、每日一問、定時提醒等）遇到斷網或 API 額度用完時，不再默默消失，當天會自動重試。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">用 Claude 更省一點 💰</div>
-                  <div class="ann-item-desc">使用 Anthropic（Claude）金鑰的人，重複的角色設定會命中快取，token 帳單能省下一些。其他供應商行為不變。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">修掉長按頭像的雙重彈窗 🔧</div>
-                  <div class="ann-item-desc">iOS 上長按頭像做互動時，不會再誤觸系統原生的圖片預覽了。</div>
+                  <div class="ann-item-title">模型拒絕回覆的優雅處理 🛡️</div>
+                  <div class="ann-item-desc">遇到上游模型拒絕生成（「我無法繼續…」）時，那段出戲文字不再被存進聊天記錄，會顯示系統提示並提供「重新生成」，通常重試一次就過。</div>
                 </div>
               </div>
             </template>
@@ -55,20 +43,16 @@
               <div class="ann-title">怎麼用</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">玩親暱互動</div>
-                  <div class="ann-item-desc">在聊天室裡長按對方的頭像，會跳出動作選單（拍拍／抱抱／摸摸頭等），選一個，角色就會針對那個動作即時回應。</div>
+                  <div class="ann-item-title">打開使用教學</div>
+                  <div class="ann-item-desc">設定 → 教學 → 使用教學，會另開一個示範分頁讓你隨便逛。想離開時點教學面板裡的「離開示範」即可，完全不影響你的正式資料。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">今天的心情打卡</div>
-                  <div class="ann-item-desc">首頁的「今天的心情」卡片點一下、選一個心情（可加一句備註）。打卡後會縮成小 chip，想改再點開重選即可。</div>
+                  <div class="ann-item-title">把教學分享給朋友</div>
+                  <div class="ann-item-desc">教學網址就是正式網址加上 ?demo=1——可以直接傳給還沒入坑的朋友試玩，不需要 API 金鑰就能體驗完整介面。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">開啟已讀不回</div>
-                  <div class="ann-item-desc">角色設定 → 進階設定，打開「已讀不回」開關，並填好角色的上班／忙碌時段，忙的時候他就可能已讀你、晚點再回。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">開啟生理期關心／每日一問</div>
-                  <div class="ann-item-desc">在角色設定的進階選項裡開啟對應開關，角色就會在合適的時機主動傳訊關心你、或問你一個問題。</div>
+                  <div class="ann-item-title">排版修復不用做任何事</div>
+                  <div class="ann-item-desc">更新後，舊訊息會自動用正確的排版重新顯示——泡泡寬度、分行都會直接恢復正常。</div>
                 </div>
               </div>
             </template>
@@ -102,7 +86,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P100</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P103</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
