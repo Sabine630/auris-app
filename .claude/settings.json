@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/sabinetsai/Desktop/Auris 教學手冊/**)",
+      "Read(//Users/sabinetsai/Library/Caches/ms-playwright/**)",
+      "Bash(npm test*)",
+      "Bash(npm run test*)",
+      "Bash(npm run build*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git add *)",
+      "Bash(git push origin dev)"
+    ],
+    "additionalDirectories": [
+      "/Users/sabinetsai/Desktop/Auris 教學手冊"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-main-push.sh\"",
+            "timeout": 10,
+            "statusMessage": "檢查是否推送 main…"
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-version-bump.sh\"",
+            "timeout": 15,
+            "statusMessage": "檢查版更 checklist…"
+          }
+        ]
+      }
+    ]
+  }
+}

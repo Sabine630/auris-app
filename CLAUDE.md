@@ -1,6 +1,20 @@
 # Auris 專案 Claude 工作規則
 
-## 版更 Checklist（每次 commit 前必做）
+## 自動化防線與 Skills（2026-07-05 起）
+
+工作規則已部分做成可執行的 skill 與強制 hook，**優先用 skill 走流程**：
+
+| 指令 | 用途 |
+|------|------|
+| `/bump` | 版更 checklist 全流程（版號 +1、進度總覽、架構文件、功能清單、防呆自檢） |
+| `/release` | 發布正式版（確認授權、公告版號四處同步、merge dev→main、確認 Actions 部署） |
+| `/verify-app` | 驗證改動（vitest、dev server 實測、排版問題先定層再動手） |
+
+Hooks（腳本在 `.claude/hooks/`，由 `.claude/settings.json` 掛載，自動執行、無法跳過）：
+- **guard-main-push**：任何推送 main 的指令一律先跳使用者確認
+- **check-version-bump**：commit 含 `auris-vue/src/` 異動時，強制檢查版號已 +1、進度總覽已更新、「當前版本」恰好 2 處；WIP 等特殊 commit 可在訊息加 `[skip-ver]` 略過
+
+## 版更 Checklist（每次 commit 前必做，= /bump 的內容）
 
 每次功能修改、bug 修復、UI 調整，commit 前依序完成。**第 1、2 項每次必做**，第 3、4 項視異動性質決定。
 
@@ -14,7 +28,7 @@
 
 ### 2. 更新進度總覽（必做）
 **檔案**：`Auris 完整開發進度總覽.md`
-- 此檔為「**舊 → 新遞增**」排列，新節**加在編號最大的 P 節之後**（檔案最下方那一節），不可插在中間或跳號
+- 此檔為「**舊 → 新遞增**」排列，新節**加在編號最大的 P 節之後、`## 🎨 當前技術棧` 之前**（P 節後面還有「技術棧／檔案結構／已知問題／歷史備註」4 個固定尾節，**不是加在檔案最尾端**），不可插在中間或跳號
 - 同步更新**檔頭的「當前版本」欄位**（並把舊節標題裡的「當前版本」字樣移除，見防呆原則 1）
 - 若跨到新 Phase 範圍，更新 Phase 標題的版本區間（如「Phase 4：P39–P67」）
 - 格式照現有節：標題（含日期）、功能描述、受影響檔案表格
@@ -64,7 +78,7 @@ git checkout main && git merge dev
 git push origin main   # Actions 自動 build（auris-vue/dist）並部署 GitHub Pages 正式版
 ```
 
-**推上任何分支前必須先問使用者是否確認推送。**
+**推 `dev` 屬日常流程，不需逐次確認；推 `main` 必須先取得使用者明確同意（guard-main-push hook 會再強制確認一次）。**
 
 ---
 
