@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-05（P103）
+> 最後更新：2026-07-07（P104）
 
 ---
 
@@ -374,6 +374,21 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P104（2026-07-07）{{user}}/{{char}} 佔位符全站替換・心聲截斷再修
+
+- **佔位符替換（`format.js` 新增 `applyNameMacros`）**：專案原本完全沒有 {{user}}/{{char}} 替換層，角色卡欄位裡的佔位符原樣進 system prompt、模型照抄進輸出。雙保險：prompt 端（單聊 systemStable/Volatile、群聊 systemPrompt、contentEngine 四生成器）組完整段換真名；輸出端（`persistReplySegments`、群聊落庫、contentEngine 輸出）存檔前再掃一次。大小寫與空白變體（`{{ USER }}` 等）皆吃。
+- **非串流截斷偵測（`llm.js`）**：P94 只在 `parseSSEStream` 偵測截斷，非串流三分支拿到 JSON 從不讀 finish_reason、`truncated` 恆為 false。補上：OpenAI 相容 `finish_reason==='length'`、Anthropic `stop_reason==='max_tokens'`、Vertex `finishReason==='MAX_TOKENS'`。
+- **心聲殘句不再入庫（`chatEngine.js` `generateHeartVoice`）**：改直連 `callLLM`（`sendLLMRequest` 會吞掉 truncated），被硬切一律不存不通知；max_tokens 220→1000（推理型模型思考先吃額度，220 仍會把正文斬半、產出「連妳嗔怒的模樣，都」式殘句且閃過 P94 的「<6 字＋逗號結尾」啟發式）。啟發式保留為第二道防線。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/format.js` | 新增 `applyNameMacros(text, userName, charName)` |
+| `services/llm.js` | 非串流三 provider 分支補 finish_reason 截斷偵測 |
+| `services/chatEngine.js` | prompt／落庫雙端佔位符替換；心聲直連 callLLM、truncated 即棄、額度 220→1000 |
+| `services/contentEngine.js` | 貼文／留言回覆／日記／夢境雙端替換 |
+| `services/__tests__/format.test.js` | applyNameMacros 測試組（7 案例，59/59 通過） |
+| `views/SettingsView.vue` | P103 → P104 |
 
 ### P103（2026-07-05）聊天室排版重診：泡泡雙重壓縮・保留原始分行・主動訊息出戲修正
 

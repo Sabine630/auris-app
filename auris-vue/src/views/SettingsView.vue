@@ -130,10 +130,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P103
+        Auris · P104
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P103 聊天室排版重診修復：帶頭像的第一顆泡泡被雙重 74% 壓縮而比後續泡泡窄、短句還會無故折行（「吃晚餐了沒」變兩行）——修正後首顆與後續泡泡同寬、右緣對齊；經實測重診，模型的單一換行是刻意分行，P56/P101 的「孤立換行合併」反而把分行黏成一長串——改為保留原始分行；主動訊息冷場分支原本明文叫模型「不要接續舊話題、問問近況」導致劇情演到一半卻傳出「今天做什麼了」這種出戲問候——改為可開新話題但必須與前文情境相容
+        P104 佔位符替換與心聲截斷再修：全站新增 {{user}}/{{char}} 替換（角色卡欄位進 prompt 前換真名、AI 輸出落庫前再掃一次），聊天泡泡不再出現 {{user}} 原文；心聲改走可偵測 finish_reason 的路徑，被 max_tokens 硬切的殘句（如「我的早就」「連妳嗔怒的模樣，都」）一律不存，並把額度 220→1000 讓推理型模型講得完
       </div>
     </div>
   </div>

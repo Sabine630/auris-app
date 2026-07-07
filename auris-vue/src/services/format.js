@@ -33,6 +33,18 @@ export function formatContent(str, enableRich = false) {
   return html.replace(/\n/g, '<br>');
 }
 
+// {{user}}/{{char}} 佔位符替換（SillyTavern 式角色卡的慣用寫法）。
+// 專案原本完全沒有這層，角色卡欄位裡的 {{user}} 會原封不動進 system prompt，
+// 模型再照抄進輸出、直接顯示在泡泡上。雙保險：組 prompt 前先把卡片欄位換成真名（治本）；
+// 模型偶爾仍會自己輸出佔位符，落庫前再掃一次輸出（治標）。
+export function applyNameMacros(text, userName, charName) {
+  if (!text) return text;
+  let out = text;
+  if (userName) out = out.replace(/\{\{\s*user\s*\}\}/gi, userName);
+  if (charName) out = out.replace(/\{\{\s*char\s*\}\}/gi, charName);
+  return out;
+}
+
 // 把 AI 一次回覆依「空行」切成多則訊息（真人 LINE 連發短泡泡）。
 // 規則：以一個以上空行（\n{2,}）分段、各段 trim、丟掉空段。
 // 無空行 → 回傳單段陣列（= 原本的單泡泡行為，安全退路）。

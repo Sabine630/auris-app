@@ -2,7 +2,7 @@ import { dbGet, dbPut, dbIdx, dbAll, dbLatestByChar, getSetting, setSetting } fr
 import { sendLLMRequest } from './api.js';
 import { callLLM, resolveLLMConfig } from './llm.js';
 import { getCyclePhase, cycleCareContext } from './cycle.js';
-import { splitReply } from './format.js';
+import { splitReply, applyNameMacros } from './format.js';
 import { estimateTokens } from './tokens.js';
 import { getWeatherCtx } from './weather.js';
 import { getTodayMood, moodContext } from './mood.js';
@@ -28,7 +28,11 @@ function relevanceScore(memText, querySh) {
 // 回傳已落庫的訊息陣列（同角色、createdAt 以毫秒位移保序，會被 isCont 歸為連續訊息）。
 // maxSegments 預設取角色 maxMsg，避免一句一泡泡；kind 供主動訊息標記用。
 async function persistReplySegments(charId, fullText, { maxSegments = 3, kind = null } = {}) {
-  const segs = splitReply(fullText, maxSegments);
+  // 落庫前掃掉模型照抄的 {{user}}/{{char}} 佔位符（prompt 端已換過真名，這裡是最後防線）。
+  const c = await dbGet('characters', charId);
+  const me = await getSetting('me_settings') || {};
+  const youName = c?.overrideMe && c?.you_name ? c.you_name : me.name || '你';
+  const segs = splitReply(applyNameMacros(fullText, youName, c?.name), maxSegments);
   const base = Date.now();
   const msgs = segs.map((content, i) => {
     const m = { id: 'msg_' + base + '_ai_' + i, charId, role: 'assistant', content, createdAt: base + i };
@@ -326,8 +330,10 @@ ${lengthGuide}
     : '';
   // 全站呼叫點一律以 [{ text: systemStable, cache }, { text: systemVolatile + 任務尾段 }] 傳給 callLLM，
   // 讓聊天與所有主動訊息共用同一份穩定段快取（#6）；非 anthropic 由 callLLM join 回原字串。
-  const systemStable = systemPrompt;
-  const systemVolatile = `${timeCtx}${weatherCtx}${worldCtx}${memCtx}${moodCtx}${longFormNote}`;
+  // 角色卡欄位（個性/背景故事/關係背景/補充指令/範例對話…）常見 SillyTavern 式 {{user}}/{{char}}
+  // 佔位符，組完 prompt 後整段換成真名，模型才不會照抄佔位符進輸出。
+  const systemStable = applyNameMacros(systemPrompt, youName, c.name);
+  const systemVolatile = applyNameMacros(`${timeCtx}${weatherCtx}${worldCtx}${memCtx}${moodCtx}${longFormNote}`, youName, c.name);
 
   return { c, provider, model, base, apiKey, history, systemStable, systemVolatile, dynamicMaxTokens };
 }
@@ -768,16 +774,26 @@ ${recentText}
 現在請直接輸出一句內心話：`;
 
   try {
-    // max_tokens 給 220：推理型模型（會先吃 token 思考）與 CJK tokenization 較差的
-    // 模型在 80 token 下常被硬切，導致心聲斷在句中。prompt 已限 30 字、下方又有 50 字
-    // 後處理上限，放大額度只是讓模型講得完，不會讓存入變長。
-    let hvText = await sendLLMRequest([{ role: 'user', content: hvPrompt }], { max_tokens: 220, temperature: 0.9 });
+    // 不走 sendLLMRequest（它吞掉 truncated），直連 callLLM 拿 finish_reason 判斷截斷。
+    // max_tokens 給 1000：P94 的 220 對推理型模型仍不夠（思考先吃掉額度、輸出被硬切，
+    // 產出「管她什麼心跳，我的早就」這種殘句又閃過舊啟發式）。prompt 限 30 字、下方
+    // 又有 50 字後處理上限，放大額度只是讓模型講得完，不會讓存入變長。
+    const { provider, model, base, apiKey } = await resolveLLMConfig();
+    if (!apiKey) return;
+    const { fullText, truncated } = await callLLM({
+      provider, model, base, apiKey,
+      messages: [{ role: 'user', content: hvPrompt }],
+      maxTokens: 1000, temperature: 0.9, stream: false,
+      extra: { frequency_penalty: 0.5, presence_penalty: 0.2 },
+    });
 
-    hvText = hvText.trim().replace(/\n{2,}/g, ' ').replace(/\s+/g, ' ');
+    // 被 max_tokens 硬切 → 必是殘句，寧缺勿濫：不存、不發通知。
+    if (truncated) return;
 
-    // 截斷偵測：sendLLMRequest 吞掉 finish_reason，無法直接得知是否被 token 上限切斷。
-    // 啟發式——很短（<6 字）又以「未完成」標點（逗號、頓號、分號、冒號）收尾，視為殘句，
-    // 寧缺勿濫，直接放棄不存、不發通知。
+    let hvText = fullText.trim().replace(/\n{2,}/g, ' ').replace(/\s+/g, ' ');
+
+    // 第二道啟發式（部分 OpenAI 相容供應商不回 finish_reason）：很短（<6 字）又以
+    // 「未完成」標點（逗號、頓號、分號、冒號）收尾，視為殘句放棄。
     if (hvText.length < 6 && /[，、；：,;:]$/.test(hvText)) return;
 
     if (hvText.length > 50) {
@@ -871,7 +887,8 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
   }
   while (history.length > 0 && history[0].role === 'assistant') history.shift();
 
-  return { c, provider, model, base, apiKey, systemPrompt, history, lastMsg, validChars };
+  const meName = me.name || '你';
+  return { c, provider, model, base, apiKey, systemPrompt: applyNameMacros(systemPrompt, meName, c.name), history, lastMsg, validChars, meName };
 }
 
 function cleanGroupAIText(aiText, c, validChars) {
@@ -897,7 +914,7 @@ export async function sendGroupMessage(groupId, charId, content) {
 export async function generateGroupAIResponseStream(groupId, charIdToRespond, allMsgs, members, { onChunk, onStart }) {
   const setup = await buildGroupChatSetup(charIdToRespond, allMsgs, members);
   if (!setup) return null;
-  const { c, provider, model, base, apiKey, systemPrompt, history, lastMsg, validChars } = setup;
+  const { c, provider, model, base, apiKey, systemPrompt, history, lastMsg, validChars, meName } = setup;
 
   const fallbackHistory = history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : 'こんにちは' }];
 
@@ -912,7 +929,7 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
     onStart,
   });
 
-  const cleanedText = cleanGroupAIText(fullText.trim(), c, validChars);
+  const cleanedText = applyNameMacros(cleanGroupAIText(fullText.trim(), c, validChars), meName, c.name);
 
   if (!cleanedText) return null;
 

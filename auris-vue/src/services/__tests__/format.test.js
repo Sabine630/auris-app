@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatContent, splitReply } from '../format.js';
+import { formatContent, splitReply, applyNameMacros } from '../format.js';
 
 // formatContent 是全站唯一的 XSS 防線（所有 v-html 渲染點共用），測試聚焦「危險字元一定被 escape」。
 describe('formatContent — XSS 防線', () => {
@@ -123,5 +123,36 @@ describe('splitReply', () => {
 
   it('引號泡泡：」接「 的交界補切點', () => {
     expect(splitReply('「A」「B」')).toEqual(['「A」', '「B」']);
+  });
+});
+
+describe('applyNameMacros — {{user}}/{{char}} 佔位符替換', () => {
+  it('{{user}} 換成使用者名', () => {
+    expect(applyNameMacros('看見{{user}}窩在沙發上', '小美', 'Damien')).toBe('看見小美窩在沙發上');
+  });
+
+  it('{{char}} 換成角色名', () => {
+    expect(applyNameMacros('{{char}}走了過來', '小美', 'Damien')).toBe('Damien走了過來');
+  });
+
+  it('大小寫與空白變體都吃（{{ USER }}、{{User}}）', () => {
+    expect(applyNameMacros('{{ USER }}和{{User}}', '小美', 'D')).toBe('小美和小美');
+  });
+
+  it('多次出現全部替換', () => {
+    expect(applyNameMacros('{{user}}、{{char}}、{{user}}', 'A', 'B')).toBe('A、B、A');
+  });
+
+  it('未提供名字時保留原樣（不吐 undefined）', () => {
+    expect(applyNameMacros('{{user}}好', '', 'D')).toBe('{{user}}好');
+  });
+
+  it('null/空字串安全通過', () => {
+    expect(applyNameMacros(null, 'A', 'B')).toBe(null);
+    expect(applyNameMacros('', 'A', 'B')).toBe('');
+  });
+
+  it('一般文字不受影響', () => {
+    expect(applyNameMacros('普通句子{單括號}不動', 'A', 'B')).toBe('普通句子{單括號}不動');
   });
 });

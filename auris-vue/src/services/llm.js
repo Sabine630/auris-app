@@ -189,11 +189,11 @@ export async function callLLM({
       const data = await r.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       onChunk?.(text);
-      return { fullText: text, truncated: false };
+      return { fullText: text, truncated: data.candidates?.[0]?.finishReason === 'MAX_TOKENS' };
     }
     const data = await r.json();
     if (!r.ok || data.error) throw new Error(data.error?.message || JSON.stringify(data.error) || `HTTP Error ${r.status}`);
-    return { fullText: data.candidates?.[0]?.content?.parts?.[0]?.text || '', truncated: false };
+    return { fullText: data.candidates?.[0]?.content?.parts?.[0]?.text || '', truncated: data.candidates?.[0]?.finishReason === 'MAX_TOKENS' };
   }
 
   // ── Anthropic Messages API ────────────────────────────────────────────────
@@ -224,7 +224,7 @@ export async function callLLM({
     const data = await r.json();
     const errObj = Array.isArray(data) ? data[0]?.error : data.error;
     if (!r.ok || errObj) throw new Error(errObj?.message || JSON.stringify(errObj) || `HTTP Error ${r.status}`);
-    return { fullText: data.content?.[0]?.text || '', truncated: false };
+    return { fullText: data.content?.[0]?.text || '', truncated: data.stop_reason === 'max_tokens' };
   }
 
   // ── OpenAI 相容格式（openai / google AI Studio / openrouter）───────────────
@@ -254,5 +254,8 @@ export async function callLLM({
   const data = await r.json();
   const errObj = Array.isArray(data) ? data[0]?.error : data.error;
   if (!r.ok || errObj) throw new Error(errObj?.message || JSON.stringify(errObj) || `HTTP Error ${r.status}`);
-  return { fullText: data.choices?.[0]?.message?.content || '', truncated: false };
+  // 非串流也要看 finish_reason——P94 只在 SSE 路徑偵測截斷，非串流永遠回 false，
+  // 心聲等背景生成被 max_tokens 硬切時呼叫端無從得知、殘句照存。
+  const fr = data.choices?.[0]?.finish_reason;
+  return { fullText: data.choices?.[0]?.message?.content || '', truncated: fr === 'length' || fr === 'max_tokens' };
 }
