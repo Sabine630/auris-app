@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P103 更新公告</div>
+      <div class="ann-badge">P104 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,24 +16,16 @@
               <div class="ann-title">近期更新</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">全新「使用教學」互動示範 🎓</div>
-                  <div class="ann-item-desc">設定頁多了「使用教學」——一個可以放心亂點的示範模式，用虛構角色實際操作整個 App。AI 回覆是內建的示範腳本，不需要金鑰、不會呼叫你的 API、更碰不到你的真實資料。右下角的「教學」鈕會依你所在的頁面說明這一頁怎麼用。</div>
+                  <div class="ann-item-title">訊息不再出現 &#123;&#123;user&#125;&#125; 原文 🏷️</div>
+                  <div class="ann-item-desc">角色卡設定裡的 &#123;&#123;user&#125;&#125;／&#123;&#123;char&#125;&#125; 佔位符，現在會正確換成你的名字與角色名——聊天、群聊、主動訊息、貼文、日記、夢境全面生效，角色不會再把佔位符原文講出來。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">聊天泡泡排版大修 💬</div>
-                  <div class="ann-item-desc">修正帶頭像的第一顆泡泡比後面窄一截、短句被無故折成兩行的老問題；訊息的分行現在會照角色原本的斷句顯示，不再被黏成一長串。</div>
+                  <div class="ann-item-title">心聲不再出現半句話 💭</div>
+                  <div class="ann-item-desc">修正心聲被截斷成「連妳嗔怒的模樣，都」這種殘句的問題：現在能偵測到生成被硬切，只保留完整的心聲，寧缺勿濫。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">自己訊息裡的「對話」看得清了 🎨</div>
-                  <div class="ann-item-desc">動作排版開啟時，自己玫瑰色氣泡中「」內的文字改成白色加粗，不再與底色融在一起。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">主動訊息更自然、不出戲 🔔</div>
-                  <div class="ann-item-desc">定時提醒、生理期關心、想你、每日一問改成像真人一樣的連發短泡泡；而且隔一陣子沒聊時，角色主動開口不會再無視你們剛剛的劇情、突然像分開一整天那樣問候。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">模型拒絕回覆的優雅處理 🛡️</div>
-                  <div class="ann-item-desc">遇到上游模型拒絕生成（「我無法繼續…」）時，那段出戲文字不再被存進聊天記錄，會顯示系統提示並提供「重新生成」，通常重試一次就過。</div>
+                  <div class="ann-item-title">「使用教學」互動示範 🎓</div>
+                  <div class="ann-item-desc">第一次來玩？設定頁有「使用教學」——一個可以放心亂點的示範模式，用虛構角色實際操作整個 App，不需要金鑰、不會動到真實資料。右下角的「教學」鈕會依你所在的頁面說明怎麼用。</div>
                 </div>
               </div>
             </template>
@@ -51,8 +43,8 @@
                   <div class="ann-item-desc">教學網址就是正式網址加上 ?demo=1——可以直接傳給還沒入坑的朋友試玩，不需要 API 金鑰就能體驗完整介面。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">排版修復不用做任何事</div>
-                  <div class="ann-item-desc">更新後，舊訊息會自動用正確的排版重新顯示——泡泡寬度、分行都會直接恢復正常。</div>
+                  <div class="ann-item-title">舊的 &#123;&#123;user&#125;&#125; 訊息與殘缺心聲</div>
+                  <div class="ann-item-desc">這次修復只對「之後新生成」的內容生效，已存的舊訊息不會自動改寫——看到舊的佔位符訊息長按刪除或重新生成、殘缺心聲到「心聲 → 管理」清掉即可。</div>
                 </div>
               </div>
             </template>
@@ -86,7 +78,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P103</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P104</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">

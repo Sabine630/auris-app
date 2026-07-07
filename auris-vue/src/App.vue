@@ -53,7 +53,7 @@ import { localDateKey } from './services/date.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
-const ANNOUNCEMENT_VERSION = 'P103';
+const ANNOUNCEMENT_VERSION = 'P104';
 const showAnnouncement = ref(false);
 
 // ── 全域 confirm modal ─────────────────────────────────────────────────────
