@@ -20,8 +20,9 @@ printf '%s\n' "$staged" | grep -q '^auris-vue/src/' || exit 0
 
 problems=""
 
-git diff --cached -U0 -- auris-vue/src/views/SettingsView.vue 2>/dev/null | grep -q '^+.*Auris · P' \
-  || problems="${problems}①SettingsView.vue 版號未 +1；"
+# P105 起版號集中在 version.js（APP_VERSION 常數），設定頁只是引用顯示。
+git diff --cached -U0 -- auris-vue/src/version.js 2>/dev/null | grep -q "^+.*APP_VERSION = 'P" \
+  || problems="${problems}①version.js 的 APP_VERSION 未 +1；"
 
 printf '%s\n' "$staged" | grep -qF 'Auris 完整開發進度總覽.md' \
   || problems="${problems}②「Auris 完整開發進度總覽.md」未加入本次 commit；"

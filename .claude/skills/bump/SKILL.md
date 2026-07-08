@@ -1,6 +1,6 @@
 ---
 name: bump
-description: Auris 版更 checklist——設定頁版號 +1、進度總覽新節、架構文件、產品功能清單、防呆三原則自檢。每次功能修改 commit 前執行。
+description: Auris 版更 checklist——version.js 版號 +1、進度總覽新節、架構文件、產品功能清單、防呆三原則自檢。每次功能修改 commit 前執行。
 ---
 
 # Auris 版更（/bump）
@@ -10,16 +10,16 @@ description: Auris 版更 checklist——設定頁版號 +1、進度總覽新節
 ## 步驟 0：取得版號
 
 ```bash
-grep -n "Auris · P" auris-vue/src/views/SettingsView.vue
+grep -n "APP_VERSION" auris-vue/src/version.js
 ```
 
-得到目前版號 P{N}，本次為 P{N+1}。格式是 `Auris · P{N}`，**沒有 "v"**。
+得到目前版號 P{N}，本次為 P{N+1}。格式是 `P{N}`，**沒有 "v"**。
 
-## 步驟 1：設定頁版號（必做）
+## 步驟 1：版號常數（必做）
 
-`auris-vue/src/views/SettingsView.vue`：
-- 版號行 `Auris · P{N}` → `Auris · P{N+1}`
-- 下方那行修復摘要改為本次改動的簡短描述
+`auris-vue/src/version.js`（P105 起版號集中此檔，SettingsView 只是引用顯示，不必再改）：
+- `APP_VERSION = 'P{N}'` → `'P{N+1}'`
+- `VERSION_NOTE` 改為本次改動的簡短描述（會顯示在設定頁版號下方）
 
 ## 步驟 2：進度總覽（必做）
 
@@ -51,7 +51,7 @@ grep -n "Auris · P" auris-vue/src/views/SettingsView.vue
 # 應為 2（檔頭欄位＋最新節）
 grep -c "當前版本" "Auris 完整開發進度總覽.md"
 # 兩處版號應一致
-grep "Auris · P" auris-vue/src/views/SettingsView.vue
+grep "APP_VERSION" auris-vue/src/version.js
 grep "當前版本" "Auris 完整開發進度總覽.md" | head -1
 ```
 

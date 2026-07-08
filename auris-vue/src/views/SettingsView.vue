@@ -118,6 +118,10 @@
         <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
         <div class="sr-text">匯入資料</div><div class="sr-chev">›</div>
       </div>
+      <div class="sr" @click="copyDiag">
+        <div class="sr-ic"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M15 4h2a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2h2"/><path d="M9 12h6M9 16h4"/></svg></div>
+        <div class="sr-text">複製診斷資訊<div style="font-size:10px;font-weight:300;color:var(--text-3);margin-top:2px">回報問題時附上（不含對話內容與金鑰）</div></div><div class="sr-chev">›</div>
+      </div>
     </div>
 
     <div style="margin:8px 16px 16px;padding:14px 16px;background:var(--surface);border-radius:12px;border:.5px solid var(--border)">
@@ -130,10 +134,10 @@
 
     <div style="text-align:center;padding:20px 0 40px;font-family:var(--font);user-select:text;-webkit-user-select:text">
       <div style="font-size:11px;font-weight:300;color:var(--text-3);letter-spacing:.08em;margin-bottom:4px">
-        Auris · P104
+        Auris · {{ APP_VERSION }}
       </div>
       <div style="font-size:10px;font-weight:300;color:var(--text-3);opacity:.7;letter-spacing:.05em">
-        P104 佔位符替換與心聲截斷再修：全站新增 {{user}}/{{char}} 替換（角色卡欄位進 prompt 前換真名、AI 輸出落庫前再掃一次），聊天泡泡不再出現 {{user}} 原文；心聲改走可偵測 finish_reason 的路徑，被 max_tokens 硬切的殘句（如「我的早就」「連妳嗔怒的模樣，都」）一律不存，並把額度 220→1000 讓推理型模型講得完
+        {{ VERSION_NOTE }}
       </div>
     </div>
   </div>
@@ -142,7 +146,10 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { globalStore } from '../store/index.js';
-import { getSetting, setSetting, exportAllData, importAllData } from '../services/db.js';
+import { APP_VERSION, VERSION_NOTE } from '../version.js';
+import { getSetting, setSetting, importAllData } from '../services/db.js';
+import { doBackup, markBackedUp } from '../services/backup.js';
+import { exportDiag } from '../services/diag.js';
 import { geocodeCity, reverseGeocode } from '../services/weather.js';
 import { demoEntryUrl } from '../services/demoMode.js';
 
@@ -252,26 +259,32 @@ async function applyTheme(id) {
 async function exportData() {
   try {
     window.toast_('正在準備備份檔...');
-    const data = await exportAllData();
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    
-    // YYYYMMDD-HHMM format
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const h = String(d.getHours()).padStart(2, '0');
-    const min = String(d.getMinutes()).padStart(2, '0');
-    
-    a.download = `auris_backup_${y}${m}${day}-${h}${min}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await doBackup();
     window.toast_('匯出完成（基於安全，備份不含 API 金鑰）');
   } catch (err) {
     window.toast_('匯出失敗：' + err.message);
+  }
+}
+
+// 診斷匯出（P105 M3）：剪貼簿為主、下載檔為備援（非安全環境或權限被拒時）。
+async function copyDiag() {
+  try {
+    const text = await exportDiag();
+    try {
+      await navigator.clipboard.writeText(text);
+      window.toast_('已複製診斷資訊，回報問題時貼上即可');
+    } catch {
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'auris_diag.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+      window.toast_('剪貼簿不可用，已改下載診斷檔');
+    }
+  } catch (err) {
+    window.toast_('診斷資訊產生失敗：' + err.message);
   }
 }
 
@@ -295,6 +308,7 @@ function importData() {
       try {
         const json = JSON.parse(ev.target.result);
         await importAllData(json);
+        await markBackedUp(); // 匯入成功＝手上有新鮮備份檔，重置備份提醒計時
         window.toast_('匯入成功，即將重新載入...');
         setTimeout(() => window.location.reload(), 1500);
       } catch (err) {

@@ -5,6 +5,10 @@ import router from './router'
 import { initDB } from './services/db.js'
 import { isDemo } from './services/demoMode.js'
 import { seedDemoIfEmpty } from './services/demoData.js'
+import { installGlobalErrorLog, logError } from './services/diag.js'
+
+// 診斷（P105 M3）：越早掛越好——連 initDB 失敗都要留下紀錄。
+installGlobalErrorLog();
 
 initDB().then(async () => {
   // Demo/教學模式：在掛載前把示範資料灌進隔離的 auris-demo DB（若尚未有資料）。
@@ -36,5 +40,6 @@ initDB().then(async () => {
   }
 }).catch(err => {
   console.error('IndexedDB 初始化失敗：', err);
+  logError('init', 'IndexedDB 初始化失敗：' + (err?.message || err));
   document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif">資料庫初始化失敗，請嘗試重新整理。</div>';
 })

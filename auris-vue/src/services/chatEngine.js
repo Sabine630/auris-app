@@ -855,12 +855,14 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
   const groupPersonaCtx =
     (storyCtx ? '\n【背景故事】\n' + storyCtx : '') +
     (c.status ? '\n【近況】' + c.status : '') +
-    (c.hobby ? '\n【喜好】' + c.hobby : '') +
-    (c.timeAware ? '\n現在時間：' + timeAnchorLine() : '');
+    (c.hobby ? '\n【喜好】' + c.hobby : '');
 
-  const systemPrompt = '這是一個群組聊天，參與者有：你（' + c.name + '）、' + otherChars + '，以及' + (me.name || '使用者') + '。\n' +
+  // B1（P105）：群聊 prompt 比照單聊切「穩定段＋易變段」——穩定段（參與者、人設、
+  // 回覆規則）在 Anthropic 設快取點；易變段（現在時間、點名提醒）挪到快取點之後，
+  // 每則訊息變動也不破壞前段快取。非 anthropic 由 callLLM join 回單一字串。
+  const systemStable = '這是一個群組聊天，參與者有：你（' + c.name + '）、' + otherChars + '，以及' + (me.name || '使用者') + '。\n' +
     '你是「' + c.name + '」，個性：' + (c.persona || '') + '，說話風格：' + (styleMap[c.style] || '輕鬆自然') + '。' + groupPersonaCtx + '\n' +
-    (c.isAI ? '' : '永遠不要承認你是 AI。') + mentionHint + '\n\n' +
+    (c.isAI ? '' : '永遠不要承認你是 AI。') + '\n\n' +
     '📝 回覆規則（嚴格遵守）：\n' +
     '1. 用' + c.name + '的口吻回覆，30-80字，自然簡短像群聊訊息。\n' +
     '2. 【絕對禁止】在回覆開頭加上任何「' + c.name + '：」「我：」之類的名字前綴，直接從第一句內容開始。\n' +
@@ -868,6 +870,10 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
     '4. 【絕對禁止】輸出多個角色的對話片段。即使要回應其他角色說過的話，也只用' + c.name + '的口吻單獨講一段。\n' +
     '5. 若使用者直接問你，要先正面回答自己的想法。直接輸出訊息內容本身。' +
     (formatStyle ? '\n6. 把動作／表情／場景敘述用半形星號 *像這樣* 包起來，說出口的話用「」括住。' : '');
+
+  const systemVolatile =
+    (c.timeAware ? '\n現在時間：' + timeAnchorLine() : '') +
+    mentionHint;
 
   const rawHistory = allMsgs.slice(-12).map(m => {
     if (m.charId === 'user') return { role: 'user', content: m.content };
@@ -888,7 +894,12 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
   while (history.length > 0 && history[0].role === 'assistant') history.shift();
 
   const meName = me.name || '你';
-  return { c, provider, model, base, apiKey, systemPrompt: applyNameMacros(systemPrompt, meName, c.name), history, lastMsg, validChars, meName };
+  return {
+    c, provider, model, base, apiKey,
+    systemStable: applyNameMacros(systemStable, meName, c.name),
+    systemVolatile: applyNameMacros(systemVolatile, meName, c.name),
+    history, lastMsg, validChars, meName,
+  };
 }
 
 function cleanGroupAIText(aiText, c, validChars) {
@@ -914,13 +925,18 @@ export async function sendGroupMessage(groupId, charId, content) {
 export async function generateGroupAIResponseStream(groupId, charIdToRespond, allMsgs, members, { onChunk, onStart }) {
   const setup = await buildGroupChatSetup(charIdToRespond, allMsgs, members);
   if (!setup) return null;
-  const { c, provider, model, base, apiKey, systemPrompt, history, lastMsg, validChars, meName } = setup;
+  const { c, provider, model, base, apiKey, systemStable, systemVolatile, history, lastMsg, validChars, meName } = setup;
 
   const fallbackHistory = history.length ? history : [{ role: 'user', content: lastMsg ? lastMsg.content : 'こんにちは' }];
 
+  // B1（P105）：穩定段設快取點、易變段（時間/點名）接在後；同一群組同一角色
+  // 連續發言時，肥大的人設＋規則段 5 分鐘內重複輸入只收 1 折。
+  const system = [{ text: systemStable, cache: true }];
+  if (systemVolatile) system.push({ text: systemVolatile });
+
   const { fullText } = await callLLM({
     provider, model, base, apiKey,
-    system: systemPrompt,
+    system,
     messages: fallbackHistory,
     maxTokens: 4000,
     temperature: c.temperature ?? 0.8,

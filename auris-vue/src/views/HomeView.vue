@@ -32,6 +32,18 @@
 
     <div class="h-divider"></div>
 
+    <!-- 備份提醒卡（P105 M1）：從未備份且訊息 ≥ 50，或距上次備份超過 14 天才出現 -->
+    <div v-if="backupRemind" class="wg backup-card anim" style="animation-delay:.05s">
+      <div class="backup-title">💾 備份提醒</div>
+      <div class="backup-text">{{ backupRemind.kind === 'first'
+        ? '你們的對話已累積不少。所有資料只存在這台裝置上，換機或清除瀏覽器資料將無法找回，建議現在備份一份。'
+        : `距離上次備份已 ${backupRemind.days} 天。所有資料只存在這台裝置上，建議定期匯出備份。` }}</div>
+      <div class="backup-actions">
+        <button class="backup-btn primary" @click="doBackupNow">立即備份</button>
+        <button class="backup-btn" @click="snoozeBackup">稍後</button>
+      </div>
+    </div>
+
     <!-- 今日心情打卡（P96）：未打卡顯示完整卡片；已打卡縮成 chip，點擊可重選 -->
     <div v-if="!todayMood || moodPickerOpen" class="wg mood-card anim" style="animation-delay:.06s">
       <div class="mood-title">
@@ -165,8 +177,27 @@ import { ref, computed, onMounted } from 'vue';
 import { globalStore } from '../store/index.js';
 import { dbAll, dbIdx } from '../services/db.js';
 import { MOODS, getTodayMood, setTodayMood } from '../services/mood.js';
+import { doBackup, shouldRemindBackup, snoozeBackupReminder } from '../services/backup.js';
 
 const lastMsgByChar = ref({});
+
+// ── 備份提醒（P105 M1）──
+const backupRemind = ref(null);
+
+async function doBackupNow() {
+  try {
+    await doBackup();
+    backupRemind.value = null;
+    window.toast_?.('備份完成（基於安全，備份不含 API 金鑰）');
+  } catch (err) {
+    window.toast_?.('備份失敗：' + (err?.message || err));
+  }
+}
+
+async function snoozeBackup() {
+  await snoozeBackupReminder();
+  backupRemind.value = null;
+}
 
 // ── 今日心情打卡（P96）──
 const todayMood = ref(null);
@@ -223,6 +254,7 @@ const recentChats = computed(() =>
 onMounted(async () => {
   await globalStore.loadCharacters();
   try { todayMood.value = await getTodayMood(); } catch (_) {}
+  try { backupRemind.value = await shouldRemindBackup(); } catch (_) {}
 
   // 每角色掃一次訊息：取最後一句（聊天 widget 用）＋今日未回答的每日一問
   const todayStart = new Date();
@@ -315,6 +347,43 @@ function openAnnouncement() {
   letter-spacing: .03em;
 }
 .h-ann-btn:active { opacity: .6; }
+
+/* ── 備份提醒卡（P105 M1）── */
+.backup-card { padding: 14px 16px 12px; }
+.backup-title {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-3);
+  letter-spacing: .04em;
+  margin-bottom: 8px;
+}
+.backup-text {
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.65;
+  margin-bottom: 12px;
+}
+.backup-actions { display: flex; gap: 8px; }
+.backup-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: .5px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 400;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.backup-btn:active { opacity: .7; }
+.backup-btn.primary {
+  border: none;
+  background: var(--rose);
+  color: #fff;
+}
 
 /* ── 今日心情打卡（P96）── */
 .mood-card { padding: 14px 16px 12px; }

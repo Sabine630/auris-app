@@ -18,7 +18,7 @@
 
 **M3 定案規格**：設定頁「複製診斷資訊」為主（剪貼簿）、下載檔案為備援；內容＝版本＋UA＋螢幕/dpr＋PWA standalone＋主題＋provider/模型名＋角色/訊息計數＋錯誤 ring buffer（30 筆，逐筆蓋版號），**絕不含訊息內容與金鑰**。前置「版號常數手術」：新增 `src/version.js`（`APP_VERSION`/`VERSION_NOTE`），SettingsView 改引用；連動改 CLAUDE.md（第 1 項＋檔案對照表）、`/bump` skill、`check-version-bump.sh`（改盯 version.js），並實測 hook 仍擋未版更 commit。施作：`services/diag.js`（`logError` ring buffer＋`exportDiag`）、`main.js` 掛 `error`/`unhandledrejection`、`llm.js` 失敗記 provider＋HTTP 狀態。更新公告帶一句「回報問題請附診斷資訊」。
 
-**📦 P105 打包決議**：M1＋M3 合為一版（維運防線包），一節分段記錄（仿 P101）。
+**📦 P105 打包決議**：M1＋M3＋B1 合為一版（維運防線包，2026-07-08 補入 B1——同屬無感體質改善，且與 M3 同動 `llm.js`，一批改一批測），一節分段記錄（仿 P101）。
 
 ---
 
@@ -96,7 +96,7 @@
 
 ## 三、討論結果總覽（2026-07-08 全清單走完）
 
-> 批次與版號規劃**之後另議**（僅 P105＝M1＋M3 維運包已先定）。
+> 批次與版號規劃**之後另議**（僅 P105＝M1＋M3＋B1 維運包已先定）。
 
 ### ✅ 已採用（15 項，規格見各節定案段）
 

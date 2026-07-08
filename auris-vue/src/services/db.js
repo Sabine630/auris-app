@@ -56,6 +56,8 @@ export const dbAll = (s) => new Promise((r, j) => { const tx = db.transaction(s,
 export const dbIdx = (s, i, v) => new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); tx.objectStore(s).index(i).getAll(v).onsuccess = e => r(e.target.result); tx.onerror = j; });
 // 用 index 計數（不撈資料本體）。背景派發判斷「訊息數 ≥ N」用它，避免全量 getAll 進記憶體。
 export const dbIdxCount = (s, i, v) => new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); tx.objectStore(s).index(i).count(v).onsuccess = e => r(e.target.result); tx.onerror = j; });
+// 整個 store 計數（備份提醒門檻、診斷匯出的角色/訊息數用）。
+export const dbCount = (s) => new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); tx.objectStore(s).count().onsuccess = e => r(e.target.result); tx.onerror = j; });
 // 取某角色「最新 N 則」訊息（用複合 index charId_createdAt 逆向 cursor，不整包 getAll）。
 // 回傳陣列以「舊 → 新」排序，與既有 sort((a,b)=>a.createdAt-b.createdAt) 的結果一致。
 // 範圍用 array 前綴界定：[charId] < [charId, 任何值] < [charId, []]，

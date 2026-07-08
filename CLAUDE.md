@@ -20,11 +20,10 @@ Hooks（腳本在 `.claude/hooks/`，由 `.claude/settings.json` 掛載，自動
 
 > ⚠️ 動工前先看本檔最後的「**防呆三原則**」——過去出包都栽在那三件事（亂序、重複「當前版本」、漏連動計數）。
 
-### 1. 更新設定頁版號（必做）
-**檔案**：`auris-vue/src/views/SettingsView.vue`
-- 搜尋 `Auris · P`（目前格式為 `Auris · P67`，**注意沒有 "v"**）
-- 版號 +1（如 P67 → P68）
-- 更新下方那行的修復摘要（簡短描述這次改了什麼）
+### 1. 更新版號常數（必做）
+**檔案**：`auris-vue/src/version.js`（P105 起版號集中此檔；設定頁 SettingsView 只是引用顯示，**不必再改**）
+- `APP_VERSION` +1（如 `'P104'` → `'P105'`，格式**沒有 "v"**）
+- `VERSION_NOTE` 改為本次改動的簡短摘要（顯示在設定頁版號下方）
 
 ### 2. 更新進度總覽（必做）
 **檔案**：`Auris 完整開發進度總覽.md`
@@ -94,7 +93,9 @@ git push origin main   # Actions 自動 build（auris-vue/dist）並部署 GitHu
 
 | 目的 | 檔案 |
 |------|------|
-| 版號顯示 | `auris-vue/src/views/SettingsView.vue` |
+| 版號常數（版更時改這裡） | `auris-vue/src/version.js` |
+| 診斷匯出（錯誤 ring buffer） | `auris-vue/src/services/diag.js` |
+| 備份與備份提醒 | `auris-vue/src/services/backup.js` |
 | 進度紀錄（遞增） | `Auris 完整開發進度總覽.md` |
 | 架構文件（降序） | `auris-vue/ARCHITECTURE.md` |
 | 產品功能清單（視需要） | `product_feature_list.md` |
