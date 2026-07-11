@@ -100,6 +100,7 @@ git push origin main   # Actions 自動 build（auris-vue/dist）並部署 GitHu
 | 診斷匯出（錯誤 ring buffer） | `auris-vue/src/services/diag.js` |
 | 備份與備份提醒 | `auris-vue/src/services/backup.js` |
 | 進度紀錄（遞增） | `Auris 完整開發進度總覽.md` |
+| 維運速查（給使用者：觸發與查核方式） | `Auris 維運速查.md` |
 | 架構文件（降序） | `auris-vue/ARCHITECTURE.md` |
 | 產品功能清單（視需要） | `product_feature_list.md` |
 | 全域樣式 | `auris-vue/src/assets/main.css` |
