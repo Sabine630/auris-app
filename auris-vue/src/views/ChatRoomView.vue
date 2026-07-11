@@ -332,6 +332,18 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>
         <span>複製</span>
       </div>
+      <div class="msg-sheet-item" v-if="canSpeak && activeMsg.content" @click="doSpeak(activeMsg)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/><path d="M19.07 4.93a10 10 0 010 14.14"/></svg>
+        <span>朗讀</span>
+      </div>
+      <div class="msg-sheet-item" v-if="activeMsg.content" @click="openKeepsake(activeMsg)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span>收藏成回憶</span>
+      </div>
+      <div class="msg-sheet-item" v-if="activeMsg.content" @click="openShareCard(activeMsg)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        <span>分享成卡片</span>
+      </div>
       <div class="msg-sheet-item" v-if="isLatestUserMsg(activeMsg)" @click="doEditAndResend(activeMsg)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         <span>編輯並重傳</span>
@@ -341,6 +353,39 @@
         <span>重新生成回覆</span>
       </div>
       <div class="msg-sheet-cancel" @click="activeMsg = null">取消</div>
+    </div>
+
+    <!-- 收藏成回憶（P106 D2）：選填一行備註後存快照 -->
+    <div class="msg-sheet-mask show" v-if="keepsakeMsg" @click="keepsakeMsg = null"></div>
+    <div class="msg-sheet show" v-if="keepsakeMsg">
+      <div style="padding:16px 20px 4px;text-align:center;font-size:14px;font-weight:500;color:var(--text)">⭐ 收藏成回憶</div>
+      <div class="ks-preview">{{ keepsakeMsg.content }}</div>
+      <div style="padding:0 16px 8px">
+        <input class="ks-note-input" v-model="keepsakeNote" maxlength="60" placeholder="想補一句備註嗎？（選填）" @keyup.enter="doKeepsake">
+      </div>
+      <div class="msg-sheet-item ks-confirm" @click="doKeepsake"><span>收藏</span></div>
+      <div class="msg-sheet-cancel" @click="keepsakeMsg = null">取消</div>
+    </div>
+
+    <!-- 分享成卡片（P106 F1）：canvas 預覽 → share／下載 -->
+    <div class="msg-sheet-mask show" v-if="shareMsg" @click="closeShareCard"></div>
+    <div class="msg-sheet show" v-if="shareMsg">
+      <div style="padding:16px 20px 8px;text-align:center;font-size:14px;font-weight:500;color:var(--text)">分享成卡片</div>
+      <div class="share-preview-wrap">
+        <img v-if="sharePreviewUrl" :src="sharePreviewUrl" class="share-preview-img" alt="分享卡預覽">
+      </div>
+      <div class="share-opts">
+        <label class="share-opt" v-if="sharePrevMsg">
+          <input type="checkbox" v-model="shareWithPrev" @change="refreshShareCard">
+          <span>帶上前一則（一問一答）</span>
+        </label>
+        <label class="share-opt">
+          <input type="checkbox" v-model="shareShowName" @change="refreshShareCard">
+          <span>顯示角色名字</span>
+        </label>
+      </div>
+      <div class="msg-sheet-item ks-confirm" @click="doShareCard"><span>分享／儲存圖片</span></div>
+      <div class="msg-sheet-cancel" @click="closeShareCard">取消</div>
     </div>
 
     <!-- 輕觸互動選單（P96）：長按角色頭像觸發 -->
@@ -365,6 +410,10 @@ import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting } from '../services/
 import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive } from '../services/chatEngine.js';
 import { formatContent, splitReply } from '../services/format.js';
 import { estimateTokens } from '../services/tokens.js';
+import { speakText, stopSpeak, speechSupported } from '../services/speech.js';
+import { addKeepsake } from '../services/keepsakes.js';
+import { renderShareCard, shareCardImage } from '../services/shareCard.js';
+import { localDateKey } from '../services/date.js';
 import { globalStore } from '../store/index.js';
 
 const route = useRoute();
@@ -613,6 +662,7 @@ onUnmounted(() => {
   clearTimeout(proactiveTimer);
   clearTimeout(busyTimer); // pending key 留在 settings，由下次進房或 App.vue 背景派發接手
   proactiveController?.abort();
+  stopSpeak(); // 離開聊天室就停朗讀（P106 B3）
   window.removeEventListener('new-heart-voice', onHeartVoice);
   window.removeEventListener('new-proactive-msg', onProactiveMsg);
   document.removeEventListener('visibilitychange', onPageVisible);
@@ -1345,6 +1395,93 @@ function doCopy(m) {
   window.toast_(ok ? '已複製' : '複製失敗，請手動選取');
 }
 
+// ── 朗讀（P106 B3）──────────────────────────────────────────────────────────
+const canSpeak = speechSupported();
+
+function doSpeak(m) {
+  activeMsg.value = null;
+  speakText(m.content);
+}
+
+// ── 收藏成回憶（P106 D2）────────────────────────────────────────────────────
+const keepsakeMsg = ref(null);
+const keepsakeNote = ref('');
+
+function openKeepsake(m) {
+  activeMsg.value = null;
+  keepsakeNote.value = '';
+  keepsakeMsg.value = m;
+}
+
+async function doKeepsake() {
+  const m = keepsakeMsg.value;
+  if (!m) return;
+  const added = await addKeepsake({
+    msgId: m.id, charId, charName: cName.value,
+    role: m.role, content: m.content, note: keepsakeNote.value, msgAt: m.createdAt,
+  });
+  keepsakeMsg.value = null;
+  window.toast_(added ? '已收進回憶收藏盒 ⭐' : '這則已經收藏過了');
+}
+
+// ── 分享成卡片（P106 F1）────────────────────────────────────────────────────
+const shareMsg = ref(null);
+const sharePrevMsg = ref(null);       // 可帶上的前一則（一問一答）
+const shareWithPrev = ref(false);
+const shareShowName = ref(true);      // 角色名可切匿名；使用者側一律不出現名字
+const sharePreviewUrl = ref('');
+
+// 往上找最近一則文字訊息（跳過心聲／輕觸動作行）
+function findPrevTextMsg(m) {
+  const i = messages.value.findIndex(x => x.id === m.id);
+  for (let j = i - 1; j >= 0; j--) {
+    const x = messages.value[j];
+    if (x.type === 'hv' || x.type === 'touch' || !x.content) continue;
+    return x;
+  }
+  return null;
+}
+
+function openShareCard(m) {
+  activeMsg.value = null;
+  shareMsg.value = m;
+  sharePrevMsg.value = findPrevTextMsg(m);
+  shareWithPrev.value = false;
+  shareShowName.value = true;
+  refreshShareCard();
+}
+
+function buildShareCanvas() {
+  const m = shareMsg.value;
+  const msgs = [];
+  if (shareWithPrev.value && sharePrevMsg.value) {
+    msgs.push({ role: sharePrevMsg.value.role, text: sharePrevMsg.value.content });
+  }
+  msgs.push({ role: m.role, text: m.content });
+  return renderShareCard({
+    messages: msgs,
+    charName: shareShowName.value ? cName.value : 'Ta',
+    dateText: localDateKey(new Date(m.createdAt || Date.now())),
+  });
+}
+
+function refreshShareCard() {
+  if (!shareMsg.value) return;
+  sharePreviewUrl.value = buildShareCanvas().toDataURL('image/png');
+}
+
+async function doShareCard() {
+  const result = await shareCardImage(buildShareCanvas(), `auris-card-${Date.now()}.png`);
+  if (result === 'cancelled') return; // 使用者收掉系統分享面板，留在預覽
+  if (result === 'downloaded') window.toast_('已儲存圖片');
+  closeShareCard();
+}
+
+function closeShareCard() {
+  shareMsg.value = null;
+  sharePreviewUrl.value = '';
+}
+
 async function setReaction(m, emoji) {
   // 點同一個表情＝取消
   const prev = m.reaction || '';
@@ -1919,4 +2056,58 @@ async function retryAfterRefusal() {
   border-top: .5px solid var(--border);
   flex-shrink: 0;
 }
+
+/* ── 收藏成回憶（P106 D2）── */
+.ks-preview {
+  margin: 10px 16px;
+  padding: 12px 14px;
+  background: var(--bg);
+  border: .5px solid var(--border);
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  max-height: 108px;
+  overflow-y: auto;
+}
+.ks-note-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: .5px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+.ks-note-input:focus { border-color: var(--rose); }
+.ks-confirm { justify-content: center; color: var(--rose); font-weight: 500; }
+
+/* ── 分享成卡片（P106 F1）── */
+.share-preview-wrap {
+  margin: 4px 16px 10px;
+  display: flex;
+  justify-content: center;
+}
+.share-preview-img {
+  max-width: 100%;
+  max-height: 38vh;
+  border-radius: 12px;
+  border: .5px solid var(--border-2);
+  box-shadow: var(--sh);
+}
+.share-opts { padding: 0 22px 4px; display: flex; flex-direction: column; gap: 8px; }
+.share-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 300;
+  color: var(--text);
+  cursor: pointer;
+}
+.share-opt input { accent-color: var(--rose); width: 16px; height: 16px; }
 </style>

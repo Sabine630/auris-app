@@ -53,6 +53,14 @@
           </div>
           <div class="rel-entry-arrow">›</div>
         </div>
+        <div class="rel-entry-card" @click="goMemories">
+          <div class="rel-entry-ic">⭐</div>
+          <div class="rel-entry-info">
+            <div class="rel-entry-label">我們的回憶</div>
+            <div class="rel-entry-sub">收藏過的訊息都在這裡</div>
+          </div>
+          <div class="rel-entry-arrow">›</div>
+        </div>
       </div>
 
       <!-- 即將到來的重要日子 -->
@@ -87,6 +95,10 @@ const charId = route.params.id;
 
 function goTogether() {
   router.push('/together/' + charId);
+}
+
+function goMemories() {
+  router.push('/memories/' + charId);
 }
 
 const char = ref(null);
@@ -273,6 +285,7 @@ const upcoming = computed(() => {
   cursor: pointer;
 }
 .rel-entry-card:active { background: var(--surface); }
+.rel-entry-card + .rel-entry-card { margin-top: 10px; }
 .rel-entry-ic { font-size: 24px; flex-shrink: 0; }
 .rel-entry-info { flex: 1; min-width: 0; }
 .rel-entry-label { font-size: 14px; font-weight: 500; color: var(--text); }

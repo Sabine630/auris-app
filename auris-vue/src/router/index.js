@@ -25,6 +25,7 @@ import WorldsView from '../views/WorldsView.vue';
 import WorldEditView from '../views/WorldEditView.vue';
 import RelationView from '../views/RelationView.vue';
 import TogetherView from '../views/TogetherView.vue';
+import MemoriesView from '../views/MemoriesView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -53,7 +54,8 @@ const router = createRouter({
     { path: '/worlds', name: 'worlds', component: WorldsView },
     { path: '/worlds/edit/:id?', name: 'worlds-edit', component: WorldEditView },
     { path: '/relation/:id', name: 'relation', component: RelationView },
-    { path: '/together/:id', name: 'together', component: TogetherView }
+    { path: '/together/:id', name: 'together', component: TogetherView },
+    { path: '/memories/:id', name: 'memories', component: MemoriesView }
   ]
 });
 

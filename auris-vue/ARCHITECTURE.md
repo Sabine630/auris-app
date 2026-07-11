@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-08（P105）
+> 最後更新：2026-07-11（P106）
 
 ---
 
@@ -118,6 +118,7 @@ graph TD
 | `pending_busy_reply_<charId>` | 已讀不回的待補回覆（P96）：`{ dueAt, queuedAt, msgId }`；聊天室開著由房內計時器補回、離房由 `App.vue` 背景派發補生成，取消/完成後清除 |
 | `last_backup_at` | 最後一次備份的時間戳（P105）：匯出／匯入成功皆更新；距今 ≥ 14 天首頁跳備份提醒卡，從未備份且訊息 ≥ 50 也提醒 |
 | `backup_snooze_until` | 備份提醒「稍後」的壓制期限時間戳（P105）：按稍後 = 現在 + 3 天 |
+| `keepsakes` | 回憶收藏盒（P106）：收藏訊息**快照**陣列 `{ id, msgId, charId, charName, role, content, note, msgAt, savedAt }`——存快照不存引用，清空聊天後收藏仍在；`msgId` 用於重複收藏去重 |
 
 > [!WARNING]
 > **升版注意**：升版（`version` 數字 +1）只能「新增」資料表或索引，不能修改已有結構。修改已有 store 的結構必須刪掉重建，**會清空該 store 的資料**。
@@ -226,6 +227,32 @@ API 請求的底層工具（供 `llm.js` 引用）。
 
 > 錯誤來源三路：全域監聽（`window`/`promise`）、`initDB` 失敗（`init`）、`callLLM` 失敗（`llm`，provider/model＋錯誤訊息含 HTTP 狀態；AbortError 使用者主動中斷不記）。
 
+### `services/speech.js`（P106）
+訊息朗讀（TTS 輕量版）——`speechSynthesis` 純前端免費，只做長按「朗讀」、不做自動朗讀（iOS 中文系統音偏機械，自動播破壞氣氛）。
+
+| 函式 | 用途 |
+|------|------|
+| `speakText(text)` | 停掉前一段後朗讀；zh-TW 語音優先、語速 0.95 |
+| `stripActionText(text)` | 剝除全形/半形括號內的動作描寫再唸；剝完沒剩東西則回原文 |
+| `stopSpeak()` / `isSpeaking()` / `speechSupported()` | 停止／狀態／環境支援判斷（不支援時聊天室選項不出現） |
+
+### `services/keepsakes.js`（P106）
+回憶收藏盒——長按訊息「收藏成回憶」的快照 CRUD，存 settings `keepsakes`（見 §3）。V1 不注入 prompt（未來可作 D4 默契素材）。
+
+| 函式 | 用途 |
+|------|------|
+| `addKeepsake({...})` | 存快照（備註去頭尾空白）；空內容或同 `msgId` 已收藏回 `null` |
+| `listKeepsakes(charId?)` | 新→舊；帶 `charId` 只回該角色 |
+| `removeKeepsake(id)` / `updateKeepsakeNote(id, note)` | 刪除／改備註 |
+
+### `services/shareCard.js`（P106）
+對話分享卡——canvas 生成對話美圖卡（1080px 寬、高度隨內容），隱私型產品的自然傳播管道。配色讀當前主題 CSS 變數（6 款主題自動跟色）；CJK 逐字貪婪換行、連續拉丁字串不拆；浮水印「Auris」＋網址小字淡色。D1 回憶月報存圖未來共用此引擎。
+
+| 函式 | 用途 |
+|------|------|
+| `renderShareCard({ messages, charName, dateText })` | 回 canvas：header（名字＋日期）＋左右泡泡（assistant 左 surface／user 右 rose）＋浮水印 |
+| `shareCardImage(canvas, filename)` | `navigator.share` 檔案分享 → 不支援落 PNG 下載；回 `'shared'`/`'downloaded'`/`'cancelled'`（使用者收掉面板不當錯誤） |
+
 ### `services/contentEngine.js` 與 `chatEngine.js`
 AI 內容與對話生成邏輯：
 
@@ -304,8 +331,9 @@ globalStore = {
 | `/worlds/edit/:id?` | `worlds-edit` | ❌ 隱藏（P65） |
 | `/relation/:id` | `relation` | ❌ 隱藏（聊天室選單進入，P71） |
 | `/together/:id` | `together` | ❌ 隱藏（關係主頁／聊天室選單進入，P77；共同願望清單・備忘錄） |
+| `/memories/:id` | `memories` | ❌ 隱藏（關係主頁進入，P106；回憶收藏盒） |
 
-> 共 25 條路由。
+> 共 26 條路由。
 
 ---
 
@@ -342,6 +370,7 @@ globalStore = {
 - **BlackboxView**：Heart Voice 心聲記錄。
 - **NotificationsView**：顯示貼文／日記／夢境／心聲／主動訊息生成後寫入的通知，點擊跳轉對應頁面。支援 `type`：`post` / `diary` / `dream` / `hv` / `chat`。
 - **WorldsView / WorldEditView (世界書，P65)**：與角色脫鉤的全域詞條庫（`worlds` store）。列表頁支援分類篩選與啟用 toggle；編輯頁設定名稱（觸發關鍵字）、別名、分類、內容、適用角色。對話時由 `buildAIChatSetup` 命中關鍵字才注入 prompt。
+- **MemoriesView (我們的回憶，P106)**：路由 `/memories/:id`，關係主頁「我們的回憶」入口卡進入；顯示該角色的收藏訊息快照列表（說話者／日期／內容／備註），兩段式刪除（先變「確認刪除」再點才刪）。D1 回憶月報實作時擴成「歷月回顧｜收藏」雙分頁。
 
 ---
 
@@ -399,6 +428,25 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P106（2026-07-11）泡泡長按選單批：訊息朗讀＋回憶收藏盒＋對話分享卡
+
+「Auris 維運與新功能討論」定案的第二批（B3＋D2＋F1），共同載體＝單聊訊息長按 action sheet。
+
+- **訊息朗讀（新增 `services/speech.js`，見 §4）**：長按 →「朗讀」，`speechSynthesis` zh-TW 優先；`stripActionText` 剝括號動作再唸；離開聊天室 `stopSpeak()`；不支援的瀏覽器選項不出現。
+- **回憶收藏盒（新增 `services/keepsakes.js`＋`views/MemoriesView.vue`，見 §4/§7）**：長按 →「收藏成回憶」→ 選填備註（60 字）；存快照不存引用（settings `keepsakes`）、同 `msgId` 去重；入口＝RelationView 新入口卡 →`/memories/:id`（路由 25→26 條）。
+- **對話分享卡（新增 `services/shareCard.js`，見 §4）**：長按 →「分享成卡片」→ 預覽 modal（可帶前一則成一問一答——自動跳過 hv/touch 訊息；角色名可切匿名「Ta」；使用者側一律不出現名字）→ `navigator.share`／PNG 下載 fallback。配色隨 6 款主題、浮水印「Auris」＋網址。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/speech.js` | 新增：`speakText`／`stripActionText`／`stopSpeak`／`speechSupported` |
+| `services/keepsakes.js` | 新增：`addKeepsake`／`listKeepsakes`／`removeKeepsake`／`updateKeepsakeNote` |
+| `services/shareCard.js` | 新增：`renderShareCard`／`shareCardImage` |
+| `views/ChatRoomView.vue` | 長按選單加三項；收藏備註／分享卡預覽 modal；`onUnmounted` 停朗讀 |
+| `views/MemoriesView.vue` | 新增：收藏列表頁 |
+| `views/RelationView.vue` | 「我們的回憶」入口卡 |
+| `router/index.js` | `/memories/:id`（26 條） |
+| `__tests__/keepsakes.test.js`／`__tests__/speech.test.js` | 新增 8＋5 案例（vitest 87/87） |
 
 ### P105（2026-07-08）維運防線包：備份提醒＋診斷匯出＋群組 prompt caching
 
