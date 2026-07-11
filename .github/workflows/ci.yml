@@ -25,6 +25,11 @@ jobs:
         working-directory: ./auris-vue
         run: npm install
 
+      # 依賴弱點掃描：有 high（含）以上等級漏洞就讓 CI 紅燈（P105 後加入的資安防線）
+      - name: Audit dependencies
+        working-directory: ./auris-vue
+        run: npm audit --audit-level=high
+
       - name: Run tests
         working-directory: ./auris-vue
         run: npm run test

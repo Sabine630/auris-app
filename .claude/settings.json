@@ -34,6 +34,12 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-version-bump.sh\"",
             "timeout": 15,
             "statusMessage": "檢查版更 checklist…"
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-secret-leak.sh\"",
+            "timeout": 15,
+            "statusMessage": "掃描金鑰外洩…"
           }
         ]
       }

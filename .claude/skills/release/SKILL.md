@@ -34,12 +34,22 @@ grep -rn "ANNOUNCEMENT_VERSION\|更新公告\|last_seen_announcement" auris-vue/
 
 ```bash
 git log origin/dev -1 --oneline   # 最新改動已推上 dev
-gh run list --branch dev -L 3     # ci.yml 綠燈（test＋build 過）
+gh run list --branch dev -L 3     # ci.yml 綠燈（test＋audit＋build 過）
 ```
 
 尚未推上 dev 的改動先走 /bump → commit → push dev，等 CI 綠燈。
 
-## 步驟 3：合併與推送
+## 步驟 3：上版前資安檢測（不可跳過）
+
+1. **依賴弱掃**（CI 已擋過，這裡做最終確認）：
+   ```bash
+   cd auris-vue && npm audit --audit-level=high   # 應為 0 vulnerabilities
+   ```
+2. **程式碼資安審查**：執行內建的 `/security-review`，審當前分支相對 main 的整包待發改動（XSS、注入、金鑰硬編碼、不安全的資料處理等）。
+   - Auris 重點面向：不可信輸入進 DOM（角色卡匯入、備份還原、AI 回覆渲染是否都走 `formatContent` escape）、CSP 是否被新功能鬆動、金鑰是否只存在使用者裝置。
+   - 有 medium 以上的發現：先修復、重跑，全數清除才進下一步；確認為誤報則向使用者說明後放行。
+
+## 步驟 4：合併與推送
 
 ```bash
 git checkout main && git merge dev
@@ -47,7 +57,7 @@ git push origin main    # hook 會要求使用者確認——這是設計行為
 git checkout dev        # 推完立刻切回開發分支
 ```
 
-## 步驟 4：確認部署
+## 步驟 5：確認部署
 
 ```bash
 gh run list --branch main -L 1   # 等 deploy.yml 綠燈
