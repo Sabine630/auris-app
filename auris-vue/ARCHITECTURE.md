@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-12（P110）
+> 最後更新：2026-07-12（P111）
 
 ---
 
@@ -119,6 +119,9 @@ graph TD
 | `last_backup_at` | 最後一次備份的時間戳（P105）：匯出／匯入成功皆更新；距今 ≥ 14 天首頁跳備份提醒卡，從未備份且訊息 ≥ 50 也提醒 |
 | `backup_snooze_until` | 備份提醒「稍後」的壓制期限時間戳（P105）：按稍後 = 現在 + 3 天 |
 | `keepsakes` | 回憶收藏盒（P106）：收藏訊息**快照**陣列 `{ id, msgId, charId, charName, role, content, note, msgAt, savedAt }`——存快照不存引用，清空聊天後收藏仍在；`msgId` 用於重複收藏去重 |
+| `monthly_reviews` | 回憶月報（P111）：`{ id, charId, charName, ym, stats, letter, quotes, createdAt }` 陣列；`ym` = `YYYY-MM`，同角色同月重生覆蓋 |
+| `monthly_review_run_<YM>` | 某月自動生成完成標記（P111）：全部角色成功/跳過才寫；API 失敗不寫、下次開 app 重試 |
+| `capsules` | 時間膠囊（P111）：`{ id, charId, charName, mine, aiLetter, buriedAt, openAt, opened, openedAt, dueNotified, dueTries }` 陣列；`openAt` 距埋下至少 30 天；拆封當天 chatEngine 依 `openedAt` 注入對話 context |
 
 > [!WARNING]
 > **升版注意**：升版（`version` 數字 +1）只能「新增」資料表或索引，不能修改已有結構。修改已有 store 的結構必須刪掉重建，**會清空該 store 的資料**。
@@ -245,13 +248,35 @@ API 請求的底層工具（供 `llm.js` 引用）。
 | `listKeepsakes(charId?)` | 新→舊；帶 `charId` 只回該角色 |
 | `removeKeepsake(id)` / `updateKeepsakeNote(id, note)` | 刪除／改備註 |
 
-### `services/shareCard.js`（P106）
-對話分享卡——canvas 生成對話美圖卡（1080px 寬、高度隨內容），隱私型產品的自然傳播管道。配色讀當前主題 CSS 變數（6 款主題自動跟色）；CJK 逐字貪婪換行、連續拉丁字串不拆；浮水印「Auris」＋網址小字淡色。D1 回憶月報存圖未來共用此引擎。
+### `services/shareCard.js`（P106，P111 加月報卡）
+對話分享卡——canvas 生成對話美圖卡（1080px 寬、高度隨內容），隱私型產品的自然傳播管道。配色讀當前主題 CSS 變數（6 款主題自動跟色）；CJK 逐字貪婪換行、連續拉丁字串不拆；浮水印「Auris」＋網址小字淡色。
 
 | 函式 | 用途 |
 |------|------|
 | `renderShareCard({ messages, charName, dateText })` | 回 canvas：header（名字＋日期）＋左右泡泡（assistant 左 surface／user 右 rose）＋浮水印 |
+| `renderMonthCard({ title, charName, stats, letter, quote })` | 月報卡面（P111）：標題＋統計 tile 列＋回顧信卡＋金句（rose 底）＋浮水印 |
 | `shareCardImage(canvas, filename)` | `navigator.share` 檔案分享 → 不支援落 PNG 下載；回 `'shared'`/`'downloaded'`/`'cancelled'`（使用者收掉面板不當錯誤） |
+
+### `services/reviewEngine.js`（P111）
+回憶月報——「我們的這個月」統計＋角色口吻回顧短信，存 settings `monthly_reviews`（見 §3）。
+
+| 函式 | 用途 |
+|------|------|
+| `monthKey` / `prevMonthKey` / `monthRange` / `monthTitle` | 本地時區月份工具（比照 `localDateKey`，不可用 toISOString） |
+| `computeStats(msgs, { ym, moodLog, char })` | 純函式本地統計（零 token）：訊息數/聊天天數/常聊時段/心情分佈/紀念日里程碑 |
+| `pickMaterial(summaries, msgs, ...)` | 素材 fallback 鏈：總結至多 10 條 → 原文頭尾各 20 則截 60 字 → 空字串（只出統計層） |
+| `generateMonthlyReview(charId, ym, { notify })` | 門檻月訊息 ≥ 100（排除 hv）否則回 `skipped`；生成信 150–250 字＋金句（該月收藏至多 3 則）；同月重生覆蓋 |
+| `runMonthlyReviews()` | 每月首開自動生成上月月報（App.vue 掛入）；標記 `monthly_review_run_<YM>` 全數成功才寫 |
+
+### `services/capsules.js`（P111）
+時間膠囊——寫給未來的信 CRUD，存 settings `capsules`（見 §3）。角色回信與到期主動訊息的生成在 `chatEngine.js`（`generateCapsuleLetter`／`generateCapsuleDueMessage`），拆封當天 context 注入由 chatEngine 直讀 settings（避免循環依賴）。
+
+| 函式 | 用途 |
+|------|------|
+| `buryCapsule({...})` | 封存（開啟日至少 30 天後，`MIN_OPEN_DELAY_MS` 最後防線）；`aiLetter` 由呼叫端先生成傳入 |
+| `listCapsules(charId?)` | 未拆在前（開啟日近→遠）、已拆在後（拆封新→舊） |
+| `dueCapsules()` / `markDueResult(id, ok)` | 到期未通知清單／派發結果回寫（失敗 3 次放棄通知，不影響手動拆） |
+| `openCapsule(id)` | 拆封（未到期回 `null`）；`openedAt` 供 chatEngine 判定「拆封當天」 |
 
 ### `services/contentEngine.js` 與 `chatEngine.js`
 AI 內容與對話生成邏輯：
@@ -368,9 +393,9 @@ globalStore = {
 - **DiaryView / DiaryDetailView**：日記列表與全文展示。**P76 起**：支援 `?char=` query 預選角色篩選（聊天室「他的日記」入口）。
 - **DreamView / DreamDetailView**：夢境列表與全文展示。**P76 起**：新增角色篩選 chips（沿用 `.diary-chip` 樣式）與 `filteredDreams`；支援 `?char=` query 預選篩選與生成對象。
 - **BlackboxView**：Heart Voice 心聲記錄。
-- **NotificationsView**：顯示貼文／日記／夢境／心聲／主動訊息生成後寫入的通知，點擊跳轉對應頁面。支援 `type`：`post` / `diary` / `dream` / `hv` / `chat`。
+- **NotificationsView**：顯示貼文／日記／夢境／心聲／主動訊息／月報生成後寫入的通知，點擊跳轉對應頁面。支援 `type`：`post` / `diary` / `dream` / `hv` / `chat` / `review`（P111，導向 `/memories/:id?tab=review`）。
 - **WorldsView / WorldEditView (世界書，P65)**：與角色脫鉤的全域詞條庫（`worlds` store）。列表頁支援分類篩選與啟用 toggle；編輯頁設定名稱（觸發關鍵字）、別名、分類、內容、適用角色。對話時由 `buildAIChatSetup` 命中關鍵字才注入 prompt。
-- **MemoriesView (我們的回憶，P106)**：路由 `/memories/:id`，關係主頁「我們的回憶」入口卡進入；顯示該角色的收藏訊息快照列表（說話者／日期／內容／備註），兩段式刪除（先變「確認刪除」再點才刪）。D1 回憶月報實作時擴成「歷月回顧｜收藏」雙分頁。
+- **MemoriesView (我們的回憶，P106；P111 擴成三分頁)**：路由 `/memories/:id`（`?tab=review|keepsake|capsule` 直達），關係主頁「我們的回憶」入口卡進入。**歷月回顧**：月報卡列表（統計 tile／里程碑／角色回顧信／金句／存成圖片），可手動「生成本月（搶先版）」與「補生成上月」；**收藏**：收藏訊息快照列表（說話者／日期／內容／備註）；**寫給未來**：時間膠囊（表單＝內容＋開啟日預設 3 選項或自訂＋「他也寫一封」預設勾選；封存中顯示倒數、到期「拆開膠囊」、已拆兩封信並排）。收藏與膠囊皆兩段式刪除（先變「確認刪除」再點才刪）。
 
 ---
 
@@ -430,6 +455,13 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P111（2026-07-12）回憶頁擴建批——D1 回憶月報＋D3 時間膠囊
+
+- **回憶月報（新增 `services/reviewEngine.js`，見 §4）**：每月首次開 app 背景為每角色生成上個月「我們的這個月」＋通知（`type: 'review'` → `/memories/:id?tab=review`）。門檻月訊息 ≥ 100（排除 hv）；素材鏈＝該月 `chat_memories` 至多 10 條 → 該月原文頭尾各 20 則（截 60 字）→ 只出統計層（不打 API）。統計全本地（`computeStats` 純函式）：訊息數/聊天天數/常聊時段/`mood_log` 分佈/相識・在一起紀念日。存 settings `monthly_reviews`，同月重生覆蓋；完成標記 `monthly_review_run_<YM>` 全數成功才寫（失敗下次開 app 重試）。存圖走 `shareCard.renderMonthCard`（P106 預留的共用引擎）。
+- **時間膠囊（新增 `services/capsules.js`，見 §4）**：寫給未來的信＋開啟日（預設 3 個月/半年/一年，自訂最短 30 天）；「他也寫一封」預設勾選——`chatEngine.generateCapsuleLetter` 用完整聊天脈絡（`buildAIChatSetup`）生成、立即封存。到期由 `App.vue` `runCapsuleDue`（併入 `runAllProactive`，比照定時提醒：不吃 min-gap、吃勿擾＋防堆疊閘門、每輪最多一顆、失敗 3 次放棄通知）派發 `generateCapsuleDueMessage` 主動訊息（kind `capsule`，已加入 `PROACTIVE_KINDS`）。拆封當天 `buildAIChatSetup` 易變段注入兩封信（直讀 settings `capsules`，避免循環依賴），角色能自然聊起。
+- **MemoriesView 雙→三分頁**：歷月回顧｜收藏｜寫給未來（`?tab=` query 直達）；回顧分頁可手動生成本月/補上月。
+- 測試：vitest 109/109（新增 capsules 12＋reviewEngine 8）。
 
 ### P110（2026-07-12）全域確認彈窗吃不到主題修正
 
