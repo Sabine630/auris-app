@@ -164,8 +164,11 @@ function generatePWAIcon() {
 // Sync html element background with current theme so iOS keyboard flash matches app color
 function syncRootBg(theme) {
   document.documentElement.style.background = THEME_BG[theme] || THEME_BG.cream;
+  // 主題變數掛在 #phone-container [data-theme]，Teleport to="body" 的元件
+  // （全域確認彈窗）吃不到——鏡射一份到 body 讓 [data-theme] 選擇器也命中（P110）。
+  document.body.setAttribute('data-theme', theme || 'cream');
 }
-watch(() => globalStore.theme, syncRootBg);
+watch(() => globalStore.theme, syncRootBg, { immediate: true });
 
 async function runDailyAutoGen() {
   try {

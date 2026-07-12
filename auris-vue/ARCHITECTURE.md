@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-12（P109）
+> 最後更新：2026-07-12（P110）
 
 ---
 
@@ -416,7 +416,7 @@ globalStore = {
 2. **新增設定項目**：直接透過 `setSetting('new_key', value)` 新增即可，不需修改資料庫結構。
 3. **空狀態原則**：遇到尚未開發或空列表時，按鈕一律使用 `.empty-cta` 而非 `.btn-primary`，且未完成的功能應掛上 `@click="$toast('尚在開發，敬請期待')"`。
 4. **`.page` 內不要用 `position:fixed`**（P107 教訓）：`.page` 帶 `transform` 轉場，fixed 後代會退化成相對 `.page` 內容定位、跟著捲動跑位。頁內底部停靠列用 `position:sticky; bottom:0`；全螢幕遮罩／sheet 類請 `Teleport to="body"` 或確認該頁不整頁捲動。
-5. **主題色只掛在 `#phone-container [data-theme]`**（P107 教訓）：JS 讀主題 CSS 變數要 `getComputedStyle(document.getElementById('phone-container'))`，讀 `documentElement` 只會拿到 `:root` 的預設奶白值。
+5. **主題色只掛在 `#phone-container [data-theme]`**（P107 教訓）：JS 讀主題 CSS 變數要 `getComputedStyle(document.getElementById('phone-container'))`，讀 `documentElement` 只會拿到 `:root` 的預設奶白值。P110 起 `data-theme` 另鏡射到 `body`（`App.vue` `syncRootBg`），`Teleport to="body"` 的元件因此也吃得到主題——新增 Teleport 元件不必再自己處理。
 
 ---
 
@@ -430,6 +430,10 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P110（2026-07-12）全域確認彈窗吃不到主題修正
+
+`window.confirm_` 彈窗 `Teleport to="body"` 在 `#phone-container` 外，解析不到 `[data-theme]` 主題變數而恆為預設奶白。`App.vue` `syncRootBg` 加 body `data-theme` 鏡射（watch `immediate: true`）——之後所有 Teleport to body 的元件自動吃主題。
 
 ### P109（2026-07-12）分享卡支援整段連發
 
