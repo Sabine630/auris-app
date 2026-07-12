@@ -7,7 +7,8 @@ const CARD_W = 1080;           // 輸出寬（px），高度依內容動態
 const PAD = 84;                // 卡片外距
 const BUBBLE_PAD_X = 44;
 const BUBBLE_PAD_Y = 34;
-const BUBBLE_GAP = 36;         // 泡泡間距
+const BUBBLE_GAP = 36;         // 不同說話者的泡泡間距
+const BUBBLE_GAP_RUN = 14;     // 同角色連發泡泡間距（收緊成同一段話，P109）
 const BUBBLE_MAX_W = CARD_W - PAD * 2 - 120; // 泡泡最大寬（留對側空隙）
 const FONT_STACK = '-apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
 const SITE_URL = 'sabine630.github.io/auris-app';
@@ -86,7 +87,8 @@ export function renderShareCard({ messages, charName, dateText }) {
   });
   const headerH = 150;
   const footerH = 130;
-  const bodyH = blocks.reduce((s, b) => s + b.h, 0) + BUBBLE_GAP * (blocks.length - 1);
+  const gapAfter = (i) => (i >= blocks.length - 1 ? 0 : (blocks[i].role === blocks[i + 1].role ? BUBBLE_GAP_RUN : BUBBLE_GAP));
+  const bodyH = blocks.reduce((s, b, i) => s + b.h + gapAfter(i), 0);
   const cardH = PAD + headerH + bodyH + footerH + PAD;
 
   canvas.width = CARD_W;
@@ -105,23 +107,25 @@ export function renderShareCard({ messages, charName, dateText }) {
   ctx.font = `300 30px ${FONT_STACK}`;
   ctx.fillText(dateText, CARD_W / 2, PAD + 106);
 
-  // 泡泡
+  // 泡泡（同角色連發只在最後一顆做小圓角尾巴，間距收緊）
   ctx.textAlign = 'left';
   let y = PAD + headerH;
-  for (const b of blocks) {
+  blocks.forEach((b, i) => {
     const isMe = b.role === 'user';
+    const lastOfRun = i === blocks.length - 1 || blocks[i + 1].role !== b.role;
     const x = isMe ? CARD_W - PAD - b.w : PAD;
+    const tail = lastOfRun ? 8 : 36;
     ctx.fillStyle = isMe ? c.rose : c.surface;
-    roundRect(ctx, x, y, b.w, b.h, isMe ? [36, 36, 8, 36] : [36, 36, 36, 8]);
+    roundRect(ctx, x, y, b.w, b.h, isMe ? [36, 36, tail, 36] : [36, 36, 36, tail]);
     ctx.fill();
     if (!isMe) { ctx.strokeStyle = c.border; ctx.lineWidth = 1.5; ctx.stroke(); }
     ctx.fillStyle = isMe ? '#ffffff' : c.text;
     ctx.font = msgFont;
-    b.lines.forEach((line, i) => {
-      ctx.fillText(line, x + BUBBLE_PAD_X, y + BUBBLE_PAD_Y + lineH * i + 44);
+    b.lines.forEach((line, li) => {
+      ctx.fillText(line, x + BUBBLE_PAD_X, y + BUBBLE_PAD_Y + lineH * li + 44);
     });
-    y += b.h + BUBBLE_GAP;
-  }
+    y += b.h + gapAfter(i);
+  });
 
   // footer 浮水印（小字淡色）
   ctx.textAlign = 'center';

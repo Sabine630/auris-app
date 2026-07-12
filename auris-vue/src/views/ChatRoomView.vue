@@ -371,6 +371,10 @@
         <img v-if="sharePreviewUrl" :src="sharePreviewUrl" class="share-preview-img" alt="分享卡預覽">
       </div>
       <div class="share-opts">
+        <label class="share-opt" v-if="shareGroup.length > 1">
+          <input type="checkbox" v-model="shareWholeGroup" @change="refreshShareCard">
+          <span>帶上整段連發（{{ shareGroup.length }} 則，保持完整）</span>
+        </label>
         <label class="share-opt" v-if="sharePrevMsg">
           <input type="checkbox" v-model="shareWithPrev" @change="refreshShareCard">
           <span>{{ sharePrevMsg.role === 'user' ? '帶上你說的上一句（一問一答）' : '帶上他說的上一句（一問一答）' }}</span>
@@ -1412,10 +1416,25 @@ async function doKeepsake() {
 
 // ── 分享成卡片（P106 F1）────────────────────────────────────────────────────
 const shareMsg = ref(null);
+const shareGroup = ref([]);           // 同一段連發（splitReply 切出的連續同角色泡泡）
+const shareWholeGroup = ref(true);    // 預設帶上整段連發，避免回覆被攔腰截斷（P109）
 const sharePrevMsg = ref(null);       // 可帶上的前一則（一問一答）
 const shareWithPrev = ref(false);
 const shareShowName = ref(true);      // 角色名可切匿名；使用者側一律不出現名字
 const sharePreviewUrl = ref('');
+
+// 長按那顆泡泡所屬的整段連發：往前後收集相鄰、同角色的文字訊息
+// （碰到對方訊息、心聲、輕觸動作行或圖片即斷開）。
+function msgGroupOf(m) {
+  const arr = messages.value;
+  const i = arr.findIndex(x => x.id === m.id);
+  if (i < 0) return [m];
+  const sameRun = x => x.type !== 'hv' && x.type !== 'touch' && !!x.content && !x.image && x.role === m.role;
+  const group = [arr[i]];
+  for (let j = i - 1; j >= 0 && sameRun(arr[j]); j--) group.unshift(arr[j]);
+  for (let j = i + 1; j < arr.length && sameRun(arr[j]); j++) group.push(arr[j]);
+  return group;
+}
 
 // 往上找「對方」最近的一則文字訊息（跳過心聲／輕觸動作行）。
 // P107：限定 role 相反才算一問一答——splitReply 會把角色回覆切成連續多顆泡泡，
@@ -1434,6 +1453,8 @@ function findPrevTextMsg(m) {
 function openShareCard(m) {
   activeMsg.value = null;
   shareMsg.value = m;
+  shareGroup.value = msgGroupOf(m);
+  shareWholeGroup.value = true;
   sharePrevMsg.value = findPrevTextMsg(m);
   shareWithPrev.value = false;
   shareShowName.value = true;
@@ -1442,11 +1463,12 @@ function openShareCard(m) {
 
 function buildShareCanvas() {
   const m = shareMsg.value;
+  const bubbles = shareWholeGroup.value ? shareGroup.value : [m];
   const msgs = [];
   if (shareWithPrev.value && sharePrevMsg.value) {
     msgs.push({ role: sharePrevMsg.value.role, text: sharePrevMsg.value.content });
   }
-  msgs.push({ role: m.role, text: m.content });
+  for (const b of bubbles) msgs.push({ role: b.role, text: b.content });
   return renderShareCard({
     messages: msgs,
     charName: shareShowName.value ? cName.value : 'Ta',
