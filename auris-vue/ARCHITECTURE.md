@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-11（P106）
+> 最後更新：2026-07-12（P107）
 
 ---
 
@@ -415,6 +415,8 @@ globalStore = {
 1. **刪除關聯資料**：在刪除角色時，必須同步清除所有帶有該 `charId` 的資料表：`messages`, `memories`, `chat_memories`, `moments`, `diary`, `dreams`, `notifications`, `wishes`, `notes`（見 `CharManageView.confirmDelete`）。
 2. **新增設定項目**：直接透過 `setSetting('new_key', value)` 新增即可，不需修改資料庫結構。
 3. **空狀態原則**：遇到尚未開發或空列表時，按鈕一律使用 `.empty-cta` 而非 `.btn-primary`，且未完成的功能應掛上 `@click="$toast('尚在開發，敬請期待')"`。
+4. **`.page` 內不要用 `position:fixed`**（P107 教訓）：`.page` 帶 `transform` 轉場，fixed 後代會退化成相對 `.page` 內容定位、跟著捲動跑位。頁內底部停靠列用 `position:sticky; bottom:0`；全螢幕遮罩／sheet 類請 `Teleport to="body"` 或確認該頁不整頁捲動。
+5. **主題色只掛在 `#phone-container [data-theme]`**（P107 教訓）：JS 讀主題 CSS 變數要 `getComputedStyle(document.getElementById('phone-container'))`，讀 `documentElement` 只會拿到 `:root` 的預設奶白值。
 
 ---
 
@@ -428,6 +430,13 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P107（2026-07-12）P105/P106 測試回饋修正
+
+- **`.bb-manage-bar` fixed → sticky**：`.page` 有 `transform`（轉場動畫）會讓 `position:fixed` 後代退化成相對 `.page` 內容定位，心聲管理刪除列因此卡在列表中段。**通則：`.page` 內的底部停靠列一律用 `position:sticky; bottom:0`，不要用 fixed**。
+- **`shareCard.js` 主題色讀取修正**：主題變數掛在 `#phone-container [data-theme]`、不在 `:root`；`themeColors()` 改讀 `#phone-container`（原讀 `documentElement` 永遠拿到預設奶白）。
+- **分享卡一問一答限定對方訊息**：`findPrevTextMsg` 加 `role` 相反條件（splitReply 多顆泡泡會讓「前一則」是同一人），卡片必為一左一右兩色；checkbox 文案動態顯示「帶上你／他說的上一句」。
+- **心聲語言與拒絕過濾（`chatEngine.js`）**：HV prompt 繁體中文升為獨立鐵則（嚴禁簡體）；存入前過 `isRefusalReply`，杜絕 "I can't help…" 誤存為心聲。
 
 ### P106（2026-07-11）泡泡長按選單批：訊息朗讀＋回憶收藏盒＋對話分享卡
 

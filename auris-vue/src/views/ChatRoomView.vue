@@ -377,7 +377,7 @@
       <div class="share-opts">
         <label class="share-opt" v-if="sharePrevMsg">
           <input type="checkbox" v-model="shareWithPrev" @change="refreshShareCard">
-          <span>帶上前一則（一問一答）</span>
+          <span>{{ sharePrevMsg.role === 'user' ? '帶上你說的上一句（一問一答）' : '帶上他說的上一句（一問一答）' }}</span>
         </label>
         <label class="share-opt">
           <input type="checkbox" v-model="shareShowName" @change="refreshShareCard">
@@ -1431,12 +1431,15 @@ const shareWithPrev = ref(false);
 const shareShowName = ref(true);      // 角色名可切匿名；使用者側一律不出現名字
 const sharePreviewUrl = ref('');
 
-// 往上找最近一則文字訊息（跳過心聲／輕觸動作行）
+// 往上找「對方」最近的一則文字訊息（跳過心聲／輕觸動作行）。
+// P107：限定 role 相反才算一問一答——splitReply 會把角色回覆切成連續多顆泡泡，
+// 若不限 role，找到的「前一則」多半是同一人的上一顆，卡片看不出是兩個人的對話。
 function findPrevTextMsg(m) {
   const i = messages.value.findIndex(x => x.id === m.id);
   for (let j = i - 1; j >= 0; j--) {
     const x = messages.value[j];
     if (x.type === 'hv' || x.type === 'touch' || !x.content) continue;
+    if (x.role === m.role) continue;
     return x;
   }
   return null;

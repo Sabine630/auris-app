@@ -769,7 +769,8 @@ ${recentText}
 4. 不要說「心想：xxx」這種旁白格式，直接寫內心話本身
 5. 不要加引號、不要加 emoji
 6. 絕對不要輸出（對話結束，請開始執行任務）等任何解釋與系統文字，直接給出內心話即可。
-7. 繁體中文，符合角色個性
+7. 一律使用繁體中文（台灣用語），嚴禁出現任何簡體字
+8. 符合角色個性
 
 現在請直接輸出一句內心話：`;
 
@@ -791,6 +792,10 @@ ${recentText}
     if (truncated) return;
 
     let hvText = fullText.trim().replace(/\n{2,}/g, ' ').replace(/\s+/g, ' ');
+
+    // 上游拒絕生成（如 "I can't help with this request."）→ 不存（P107，
+    // 比照主路徑；心聲無 prompt 上下文時部分模型會拒絕這種抽象任務）。
+    if (isRefusalReply(hvText)) return;
 
     // 第二道啟發式（部分 OpenAI 相容供應商不回 finish_reason）：很短（<6 字）又以
     // 「未完成」標點（逗號、頓號、分號、冒號）收尾，視為殘句放棄。

@@ -681,7 +681,9 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .bb-checkbox{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:8px;transition:all .15s}
 .bb-checkbox.checked{background:var(--rose);border-color:var(--rose)}
 .bb-checkbox svg{width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.bb-manage-bar{position:fixed;bottom:0;left:0;right:0;padding:12px 20px;padding-bottom:calc(12px + env(safe-area-inset-bottom));background:var(--bg);border-top:.5px solid var(--border);display:flex;justify-content:center}
+/* P107：不能用 position:fixed——.page 有 transform（轉場動畫），fixed 會被降級成相對
+   .page 內容定位而卡在列表中間；改 sticky 釘在捲動區可視底部（.screen 底＝BottomNav 上緣）。 */
+.bb-manage-bar{position:sticky;bottom:0;padding:12px 20px;background:var(--bg);border-top:.5px solid var(--border);display:flex;justify-content:center}
 .bb-del-btn{flex:1;max-width:400px;padding:13px;border-radius:12px;border:none;background:var(--rose);color:#fff;font-family:var(--font);font-size:14px;font-weight:400;cursor:pointer;transition:opacity .15s}
 .bb-del-btn:disabled{opacity:.35;cursor:default}
 
