@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P104 更新公告</div>
+      <div class="ann-badge">P110 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,16 +16,16 @@
               <div class="ann-title">近期更新</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">訊息不再出現 &#123;&#123;user&#125;&#125; 原文 🏷️</div>
-                  <div class="ann-item-desc">角色卡設定裡的 &#123;&#123;user&#125;&#125;／&#123;&#123;char&#125;&#125; 佔位符，現在會正確換成你的名字與角色名——聊天、群聊、主動訊息、貼文、日記、夢境全面生效，角色不會再把佔位符原文講出來。</div>
+                  <div class="ann-item-title">回憶收藏盒 ⭐</div>
+                  <div class="ann-item-desc">捨不得忘的訊息，長按選「收藏成回憶」（可補一句備註），就會收進關係主頁新的「我們的回憶」。收藏存的是快照——之後就算清空聊天記錄，回憶也不會消失。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">心聲不再出現半句話 💭</div>
-                  <div class="ann-item-desc">修正心聲被截斷成「連妳嗔怒的模樣，都」這種殘句的問題：現在能偵測到生成被硬切，只保留完整的心聲，寧缺勿濫。</div>
+                  <div class="ann-item-title">對話分享卡 🖼️</div>
+                  <div class="ann-item-desc">長按訊息「分享成卡片」，把他說的話做成美圖卡存圖或分享。配色跟著你的主題走，他連發的幾則會完整帶上，也可以加上你問的那句變成一問一答；角色名可匿名、你的名字一律不出現，曬對話不曬隱私。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">「使用教學」互動示範 🎓</div>
-                  <div class="ann-item-desc">第一次來玩？設定頁有「使用教學」——一個可以放心亂點的示範模式，用虛構角色實際操作整個 App，不需要金鑰、不會動到真實資料。右下角的「教學」鈕會依你所在的頁面說明怎麼用。</div>
+                  <div class="ann-item-title">備份提醒 🛟</div>
+                  <div class="ann-item-desc">所有資料都只存在你的裝置上，備份是唯一防線——太久沒備份時首頁會出現提醒卡，一鍵就能匯出。另外彈窗配色、心聲偶發簡體字等小問題也一併修正了。</div>
                 </div>
               </div>
             </template>
@@ -35,16 +35,16 @@
               <div class="ann-title">怎麼用</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">打開使用教學</div>
-                  <div class="ann-item-desc">設定 → 教學 → 使用教學，會另開一個示範分頁讓你隨便逛。想離開時點教學面板裡的「離開示範」即可，完全不影響你的正式資料。</div>
+                  <div class="ann-item-title">長按訊息＝新的百寶箱</div>
+                  <div class="ann-item-desc">聊天室長按任何一則訊息：複製、收藏成回憶、分享成卡片、編輯重傳、重新生成，都在同一個選單。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">把教學分享給朋友</div>
-                  <div class="ann-item-desc">教學網址就是正式網址加上 ?demo=1——可以直接傳給還沒入坑的朋友試玩，不需要 API 金鑰就能體驗完整介面。</div>
+                  <div class="ann-item-title">去哪看收藏？</div>
+                  <div class="ann-item-desc">聊天室右上 ⋯ → 關係主頁 → 「我們的回憶」。每個角色一盒，可以翻看、補備註後的樣子，也能刪除（會先跳確認，不怕誤點）。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">舊的 &#123;&#123;user&#125;&#125; 訊息與殘缺心聲</div>
-                  <div class="ann-item-desc">這次修復只對「之後新生成」的內容生效，已存的舊訊息不會自動改寫——看到舊的佔位符訊息長按刪除或重新生成、殘缺心聲到「心聲 → 管理」清掉即可。</div>
+                  <div class="ann-item-title">回報問題更省力</div>
+                  <div class="ann-item-desc">遇到怪狀況時：設定 → 複製診斷資訊，把內容貼給開發者即可——裡面只有版本、裝置與錯誤紀錄，絕不包含你的對話內容和金鑰。</div>
                 </div>
               </div>
             </template>
@@ -78,7 +78,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P104</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P110</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
