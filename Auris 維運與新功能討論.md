@@ -44,7 +44,7 @@
 |---|------|------|-----------|---------|------|
 | B1 | **Prompt caching** | 盤點發現**主路徑早已上線**：一對一＋全部主動訊息已切穩定段（`cache:true`）／易變段，llm.js 已轉 Anthropic `cache_control`；Gemini/OpenAI 靠自動前綴快取受惠。唯一缺口＝**群組聊天仍傳純字串**（prompt 最肥的場景），補同樣的切分即可。一次性呼叫（總結／日記等）快取無意義、不動。 | 省錢 | 小（1–2h） | ✅ 採用（2026-07-08 定案，僅補群組） |
 | B2 | **SillyTavern 角色卡匯入** | 匯入 ST 角色卡（PNG 內嵌 JSON）。P104 剛做完 `{{user}}`/`{{char}}` 替換，使用者群熟 ST 慣例，是擴大角色來源最省力的一招。 | 零 | 中（1–1.5 天） | ✅ 採用（2026-07-08 定案） |
-| B3 | **語音輸出（TTS）** | `speechSynthesis` 唸出角色訊息，免費、純前端。**輕量版**：訊息長按「朗讀」、不做自動朗讀（iOS 中文系統音偏機械，自動播破壞氣氛）。高品質 TTS API 未來另議。 | 零 | 小（半天） | ✅ 採用 → **P106 已上線** |
+| B3 | **語音輸出（TTS）** | `speechSynthesis` 唸出角色訊息，免費、純前端。**輕量版**：訊息長按「朗讀」、不做自動朗讀（iOS 中文系統音偏機械，自動播破壞氣氛）。高品質 TTS API 未來另議。 | 零 | 小（半天） | ✅ P106 上線 → **P108 暫下架**（iOS 系統音不符體驗標準；引擎保留，待高品質 TTS API 再回歸，屆時可做男女聲／per 角色配音） |
 
 **B2 定案規格**：現有匯入按鈕擴充 `accept=".json,.png"` 自動判別（PNG tEXt `chara`/`ccv3`、ST JSON、Auris JSON 三分流）；新檔 `services/stCard.js` 純 JS 解析。對映：personality→個性、description→背景故事章、scenario→關係背景、mes_example→解析成範例配對（拆不動落補充指令）、system_prompt＋post_history→補充指令、**first_mes→自動存第一則 AI 訊息**、**character_book→世界書詞條（綁該角色）**、alternate_greetings 取第一個。佔位符照留（P104 已處理）。
 

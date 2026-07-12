@@ -332,10 +332,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>
         <span>複製</span>
       </div>
-      <div class="msg-sheet-item" v-if="canSpeak && activeMsg.content" @click="doSpeak(activeMsg)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/><path d="M19.07 4.93a10 10 0 010 14.14"/></svg>
-        <span>朗讀</span>
-      </div>
       <div class="msg-sheet-item" v-if="activeMsg.content" @click="openKeepsake(activeMsg)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         <span>收藏成回憶</span>
@@ -410,7 +406,6 @@ import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting } from '../services/
 import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive } from '../services/chatEngine.js';
 import { formatContent, splitReply } from '../services/format.js';
 import { estimateTokens } from '../services/tokens.js';
-import { speakText, stopSpeak, speechSupported } from '../services/speech.js';
 import { addKeepsake } from '../services/keepsakes.js';
 import { renderShareCard, shareCardImage } from '../services/shareCard.js';
 import { localDateKey } from '../services/date.js';
@@ -662,7 +657,6 @@ onUnmounted(() => {
   clearTimeout(proactiveTimer);
   clearTimeout(busyTimer); // pending key 留在 settings，由下次進房或 App.vue 背景派發接手
   proactiveController?.abort();
-  stopSpeak(); // 離開聊天室就停朗讀（P106 B3）
   window.removeEventListener('new-heart-voice', onHeartVoice);
   window.removeEventListener('new-proactive-msg', onProactiveMsg);
   document.removeEventListener('visibilitychange', onPageVisible);
@@ -1393,14 +1387,6 @@ function doCopy(m) {
   const ok = copyTextSync(m.content);
   activeMsg.value = null;
   window.toast_(ok ? '已複製' : '複製失敗，請手動選取');
-}
-
-// ── 朗讀（P106 B3）──────────────────────────────────────────────────────────
-const canSpeak = speechSupported();
-
-function doSpeak(m) {
-  activeMsg.value = null;
-  speakText(m.content);
 }
 
 // ── 收藏成回憶（P106 D2）────────────────────────────────────────────────────

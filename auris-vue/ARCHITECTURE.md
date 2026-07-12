@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-12（P107）
+> 最後更新：2026-07-12（P108）
 
 ---
 
@@ -227,8 +227,8 @@ API 請求的底層工具（供 `llm.js` 引用）。
 
 > 錯誤來源三路：全域監聽（`window`/`promise`）、`initDB` 失敗（`init`）、`callLLM` 失敗（`llm`，provider/model＋錯誤訊息含 HTTP 狀態；AbortError 使用者主動中斷不記）。
 
-### `services/speech.js`（P106）
-訊息朗讀（TTS 輕量版）——`speechSynthesis` 純前端免費，只做長按「朗讀」、不做自動朗讀（iOS 中文系統音偏機械，自動播破壞氣氛）。
+### `services/speech.js`（P106；P108 起 UI 暫下架）
+訊息朗讀（TTS 輕量版）——`speechSynthesis` 純前端免費。**P108 起聊天室選單已移除「朗讀」**（iOS 中文系統音太機械、不符體驗標準）；引擎與測試保留，待接高品質 TTS API（BYOK）時復用。
 
 | 函式 | 用途 |
 |------|------|
@@ -430,6 +430,10 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P108（2026-07-12）朗讀功能暫時下架
+
+iOS 中文系統語音偏機械、不符體驗標準。只拆 UI：ChatRoomView 長按選單移除「朗讀」項與 speech import；`services/speech.js`＋測試保留（檔頭註記），待高品質 TTS API 復用。
 
 ### P107（2026-07-12）P105/P106 測試回饋修正
 

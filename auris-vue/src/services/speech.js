@@ -1,6 +1,7 @@
 // ── 訊息朗讀（P106 B3，TTS 輕量版）──────────────────────────────────────────
-// speechSynthesis 唸出訊息：免費、純前端、不落庫。只做長按「朗讀」，
-// 不做自動朗讀（iOS 中文系統音偏機械，自動播破壞氣氛）。高品質 TTS API 未來另議。
+// speechSynthesis 唸出訊息：免費、純前端、不落庫。
+// ⚠ P108 起暫時下架（聊天室選單已移除「朗讀」）：iOS 中文系統音太機械、不符體驗
+// 標準。引擎與測試保留，待接高品質 TTS API（BYOK）時復用 stripActionText 等邏輯。
 
 export function speechSupported() {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
