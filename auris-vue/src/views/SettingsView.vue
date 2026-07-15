@@ -312,7 +312,9 @@ function importData() {
         window.toast_('匯入成功，即將重新載入...');
         setTimeout(() => window.location.reload(), 1500);
       } catch (err) {
-        window.toast_('匯入失敗：檔案格式錯誤或損毀。');
+        // importAllData 為單一 transaction：失敗時資料庫已整批回滾、維持原狀
+        const reason = err instanceof SyntaxError ? '檔案格式錯誤或損毀' : (err?.message || '檔案格式錯誤或損毀');
+        window.toast_(`匯入失敗：${reason}（原有資料未受影響）`);
       }
     };
     reader.readAsText(file);

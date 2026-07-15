@@ -466,7 +466,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting } from '../services/db.js';
+import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting, stripUnsafeImage } from '../services/db.js';
 import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive, BOND_CAP } from '../services/chatEngine.js';
 import { formatContent, splitReply } from '../services/format.js';
 import { estimateTokens } from '../services/tokens.js';
@@ -1435,7 +1435,7 @@ async function importChat(e) {
     for (let i = 0; i < json.messages.length; i++) {
       const m = json.messages[i];
       if (!m || !m.role || !m.content) continue;
-      await dbPut('messages', { ...m, id: `msg_import_${base}_${i}`, charId });
+      await dbPut('messages', stripUnsafeImage({ ...m, id: `msg_import_${base}_${i}`, charId }));
       count++;
     }
     const allMsgs = await dbIdx('messages', 'charId', charId);

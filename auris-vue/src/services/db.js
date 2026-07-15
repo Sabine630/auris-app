@@ -82,6 +82,26 @@ export const setSetting = (k, v) => dbPut('settings', { key: k, value: v });
 
 const ALL_STORES = ['characters', 'messages', 'memories', 'moments', 'diary', 'dreams', 'worlds', 'groups', 'group_messages', 'notifications', 'chat_memories', 'wishes', 'notes', 'settings'];
 
+// v1 備份格式（aurisExportVersion: 1）自誕生起必含的 store——缺任何一個代表備份檔
+// 損毀或被改過，必須拒絕匯入（否則「清空 → 還原」會把該 store 的資料靜默清光）。
+// chat_memories / wishes / notes 是備份功能上線後才新增的 store，舊備份可能沒有，
+// 缺少時視為空（還原＝回到備份當下的快照）。
+const REQUIRED_STORES = ['characters', 'messages', 'memories', 'moments', 'diary', 'dreams', 'worlds', 'groups', 'group_messages', 'notifications', 'settings'];
+
+// API 連線設定屬本機專屬，不隨備份移動。備份檔可被分享／竄改：若匯入時接受
+// api_base，攻擊者可把端點指向自己的伺服器，本機保留的金鑰之後就會送往該端點。
+const LOCAL_ONLY_SETTINGS = ['api_key', 'api_provider', 'api_base', 'api_model'];
+
+// 訊息圖片只接受 data:image/ 內嵌圖。匯入的 JSON 若夾帶外部 URL，聊天室一開啟
+// 瀏覽器就會對該網址發請求（追蹤像素），洩漏 IP 與上線時間。
+export function stripUnsafeImage(rec) {
+  if (rec && typeof rec.image === 'string' && !rec.image.startsWith('data:image/')) {
+    const { image, ...rest } = rec;
+    return rest;
+  }
+  return rec;
+}
+
 export async function exportAllData() {
   const data = {};
   for (const s of ALL_STORES) {
@@ -90,7 +110,8 @@ export async function exportAllData() {
   // 安全：絕不把 API 金鑰寫進可下載／分享的備份檔。
   // Vertex AI 的金鑰是整包 service account JSON（含 RSA 私鑰，cloud-platform 權限），
   // 一旦隨備份外流等同把 GCP 專案憑證交出去。OpenAI/Anthropic 等字串金鑰同理。
-  data.settings = (data.settings || []).filter(r => r.key !== 'api_key');
+  // provider/base/model 也一併排除（本機專屬設定，匯入端也會忽略）。
+  data.settings = (data.settings || []).filter(r => !LOCAL_ONLY_SETTINGS.includes(r.key));
   return {
     aurisExportVersion: 1,
     exportDate: Date.now(),
@@ -104,12 +125,15 @@ export async function importAllData(jsonData) {
   }
 
   // 先完整驗證整份備份，全部通過才動資料庫。
-  // 舊版實作是「先清空全部 store 再逐筆還原」，若備份檔某段壞掉會在清空後才失敗，
-  // 導致原本的資料全毀且無法復原。改為「驗證 → 清空 → 還原」三段式。
   const plan = [];
   for (const s of ALL_STORES) {
     const rows = jsonData.data[s];
-    if (rows == null) continue;              // 該 store 不在備份內，略過（不視為錯誤）
+    if (rows == null) {
+      if (REQUIRED_STORES.includes(s)) {
+        throw new Error(`備份檔缺少「${s}」資料，檔案可能損毀或不完整`);
+      }
+      continue;                              // 備份功能上線後才新增的 store 允許缺席（視為空）
+    }
     if (!Array.isArray(rows)) throw new Error(`備份檔「${s}」格式錯誤`);
     const keyPath = s === 'settings' ? 'key' : 'id';
     for (const rec of rows) {
@@ -117,29 +141,41 @@ export async function importAllData(jsonData) {
         throw new Error(`備份檔「${s}」內含無效資料`);
       }
     }
-    plan.push([s, rows]);
+    let cleaned = rows;
+    if (s === 'settings') cleaned = rows.filter(r => !LOCAL_ONLY_SETTINGS.includes(r.key));
+    if (s === 'messages') cleaned = rows.map(stripUnsafeImage);
+    plan.push([s, cleaned]);
   }
 
-  // 備份檔基於安全考量不含 api_key，還原後沿用本機原本的金鑰設定，
-  // 使用者不需在每次還原後重新貼上金鑰。
-  const preservedKey = await getSetting('api_key');
-
-  // 驗證通過才清空現有資料
-  for (const s of ALL_STORES) {
-    await dbClear(s);
+  // API 設定屬本機專屬：備份內的一律忽略（見 LOCAL_ONLY_SETTINGS 註解），
+  // 本機原有的先讀出、在同一 transaction 內寫回，還原後不需重新貼金鑰。
+  const preserved = [];
+  for (const k of LOCAL_ONLY_SETTINGS) {
+    const rec = await dbGet('settings', k);
+    if (rec !== undefined) preserved.push(rec);
   }
-  // 還原備份內容
-  for (const [s, rows] of plan) {
-    for (const record of rows) {
-      await dbPut(s, record);
+
+  // 單一 readwrite transaction 完成「清空 → 還原 → 補回本機 API 設定」：
+  // 任一筆寫入失敗（quota、I/O…）即整批 abort，IndexedDB 自動回滾，
+  // 不會留下「已清空但沒還原」的半毀資料庫。
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(ALL_STORES, 'readwrite');
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(tx.error || new Error('匯入中斷，資料已回復原狀'));
+    try {
+      for (const s of ALL_STORES) tx.objectStore(s).clear();
+      for (const [s, rows] of plan) {
+        const os = tx.objectStore(s);
+        for (const rec of rows) os.put(rec);
+      }
+      const ss = tx.objectStore('settings');
+      for (const rec of preserved) ss.put(rec);
+    } catch (e) {
+      // 排隊寫入時的同步錯誤（如無效 key）：主動 abort，讓已排隊的 clear 一併回滾
+      try { tx.abort(); } catch { /* 可能已 abort */ }
+      reject(e);
     }
-  }
-
-  // 若備份不含金鑰（新版備份必然如此），補回原本的金鑰
-  const backupHasKey = (jsonData.data.settings || []).some(r => r && r.key === 'api_key');
-  if (!backupHasKey && preservedKey != null) {
-    await setSetting('api_key', preservedKey);
-  }
+  });
 }
 
 // ── 單角色匯出（含聊天記錄、記憶、日記、夢境、貼文）────────────────────────
@@ -183,11 +219,11 @@ export async function importCharacterData(jsonData) {
   const char = { ...jsonData.character, id: newCharId, name: (jsonData.character.name || '未命名') + '（匯入）' };
   await dbPut('characters', char);
 
-  // 重新對應 charId 並賦予新 ID，用 index 確保同毫秒不衝突
+  // 重新對應 charId 並賦予新 ID，用 index 確保同毫秒不衝突；圖片欄位過濾外部 URL
   const remapAndInsert = async (records, store, prefix) => {
     if (!Array.isArray(records)) return;
     for (let i = 0; i < records.length; i++) {
-      await dbPut(store, { ...records[i], id: `${prefix}_${base}_${i}`, charId: newCharId });
+      await dbPut(store, stripUnsafeImage({ ...records[i], id: `${prefix}_${base}_${i}`, charId: newCharId }));
     }
   };
 

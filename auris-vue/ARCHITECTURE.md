@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-15（P112）
+> 最後更新：2026-07-15（P113）
 
 ---
 
@@ -455,6 +455,13 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P113（2026-07-15）資安修復批——備份匯入原子化＋API 設定不隨備份走＋外部圖片過濾
+
+- **匯入原子化（`db.js`）**：`importAllData` 的「清空→還原→補回本機 API 設定」收進單一 multi-store readwrite transaction——任一筆寫入失敗（quota、I/O）整批 abort、IndexedDB 自動回滾；排隊時同步錯誤也主動 `tx.abort()`。新增 `REQUIRED_STORES`（v1 備份自誕生起必含的 11 個 store），缺任一拒絕匯入，杜絕「缺 store 的備份通過驗證→該 store 被靜默清空」；`chat_memories`/`wishes`/`notes` 為備份功能後才新增，允許缺席視為空。
+- **API 設定屬本機（`db.js`）**：新增 `LOCAL_ONLY_SETTINGS`（`api_key`/`api_provider`/`api_base`/`api_model`）——`exportAllData` 全數排除（原僅排除 api_key）、`importAllData` 一律忽略備份內值並保留本機原值。堵住惡意備份夾帶 `api_base` 竊取金鑰的攻擊路徑。
+- **匯入圖片過濾（`db.js` 新增 `stripUnsafeImage`）**：訊息 `image` 只接受 `data:image/` 內嵌圖，外部 URL 移除（防追蹤像素）。套用三條匯入路徑：`importAllData`、`importCharacterData`、ChatRoomView `importChat`。
+- SettingsView 匯入失敗訊息顯示實際原因並註明資料未受影響。新增 `__tests__/db.test.js`（14 測試，devDependency `fake-indexeddb`）。vitest 130/130。
 
 ### P112（2026-07-15）我們的默契——D4 專屬默契自動累積
 
