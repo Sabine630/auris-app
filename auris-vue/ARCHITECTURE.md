@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-12（P111）
+> 最後更新：2026-07-15（P112）
 
 ---
 
@@ -77,7 +77,7 @@ graph TD
 
 | 資料表 | keyPath | 索引 | 說明 |
 |--------|---------|------|------|
-| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80、`examples` 範例對話 few-shot P88、`weatherAware` 天氣感開關 P95、`busyRead` 已讀不回開關 P96） |
+| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80、`examples` 範例對話 few-shot P88、`weatherAware` 天氣感開關 P95、`busyRead` 已讀不回開關 P96、`bonds` 專屬默契 P112） |
 | `messages` | `id` | `charId`, `createdAt`, `charId_createdAt`（複合，P98） | 單人聊天訊息（軟欄位：`image` 圖片 base64 P65、`reaction` 表情 P62、`readAt` 已讀時間戳 P96、`type:'touch'`＋`touchAction` 輕觸動作訊息 P96、`kind:'touch'` 輕觸回應 P96）。複合索引 `charId_createdAt`（v7）供背景派發用 cursor 取「某角色最新 N 則」與計數，取代全量 getAll |
 | `memories` | `id` | `charId` | Heart Voice 心聲記錄 |
 | `moments` | `id` | `charId`, `createdAt` | 貼文（含 likes/comments） |
@@ -455,6 +455,13 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P112（2026-07-15）我們的默契——D4 專屬默契自動累積
+
+- **同呼叫抽梗**：`summarizeToMemory` prompt 追加 BONDS 指示（給現有清單、只回新增、每條 20 字內最多 3 條）；`parseSummaryBonds` 解析（格式壞掉當沒有新梗）、`mergeBonds` 合併（去重、截 40 字、`BOND_CAP` 15 滿了靜默不收）、寫前重讀角色只覆蓋 `bonds` 欄位。已滿上限不問（省 token）。新梗默默入列。
+- **注入**：`buildAIChatSetup` 穩定段尾 `bondsCtx`（僅 enabled；變動頻率低不破壞快取）。
+- **UI**：記憶抽屜「記憶｜我們的默契」分頁——看/改/刪/手動新增/單條開關，滿 15 提示整理。
+- `characters` 軟欄位 `bonds: [{ id, text, enabled, createdAt }]`（免升版）。vitest 116/116。
 
 ### P111（2026-07-12）回憶頁擴建批——D1 回憶月報＋D3 時間膠囊
 

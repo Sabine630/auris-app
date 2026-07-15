@@ -282,6 +282,13 @@ async function buildAIChatSetup(charId, allMsgs) {
     ? '\n【排版規則】把動作、表情、場景等敘述用半形星號 *像這樣* 包起來（會顯示成斜體旁白），角色說出口的話用「」括住。例：*他笑了笑*「好啊，那走吧。」自然運用即可，不要每句都硬套。'
     : '';
 
+  // 專屬默契（P112 D4）：累積的「我們的梗」注入穩定段尾——變動頻率低（只在總結/手動編輯時變），
+  // 放穩定段不破壞快取價值；讓角色自然使用口頭禪/專屬稱呼/暗號，長期相處的累積感來源。
+  const enabledBonds = (c.bonds || []).filter(b => b && b.enabled && b.text);
+  const bondsCtx = enabledBonds.length
+    ? `\n【我們的默契】以下是你們相處中累積的專屬默契（口頭禪、專屬稱呼、暗號、共同的梗），請在合適的時機自然使用，不要刻意逐條展示、也不要一次全用：\n${enabledBonds.map((b, i) => `${i + 1}. ${b.text}`).join('\n')}`
+    : '';
+
   // 回覆長度貼合角色個性：高冷／話少的角色不該被硬性字數逼著湊長段（取代舊的固定「50～150 字」）。
   const isTerse = c.talkative === 'quiet' || c.style === 'cool';
   const lengthGuide = isTerse
@@ -315,7 +322,7 @@ ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}
 ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
-${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${formatCtx}
+${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${formatCtx}${bondsCtx}
 【回覆品質要求】
 ${lengthGuide}
 ・要回應對方說的具體內容，展現你真的在聽、在意
@@ -987,6 +994,36 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
 }
 
 // ── Long-term Memory: Summarize Recent Messages ───────────────────────────
+// 專屬默契（P112 D4）上限：滿了新梗靜默不收（UI 提示整理），避免 prompt 無限膨脹。
+export const BOND_CAP = 15;
+
+// 解析總結輸出尾端的 BONDS 行（P112 D4）。格式壞掉一律當「沒有新梗」，摘要不受影響。
+export function parseSummaryBonds(text) {
+  const m = (text || '').match(/\n?\s*BONDS[:：]\s*(\[[\s\S]*?\])\s*$/i);
+  if (!m) return { summary: (text || '').trim(), bonds: [] };
+  let bonds = [];
+  try {
+    const arr = JSON.parse(m[1]);
+    if (Array.isArray(arr)) {
+      bonds = arr.filter(x => typeof x === 'string').map(x => x.trim()).filter(Boolean);
+    }
+  } catch (_) {}
+  return { summary: text.slice(0, m.index).trim(), bonds };
+}
+
+// 合併新梗進 characters 軟欄位 bonds：完全相同文字去重（模型端已給既有清單自行去重，這是防線）、
+// 單條截 40 字、滿 BOND_CAP 靜默不收。回傳新陣列（不改原引用）。
+export function mergeBonds(existing, texts, cap = BOND_CAP) {
+  const cur = Array.isArray(existing) ? existing.slice() : [];
+  for (const t of texts || []) {
+    if (cur.length >= cap) break;
+    const txt = (t || '').trim().slice(0, 40);
+    if (!txt || cur.some(b => b && b.text === txt)) continue;
+    cur.push({ id: `bond_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, text: txt, enabled: true, createdAt: Date.now() });
+  }
+  return cur;
+}
+
 export async function summarizeToMemory(charId, recentMsgs, count = 20) {
   const apiKey = await getSetting('api_key');
   if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
@@ -996,14 +1033,40 @@ export async function summarizeToMemory(charId, recentMsgs, count = 20) {
   const slice = recentMsgs.filter(m => m.type !== 'hv').slice(-count);
   const transcript = slice.map(m => (m.role === 'user' ? '我：' : `${c?.name || 'AI'}：`) + m.content).join('\n');
 
-  const systemPrompt = '你是一個對話分析助手。請將以下聊天記錄濃縮成一段 100～200 字的重點摘要，保留：使用者透露的個人資訊、重要事件、雙方的情感狀態、以及任何未來可能有用的背景資訊。用第三人稱描述。只輸出摘要文字，不需要任何前綴說明。';
+  // 專屬默契（P112 D4）：搭同一次總結呼叫多要一個輸出欄位抽新梗——把現有清單給模型、
+  // 只回新增項（模型自行去重）。已滿上限就不問（省 token，也不會收）。
+  const curBonds = (c?.bonds || []).filter(b => b && b.text);
+  const askBonds = c && curBonds.length < BOND_CAP;
+  const bondsInstr = askBonds
+    ? `\n\n另外，這個 app 會累積兩人的「專屬默契」（明確重複出現或彼此約定的：口頭禪、專屬稱呼、暗號、共同的梗）。`
+      + `目前已記錄：${curBonds.length ? curBonds.map(b => `「${b.text}」`).join('、') : '（無）'}。`
+      + `若這段對話出現**不在上列**的新默契，請在摘要後另起一行輸出 BONDS: ["…","…"]`
+      + `（每條 20 字內、最多 3 條，只收明確重複或約定過的，不確定就不收）；沒有新默契就輸出 BONDS: []。`
+    : '';
 
-  const summary = await sendLLMRequest(
+  const systemPrompt = '你是一個對話分析助手。請將以下聊天記錄濃縮成一段 100～200 字的重點摘要，保留：使用者透露的個人資訊、重要事件、雙方的情感狀態、以及任何未來可能有用的背景資訊。用第三人稱描述。只輸出摘要文字，不需要任何前綴說明。' + bondsInstr;
+
+  const raw = await sendLLMRequest(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: transcript }],
     { max_tokens: 800 }
   ).then(t => t.trim());
 
+  const { summary, bonds: newBonds } = parseSummaryBonds(raw);
   if (!summary) throw new Error('AI 回傳空白，請稍後重試');
+
+  // 新梗默默入列、不提示（D4 定案）。寫前重讀最新角色物件，避免總結空窗期蓋掉別處的編輯。
+  if (askBonds && newBonds.length) {
+    try {
+      const fresh = await dbGet('characters', charId);
+      if (fresh) {
+        const merged = mergeBonds(fresh.bonds, newBonds);
+        if (merged.length !== (fresh.bonds || []).length) {
+          fresh.bonds = merged;
+          await dbPut('characters', JSON.parse(JSON.stringify(fresh)));
+        }
+      }
+    } catch (_) {}
+  }
 
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;

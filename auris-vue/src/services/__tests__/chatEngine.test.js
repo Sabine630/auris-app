@@ -81,3 +81,56 @@ describe('shouldBusyRead', () => {
     expect(shouldBusyRead(c, night)).toBe(true);
   });
 });
+
+// ── 專屬默契（P112 D4）──────────────────────────────────────────────────────
+import { parseSummaryBonds, mergeBonds, BOND_CAP } from '../chatEngine.js';
+
+describe('parseSummaryBonds — 總結尾端 BONDS 行解析', () => {
+  it('正常解析：摘要與新梗分離、BONDS 行不進摘要', () => {
+    const r = parseSummaryBonds('兩人聊了期末考。\nBONDS: ["他都叫她小晴晴", "晚安要說兩次"]');
+    expect(r.summary).toBe('兩人聊了期末考。');
+    expect(r.bonds).toEqual(['他都叫她小晴晴', '晚安要說兩次']);
+  });
+
+  it('空陣列＝沒有新梗；全形冒號也接受', () => {
+    expect(parseSummaryBonds('摘要。\nBONDS: []').bonds).toEqual([]);
+    expect(parseSummaryBonds('摘要。\nBONDS：["梗"]').bonds).toEqual(['梗']);
+  });
+
+  it('沒有 BONDS 行：整段當摘要（舊模型輸出相容）', () => {
+    const r = parseSummaryBonds('只有摘要文字。');
+    expect(r.summary).toBe('只有摘要文字。');
+    expect(r.bonds).toEqual([]);
+  });
+
+  it('JSON 壞掉：當沒有新梗、摘要保留 BONDS 之前的部分', () => {
+    const r = parseSummaryBonds('摘要。\nBONDS: ["沒關括號"');
+    expect(r.summary).toBe('摘要。\nBONDS: ["沒關括號"'); // 不匹配格式 → 整段當摘要
+    const r2 = parseSummaryBonds('摘要。\nBONDS: [{"x":1}]'); // 元素非字串 → 過濾光
+    expect(r2.bonds).toEqual([]);
+    expect(r2.summary).toBe('摘要。');
+  });
+});
+
+describe('mergeBonds — 新梗合併', () => {
+  it('去重（完全相同文字）、去空白、截 40 字、預設 enabled', () => {
+    const existing = [{ id: 'b1', text: '老梗', enabled: false, createdAt: 1 }];
+    const merged = mergeBonds(existing, [' 老梗 ', '新梗', '', 'x'.repeat(60)]);
+    expect(merged).toHaveLength(3);
+    expect(merged[1].text).toBe('新梗');
+    expect(merged[1].enabled).toBe(true);
+    expect(merged[2].text).toHaveLength(40);
+    expect(existing).toHaveLength(1); // 不改原陣列
+  });
+
+  it('滿上限靜默不收', () => {
+    const full = Array.from({ length: BOND_CAP }, (_, i) => ({ id: 'b' + i, text: '梗' + i, enabled: true }));
+    expect(mergeBonds(full, ['新梗'])).toHaveLength(BOND_CAP);
+    const almostFull = full.slice(0, BOND_CAP - 1);
+    expect(mergeBonds(almostFull, ['新1', '新2'])).toHaveLength(BOND_CAP); // 只收得下一條
+  });
+
+  it('existing 非陣列（舊資料無此欄位）視同空陣列', () => {
+    expect(mergeBonds(undefined, ['梗'])).toHaveLength(1);
+  });
+});
