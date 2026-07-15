@@ -1,4 +1,4 @@
-# Auris 專案 Claude 工作規則
+# Auris 專案 Codex 工作規則
 
 ## 自動化防線與 Skills（2026-07-05 起）
 
@@ -10,7 +10,7 @@
 | `/release` | 發布正式版（確認授權、公告版號四處同步、**上版前資安檢測**、merge dev→main、確認 Actions 部署） |
 | `/verify-app` | 驗證改動（vitest、dev server 實測、排版問題先定層再動手） |
 
-Hooks（腳本在 `.claude/hooks/`，由 `.claude/settings.json` 掛載，自動執行、無法跳過）：
+Hooks（腳本在 `.Codex/hooks/`，由 `.Codex/settings.json` 掛載，自動執行、無法跳過）：
 - **guard-main-push**：任何推送 main 的指令一律先跳使用者確認
 - **check-version-bump**：commit 含 `auris-vue/src/` 異動時，強制檢查版號已 +1、進度總覽已更新、「當前版本」恰好 2 處；WIP 等特殊 commit 可在訊息加 `[skip-ver]` 略過
 - **check-secret-leak**：commit 前掃描新增內容有無 API 金鑰／私鑰特徵（sk-…、AIza…、PRIVATE KEY、ghp_… 等；`sk-demo-` 為示範模式白名單），防測試金鑰誤入版控；確認誤報可在訊息加 `[skip-secret]` 略過
