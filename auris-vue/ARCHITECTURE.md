@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-15（P113）
+> 最後更新：2026-07-15（P114）
 
 ---
 
@@ -153,7 +153,7 @@ API 請求的底層工具（供 `llm.js` 引用）。
 | 函式 | 用途 |
 |------|------|
 | `fetchWithTimeout(url, opts, ms)` | 帶逾時設定的 fetch，合併外部 `signal`，abort 後拋 `'request_timeout'` |
-| `getVertexToken(sa)` | Vertex AI OAuth2 token（含模組級快取，仿天氣快取） |
+| `getVertexToken(sa)` | Vertex AI OAuth2 token；cache 綁定 project/email/private-key SHA-256 指紋，期限依 `expires_in` 留安全緩衝（P114） |
 | `getDefModel(provider)` | 各 provider 未填 `api_model` 時的預設模型 |
 | `isReasoningModel(model)` | 判定 GPT-5/o 系列推理型（不送取樣參數） |
 | `sendLLMRequest(messages, config)` | 非串流一次性請求的**薄包裝**，內部轉呼 `llm.js` 的 `callLLM({ stream:false })` |
@@ -218,17 +218,18 @@ API 請求的底層工具（供 `llm.js` 引用）。
 | `snoozeBackupReminder()` | 「稍後」：寫 `backup_snooze_until`＝現在＋3 天 |
 | `shouldRemindBackup()` | 首頁提醒卡判斷：snooze 期內回 `null`；從未備份且訊息 ≥ 50 回 `{ kind:'first' }`；距上次 ≥ 14 天回 `{ kind:'overdue', days }` |
 
-### `services/diag.js`（P105）
-診斷匯出——本地錯誤日誌＋一鍵匯出，降低 bug 回報來回成本（P103 教訓）。錯誤存 **localStorage**（同步、不依賴 IndexedDB，連 DB 初始化失敗都記得下來），只存這台裝置。
+### `services/diag.js`（P105／P114 信任分級）
+診斷匯出——本地錯誤日誌＋一鍵匯出，降低 bug 回報來回成本（P103 教訓）。錯誤存 **localStorage**（同步、不依賴 IndexedDB，連 DB 初始化失敗都記得下來），只存這台裝置。ring buffer 為 **schema 2 結構化欄位**（`code`／`status`／`provider`／`model`／`location`／`localMessage`），兩條 policy：**strict**（預設——LLM／網路／unhandledrejection／來源不明：只留分類與安全 metadata，不保存原始 message）、**trusted-local**（受控 call site 明確指定——同源 window runtime error、`initDB` 失敗：訊息經「刪控制字元 → 遮蔽金鑰成 `[REDACTED]` → 遮蔽 URL 成 `[URL]` → 截 300 字」後保留）。
 
 | 函式 | 用途 |
 |------|------|
-| `logError(src, msg)` | 記一筆錯誤進 ring buffer（30 筆、逐筆蓋當時 `APP_VERSION`、訊息截 300 字元）；自身絕不拋錯 |
-| `getErrors()` | 讀 ring buffer（損毀／非陣列回 `[]`） |
-| `installGlobalErrorLog()` | `main.js` 啟動時掛 `error`／`unhandledrejection` 全域監聽 |
-| `exportDiag()` | 組診斷純文字：版本＋UA＋螢幕/dpr＋PWA standalone＋主題＋provider/模型名＋角色/訊息計數＋最近錯誤；**絕不含訊息內容與 API 金鑰**。SettingsView「複製診斷資訊」用（剪貼簿為主、下載 .txt 備援） |
+| `logError(src, error, meta)` | 記結構化 entry 進 ring buffer（30 筆、逐筆蓋當時 `APP_VERSION`）；`meta.policy === 'trusted-local'` 才保留清理後訊息；自身絕不拋錯 |
+| `getErrors()` | 讀 ring buffer（損毀／非陣列回 `[]`）；逐筆重新驗證型別＋allowlist＋重遮蔽、限最新 30 筆、timestamp 重輸出標準 ISO（localStorage 可被竄改，不信任既存內容）；舊版（schema 1）字串資料一律 strict 重分類 |
+| `formatDiagError(entry)` | 結構化 entry → 人類可讀一行；輸出前最後一道防線，欄位重新 allowlist／遮蔽 |
+| `installGlobalErrorLog()` | `main.js` 啟動時掛 `error`／`unhandledrejection` 全域監聽；window error 以 `new URL(filename).origin === location.origin` 驗證同源（CSP 允許 vercel.live 等第三方 script，「有 filename」不等於本地），同源才 trusted-local，location 取 pathname basename |
+| `exportDiag()` | 組診斷純文字：版本＋UA＋螢幕/dpr＋PWA standalone＋主題＋provider/模型名＋角色/訊息計數＋最近錯誤；settings 值過 `safeLabel`；**不含對話內容與 API 金鑰，本地錯誤訊息以遮蔽後形式呈現**。SettingsView「複製診斷資訊」用（剪貼簿為主、下載 .txt 備援） |
 
-> 錯誤來源三路：全域監聽（`window`/`promise`）、`initDB` 失敗（`init`）、`callLLM` 失敗（`llm`，provider/model＋錯誤訊息含 HTTP 狀態；AbortError 使用者主動中斷不記）。
+> 錯誤來源三路：全域監聽（`window` 同源才 trusted-local／`promise` 一律 strict）、`initDB` 失敗（`init`，trusted-local）、`callLLM` 失敗（`llm`，strict，只記 provider/model＋HTTP status／分類；AbortError 使用者主動中斷不記）。
 
 ### `services/speech.js`（P106；P108 起 UI 暫下架）
 訊息朗讀（TTS 輕量版）——`speechSynthesis` 純前端免費。**P108 起聊天室選單已移除「朗讀」**（iOS 中文系統音太機械、不符體驗標準）；引擎與測試保留，待接高品質 TTS API（BYOK）時復用。
@@ -424,6 +425,8 @@ globalStore = {
 [data-theme="dark"]  { --bg: #1a1a1a; --rose: #e8907a; }
 ```
 
+P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.html` 在 Vue 掛載前先套 localStorage 快取。若快取尚未建立，再只讀既有 `auris` IndexedDB 的 `settings.theme`；DB 不存在時中止預讀，不建立空 schema，讀完立即關閉連線。
+
 ### 常用基礎 Class
 | Class | 說明 |
 |-------|------|
@@ -455,6 +458,14 @@ globalStore = {
 ---
 
 ## 12. 版本更新紀錄
+
+### P114（2026-07-15）資安強化批——Vertex token 身分隔離＋診斷去敏＋主題預讀修復
+
+- **Vertex token cache（`api.js`）**：cache identity 為 `project_id + client_email + private key SHA-256 指紋`，不同帳號／project／key 不共用；使用 OAuth `expires_in` 並預留最多 60 秒／10% 安全緩衝。token 失敗只回安全錯誤碼，不串接完整第三方 response。
+- **診斷信任分級（`diag.js`／`llm.js`／`main.js`）**：ring buffer 改 schema 2 結構化欄位，兩條 policy——strict（預設，LLM／網路／unhandledrejection：只留分類與安全 metadata）、trusted-local（受控 call site 明確指定＋window error 驗證同源 origin：本地錯誤訊息經「刪控制字元→遮蔽金鑰→遮蔽 URL→截斷」後保留）。讀出時逐筆重新驗證與遮蔽、限 30 筆、timestamp 重輸出 ISO，舊字串資料一律 strict 重分類；`formatDiagError` 輸出前最後一道 allowlist；`exportDiag` settings 值過 `safeLabel`。詳見 §「services/diag.js」。
+- **工程防線（`scripts/hooks/`）**：hook 改用 `lib.sh` 共用判斷支援 git 全域選項（堵 `git -C <repo> push` 繞過）；`check-project-config.mjs` 拒絕文字程式檔含 NUL；新增 `hooks.test.js` 行為測試 14 案例。
+- **主題預讀（`index.html`／`SettingsView.vue`）**：預讀改查 `auris`；不存在時 abort 防空 DB，既有 DB 讀完關閉；主題切換同步 localStorage。
+- 新增 `api.test.js` 4 案例、`diag.test.js` 重寫 25 案例、`hooks.test.js` 14 案例；vitest 166/166。
 
 ### P113（2026-07-15）資安修復批——備份匯入原子化＋API 設定不隨備份走＋外部圖片過濾
 

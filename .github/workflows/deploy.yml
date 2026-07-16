@@ -31,10 +31,21 @@ jobs:
           node-version: 22
           cache: 'npm'
           cache-dependency-path: 'auris-vue/package-lock.json'
+
+      - name: Check project config
+        run: node scripts/check-project-config.mjs
           
       - name: Install dependencies
         working-directory: ./auris-vue
-        run: npm install
+        run: npm ci
+
+      - name: Audit dependencies
+        working-directory: ./auris-vue
+        run: npm audit --audit-level=high
+
+      - name: Run tests
+        working-directory: ./auris-vue
+        run: npm test
         
       - name: Build
         working-directory: ./auris-vue

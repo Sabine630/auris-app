@@ -34,8 +34,9 @@ grep -rn "ANNOUNCEMENT_VERSION\|更新公告\|last_seen_announcement" auris-vue/
 
 ```bash
 git log origin/dev -1 --oneline   # 最新改動已推上 dev
-gh run list --branch dev -L 3     # ci.yml 綠燈（test＋audit＋build 過）
 ```
+
+確認 ci.yml 綠燈（test＋audit＋build 過）：優先用已連線的 GitHub app／API；若環境有 `gh` 才可使用 `gh run list --branch dev -L 3`。不得因本機沒有 `gh` 就略過遠端 CI 查核。
 
 尚未推上 dev 的改動先走 /bump → commit → push dev，等 CI 綠燈。
 
@@ -45,9 +46,14 @@ gh run list --branch dev -L 3     # ci.yml 綠燈（test＋audit＋build 過）
    ```bash
    cd auris-vue && npm audit --audit-level=high   # 應為 0 vulnerabilities
    ```
-2. **程式碼資安審查**：執行內建的 `/security-review`，審當前分支相對 main 的整包待發改動（XSS、注入、金鑰硬編碼、不安全的資料處理等）。
-   - Auris 重點面向：不可信輸入進 DOM（角色卡匯入、備份還原、AI 回覆渲染是否都走 `formatContent` escape）、CSP 是否被新功能鬆動、金鑰是否只存在使用者裝置。
-   - 有 medium 以上的發現：先修復、重跑，全數清除才進下一步；確認為誤報則向使用者說明後放行。
+2. **程式碼資安審查（checklist 為必要步驟）**：直接審 `git diff main...dev` 的整包待發內容，至少逐項查核並留下結論：
+   - 不可信輸入進 DOM：所有動態 `v-html` 是否經 `formatContent` escape；匯入 JSON／AI 回覆／錯誤訊息是否可能成為 HTML、URL 或 script sink。
+   - 憑證與 endpoint：備份、診斷、log、demo、測試與新增檔案不得含真實 key；API base／provider 變更不得把既有 key 靜默送往新目的地。
+   - 資料完整性：IndexedDB 多 store 寫入是否需要單一 transaction；匯入失敗不得破壞原資料或留下半套新增資料。
+   - 外部請求與 CSP：圖片、連結、自訂 endpoint、第三方資源是否擴大追蹤或 CSP 攻擊面。
+   - 依賴、workflow 與分支防線：audit 結果、Actions 權限、main required checks 與部署來源是否符合預期。
+   - 對每個發現標出嚴重度、檔案／行號、可利用前提與驗收條件。medium 以上先修復並重跑；確認誤報時向使用者說明證據後才能放行。
+3. **內建 `/security-review` 作為第二道檢查**：checklist 完成後額外執行 Claude Code 內建的 `/security-review`。它不能取代 checklist，也不能只因指令執行完成就宣稱資安審查通過；兩者的發現都要清零或說明。
 
 ## 步驟 4：合併與推送
 
@@ -59,8 +65,6 @@ git checkout dev        # 推完立刻切回開發分支
 
 ## 步驟 5：確認部署
 
-```bash
-gh run list --branch main -L 1   # 等 deploy.yml 綠燈
-```
+使用 GitHub app／API 確認 main 最新 deploy workflow 成功；環境有 `gh` 時可用 `gh run list --branch main -L 1`。再開正式站核對實際版號與 console。
 
 完成後正式站更新：https://sabine630.github.io/auris-app

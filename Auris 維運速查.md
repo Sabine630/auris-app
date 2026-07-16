@@ -1,7 +1,7 @@
 # 🛠️ Auris 維運速查（給 Sabine 的備忘）
 
 > 開發系統（hooks／skills／CI 資安防線）的「怎麼觸發」與「怎麼查核」。
-> 系統本體：hooks 在 `.claude/hooks/`、skills 在 `.claude/skills/`、CI 在 `.github/workflows/ci.yml`。
+> 系統本體：共用 hooks 在 `scripts/hooks/`；Claude/Codex 分別由 `.claude/settings.json`、`.codex/hooks.json` 掛載；skills 在 `.claude/skills/`、`.agents/skills/`；CI 在 `.github/workflows/ci.yml`。
 > 建立：2026-07-05～07-11（P105 前後）。
 
 ---
@@ -14,9 +14,9 @@
 | 明確走版更流程 | 打 `/bump`（或說「照流程收尾」） |
 | 發正式版 | 打 `/release`，或直接說「發正式版」——SOP 含上版前資安檢測 |
 | 單獨驗證改動 | 打 `/verify-app` |
-| 隨時做資安審查 | 打 `/security-review`（Claude Code 內建，不用等發版） |
+| 隨時做資安審查 | 直接要求「依資安 checklist 審查目前分支相對 main 的 diff」；不得假設每個工具都有同名 `/security-review` 指令 |
 
-**hooks 和 CI 沒有「觸發」這回事**——掛在 commit / push 的必經之路上，Claude 想跳過也不行。
+**hooks 和 CI 在正常流程會自動觸發**。`[skip-ver]`／`[skip-secret]` 是有意保留的特殊逃生口，使用時必須在 commit 訊息留下原因；遠端 branch rules 才是跨工具、跨電腦的最終防線。
 
 ---
 
@@ -33,7 +33,7 @@
 1. **看 app**（最直觀）：Vercel 測試版設定頁最底部，版號應 +1、摘要應是這次改的東西。版號沒動＝流程沒走完。
 2. **看 commit**：`git log --oneline -5`——功能 commit 開頭應為 `Fix P{新版號}:`，與設定頁一致。
 3. **看 GitHub Actions**：每次 push dev 有一條 CI（含 Audit dependencies，點進去可見 `found 0 vulnerabilities`）；發版後 main 有一條 deploy。
-4. **發版時看對話**：`/security-review` 會在對話裡輸出完整審查過程與發現清單，有沒有跑一目瞭然。
+4. **發版時看對話**：應看到待發 diff 的審查範圍、逐項 checklist、發現清單與驗收結果；只說「已跑 security review」不算證據。
 
 隨時可用：`/hooks` 看三道 hook（也能暫停用）、`/permissions` 看 Claude 被允許自動做哪些事。
 
@@ -48,8 +48,9 @@
 
 ---
 
-## 四、待辦：GitHub 網頁上要手動開的兩項（免費）
+## 四、待辦：GitHub 網頁上要手動確認的項目
 
+- [ ] **main required status checks**：main 已 protected，對非管理者已禁止 force push／刪除（2026-07-15 API 復驗 `allow_force_pushes`／`allow_deletions` 皆 false；`enforce_admins=false`，管理者仍可繞過）。剩：把實際 CI check 設為必過——**前提是先把發版改成 dev → main 的 PR 流程**（直推的 merge commit 沒有 CI 結果會被擋），屆時一併評估 `enforce_admins`。
 - [ ] **Dependabot alerts**：repo Settings → Security → 啟用。依賴有新 CVE 會主動通知，比 push 才發現更早。
 - [ ] **CodeQL default setup**：Settings → Security → Code scanning。公開 repo 免費，每次 push 自動跑 JS 靜態掃描。
 

@@ -6,19 +6,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/Users/sabinetsai/Desktop/AI測試/auris-app/.codex/hooks/guard-main-push.sh'",
+            "command": "bash \"$(git rev-parse --show-toplevel)/scripts/hooks/guard-main-push.sh\"",
             "timeout": 10,
             "statusMessage": "檢查是否推送 main…"
           },
           {
             "type": "command",
-            "command": "bash '/Users/sabinetsai/Desktop/AI測試/auris-app/.codex/hooks/check-version-bump.sh'",
+            "command": "bash \"$(git rev-parse --show-toplevel)/scripts/hooks/check-version-bump.sh\"",
             "timeout": 15,
             "statusMessage": "檢查版更 checklist…"
           },
           {
             "type": "command",
-            "command": "bash '/Users/sabinetsai/Desktop/AI測試/auris-app/.codex/hooks/check-secret-leak.sh'",
+            "command": "bash \"$(git rev-parse --show-toplevel)/scripts/hooks/check-secret-leak.sh\"",
             "timeout": 15,
             "statusMessage": "掃描金鑰外洩…"
           }

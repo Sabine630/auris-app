@@ -22,8 +22,10 @@ export async function fetchWithTimeout(url, opts = {}, timeoutMs = 90000) {
     });
 }
 
-// Vertex AI: OAuth2 token cache
-let _vtok = null, _vtokExp = 0;
+// Vertex AI: OAuth2 token cache。cache 必須綁定 service account 身分；否則使用者
+// 切換帳號後，可能在舊 token 到期前把請求送成上一個帳號。
+let _vtok = null, _vtokExp = 0, _vtokIdentity = null;
+const VERTEX_TOKEN_SKEW_MS = 60_000;
 
 function _b64url(buf) {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
@@ -32,9 +34,21 @@ function _b64url(buf) {
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 
+async function _vertexCredentialIdentity(saObj) {
+  const projectId = String(saObj?.project_id || '');
+  const email = String(saObj?.client_email || '');
+  const privateKey = String(saObj?.private_key || '').replace(/\r\n/g, '\n').trim();
+  if (!projectId || !email || !privateKey) throw new Error('Vertex service account 格式不完整');
+
+  // 只在記憶體保存不可逆指紋，不把私鑰原文放進 cache key／log。
+  const source = new TextEncoder().encode(`${projectId}\0${email}\0${privateKey}`);
+  return _b64url(await crypto.subtle.digest('SHA-256', source));
+}
+
 export async function getVertexToken(sa) {
   const saObj = typeof sa === 'string' ? JSON.parse(sa) : sa;
-  if (_vtok && Date.now() < _vtokExp) return _vtok;
+  const identity = await _vertexCredentialIdentity(saObj);
+  if (_vtok && identity === _vtokIdentity && Date.now() < _vtokExp) return _vtok;
 
   const now = Math.floor(Date.now() / 1000);
   const header = _b64url(new TextEncoder().encode(JSON.stringify({ alg: 'RS256', typ: 'JWT' })));
@@ -64,10 +78,17 @@ export async function getVertexToken(sa) {
     body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`
   });
   const data = await res.json();
-  if (!data.access_token) throw new Error('Vertex token 取得失敗：' + (data.error_description || data.error || JSON.stringify(data)));
+  if (!data.access_token) {
+    const code = typeof data.error === 'string' ? data.error : `HTTP ${res.status}`;
+    throw new Error(`Vertex token 取得失敗（${code}）`);
+  }
 
   _vtok = data.access_token;
-  _vtokExp = Date.now() + 3500000;
+  _vtokIdentity = identity;
+  const expiresMs = Number(data.expires_in) * 1000;
+  const lifetimeMs = Number.isFinite(expiresMs) && expiresMs > 0 ? expiresMs : 3_600_000;
+  const safetyMs = Math.min(VERTEX_TOKEN_SKEW_MS, lifetimeMs * 0.1);
+  _vtokExp = Date.now() + Math.max(0, lifetimeMs - safetyMs);
   return _vtok;
 }
 

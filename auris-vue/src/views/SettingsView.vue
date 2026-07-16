@@ -120,7 +120,7 @@
       </div>
       <div class="sr" @click="copyDiag">
         <div class="sr-ic"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M15 4h2a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2h2"/><path d="M9 12h6M9 16h4"/></svg></div>
-        <div class="sr-text">複製診斷資訊<div style="font-size:10px;font-weight:300;color:var(--text-3);margin-top:2px">回報問題時附上（不含對話內容與金鑰）</div></div><div class="sr-chev">›</div>
+        <div class="sr-text">複製診斷資訊<div style="font-size:10px;font-weight:300;color:var(--text-3);margin-top:2px">含環境資訊、錯誤分類與經遮蔽的本地錯誤資訊，不含對話內容與金鑰</div></div><div class="sr-chev">›</div>
       </div>
     </div>
 
@@ -249,6 +249,7 @@ async function clearWeatherLoc() {
 async function applyTheme(id) {
   globalStore.theme = id;
   await setSetting('theme', id);
+  try { localStorage.setItem('auris-theme', id); } catch { /* 私密模式不影響主題切換 */ }
   const t = themes.find(x => x.id === id);
   if (t) {
     document.documentElement.style.background = t.bg;
