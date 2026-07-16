@@ -114,5 +114,7 @@ git push origin main   # Actions 自動 build（auris-vue/dist）並部署 GitHu
 
 - `body` 需有 `position: fixed; width: 100%`（防 iOS 偷捲 visualViewport）
 - `globalStore.keyboardOffset` 追蹤鍵盤高度，`BottomNav` 用 `kb-hidden` class 隱藏
-- 輸入框 focus 時用 `scrollIntoView({ block: 'nearest' })` 確保可見
+- 聊天室／群聊／貼文留言使用 `services/keyboardViewport.js`＋`.keyboard-page`：外層不捲動，只有 `.keyboard-scroll` 捲動，輸入列是普通 flex 子元素（禁止 sticky/fixed）
+- `.keyboard-page` 內的輸入框不得走 App 全域 smooth `scrollIntoView`；由 scoped visualViewport controller 局部調整頁面 top/bottom inset
 - **不要**在 phone container 加 `paddingBottom: keyboardOffset`（會造成空白）
+- **不要**把 `.phone` 高度／transform 綁到 visualViewport（P83 實機改爆、P85 已回退）

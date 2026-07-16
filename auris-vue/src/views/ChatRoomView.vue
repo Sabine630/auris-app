@@ -1,7 +1,7 @@
 <template>
-  <div class="page active" id="pg-chat-room" style="display:flex;flex-direction:column; height: 100%">
+  <div ref="pageRoot" class="page active keyboard-page" id="pg-chat-room" style="display:flex;flex-direction:column">
     <!-- Header -->
-    <div class="chat-hd">
+    <div class="chat-hd keyboard-header">
       <div class="chat-hd-back" @click="$router.back()">
         <svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>
       </div>
@@ -47,7 +47,7 @@
     </div>
 
     <!-- Scroll Area -->
-    <div style="flex:1;overflow-y:auto;scrollbar-width:none" id="chat-scroll" ref="scrollArea">
+    <div class="keyboard-scroll" id="chat-scroll" ref="scrollArea">
       <div class="chat-msgs" id="chat-msgs">
         
         <div v-if="!messages.length" style="text-align:center;padding:32px 0;font-size:12px;font-weight:300;color:var(--text-3);letter-spacing:.04em">
@@ -137,7 +137,7 @@
     </div>
 
     <!-- Input Area -->
-    <div class="chat-ia">
+    <div class="chat-ia keyboard-input-bar">
       <input type="file" ref="fileInputRef" accept="image/*" style="display:none" @change="handleImageFile" />
       <input type="file" id="chat-import-input" accept=".json" style="display:none" @change="importChat" />
       <button class="chat-img-btn" @click="pickImage" :disabled="isTyping" title="傳送圖片">
@@ -473,6 +473,7 @@ import { estimateTokens } from '../services/tokens.js';
 import { addKeepsake } from '../services/keepsakes.js';
 import { renderShareCard, shareCardImage } from '../services/shareCard.js';
 import { localDateKey } from '../services/date.js';
+import { installKeyboardViewport } from '../services/keyboardViewport.js';
 import { globalStore } from '../store/index.js';
 
 const route = useRoute();
@@ -497,6 +498,8 @@ const searchInput = ref(null);
 
 const scrollArea = ref(null);
 const chatInp = ref(null);
+const pageRoot = ref(null);
+let stopKeyboardViewport = null;
 
 const cName = ref('—');
 const cAvatar = ref('');
@@ -688,6 +691,7 @@ const CARE_INTERVALS = { rarely: [12, 25], sometimes: [4, 10], often: [1, 4] };
 const PROACTIVE_FLOOR_MS = 3 * 60 * 1000; // 3 分鐘
 
 onMounted(async () => {
+  stopKeyboardViewport = installKeyboardViewport(pageRoot.value);
   const c = await dbGet('characters', charId);
   if (!c) {
     router.push('/');
@@ -727,6 +731,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  stopKeyboardViewport?.();
   clearTimeout(proactiveTimer);
   clearTimeout(busyTimer); // pending key 留在 settings，由下次進房或 App.vue 背景派發接手
   proactiveController?.abort();

@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-15（P114）
+> 最後更新：2026-07-16（P115）
 
 ---
 
@@ -218,6 +218,18 @@ API 請求的底層工具（供 `llm.js` 引用）。
 | `snoozeBackupReminder()` | 「稍後」：寫 `backup_snooze_until`＝現在＋3 天 |
 | `shouldRemindBackup()` | 首頁提醒卡判斷：snooze 期內回 `null`；從未備份且訊息 ≥ 50 回 `{ kind:'first' }`；距上次 ≥ 14 天回 `{ kind:'overdue', days }` |
 
+### `services/keyboardViewport.js`（P115）
+iOS PWA 鍵盤輸入頁的局部 visual viewport controller，供單聊、群聊、貼文留言共用。鍵盤 focus 前記錄頁面基準框，鍵盤升起後只對當前 `.keyboard-page` 套用上下 inset；不修改 `.phone`，不使用 `window.scrollTo`，也不以 transform 平移整個 App（P83/P85 教訓）。
+
+| 函式 | 用途 |
+|------|------|
+| `computeKeyboardInsets(metrics)` | 純函式：以基準頁面框與 `visualViewport.offsetTop/height` 算 `topInset`／`bottomInset`／可用高度 |
+| `isKeyboardViewportOpen()` | visual viewport 比 focus 前基準矮超過 80px 才判定鍵盤開啟 |
+| `isViewportRestored()` | 以 40px 容差判定 viewport 已回升，可安全清除局部版面 |
+| `installKeyboardViewport(page)` | 掛 focus／pointer／visualViewport／orientation 監聽；double-rAF＋60ms trailing reconcile；回傳 destroy 清理函式 |
+
+blur 不直接還原：輸入列 pointer 操作期間維持 interaction lock，讓送出 click 先完成；viewport 回升後才清除。iOS PWA 偶爾在 resize 當下暫報 `offsetTop=0`，故保留 trailing reconcile。
+
 ### `services/diag.js`（P105／P114 信任分級）
 診斷匯出——本地錯誤日誌＋一鍵匯出，降低 bug 回報來回成本（P103 教訓）。錯誤存 **localStorage**（同步、不依賴 IndexedDB，連 DB 初始化失敗都記得下來），只存這台裝置。ring buffer 為 **schema 2 結構化欄位**（`code`／`status`／`provider`／`model`／`location`／`localMessage`），兩條 policy：**strict**（預設——LLM／網路／unhandledrejection／來源不明：只留分類與安全 metadata，不保存原始 message）、**trusted-local**（受控 call site 明確指定——同源 window runtime error、`initDB` 失敗：訊息經「刪控制字元 → 遮蔽金鑰成 `[REDACTED]` → 遮蔽 URL 成 `[URL]` → 截 300 字」後保留）。
 
@@ -432,6 +444,9 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 |-------|------|
 | `.page` | 頁面根容器，設定為滿版及垂直捲動 |
 | `.ph` | 頁首 (Page Header) |
+| `.keyboard-page` | P115 鍵盤輸入頁外殼；本身不捲動，只吃 scoped visual viewport inset |
+| `.keyboard-scroll` | 鍵盤輸入頁唯一內容捲動區（`flex:1; min-height:0`） |
+| `.keyboard-input-bar` | 普通 flex 底部輸入列；不使用 sticky/fixed |
 | `.empty-cta` | **空狀態的行動按鈕（玫瑰色背景，專屬）** |
 | `.btn-primary` | 深色主要按鈕（如聊天發送） |
 | `.modal-overlay` / `.modal-box` | 彈窗遮罩與底部升起內容區 |
@@ -443,7 +458,7 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 1. **刪除關聯資料**：在刪除角色時，必須同步清除所有帶有該 `charId` 的資料表：`messages`, `memories`, `chat_memories`, `moments`, `diary`, `dreams`, `notifications`, `wishes`, `notes`（見 `CharManageView.confirmDelete`）。
 2. **新增設定項目**：直接透過 `setSetting('new_key', value)` 新增即可，不需修改資料庫結構。
 3. **空狀態原則**：遇到尚未開發或空列表時，按鈕一律使用 `.empty-cta` 而非 `.btn-primary`，且未完成的功能應掛上 `@click="$toast('尚在開發，敬請期待')"`。
-4. **`.page` 內不要用 `position:fixed`**（P107 教訓）：`.page` 帶 `transform` 轉場，fixed 後代會退化成相對 `.page` 內容定位、跟著捲動跑位。頁內底部停靠列用 `position:sticky; bottom:0`；全螢幕遮罩／sheet 類請 `Teleport to="body"` 或確認該頁不整頁捲動。
+4. **`.page` 內不要用 `position:fixed`**（P107 教訓）：`.page` 帶 `transform` 轉場，fixed 後代會退化成相對 `.page` 內容定位、跟著捲動跑位。一般可捲動頁的底部管理列可用 `position:sticky; bottom:0`；但**有 iOS 鍵盤的聊天／留言頁禁止 sticky**（P115），必須用 `.keyboard-page` 單一捲動區＋普通 flex `.keyboard-input-bar`。全螢幕遮罩／sheet 類請 `Teleport to="body"`。
 5. **主題色只掛在 `#phone-container [data-theme]`**（P107 教訓）：JS 讀主題 CSS 變數要 `getComputedStyle(document.getElementById('phone-container'))`，讀 `documentElement` 只會拿到 `:root` 的預設奶白值。P110 起 `data-theme` 另鏡射到 `body`（`App.vue` `syncRootBg`），`Teleport to="body"` 的元件因此也吃得到主題——新增 Teleport 元件不必再自己處理。
 
 ---
@@ -458,6 +473,14 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P115（2026-07-16）iOS PWA 鍵盤輸入頁穩定化
+
+- **局部 visual viewport（新增 `keyboardViewport.js`）**：focus 前記錄頁面基準框，鍵盤期間只對當前 `.keyboard-page` 套 `top/bottom inset`；double-rAF＋60ms trailing reconcile；不動 `.phone`、不用 `window.scrollTo`、不 transform 整個 App。
+- **三頁單一捲動區**：ChatRoom／GroupRoom／PostDetail 改為 header＋`.keyboard-scroll`＋普通 flex `.keyboard-input-bar`；外層 overflow hidden，移除 header/輸入列 sticky。kb-active 期間停用 blur 與頁面 transition/transform，kb-open 時移除 bottom safe-area 空帶。
+- **送出與清理時序**：blur 不立即還原；輸入列 pointer interaction lock 保障 click 先完成，viewport 回升才清除；unmount 完整解除監聽與 CSS 變數。
+- **全域 focus 收斂**：`App.vue` 的 smooth `scrollIntoView` 排除 keyboard page，監聽器改具名可清理。
+- `keyboardViewport.test.js` 12 案例；vitest 178/178、build 成功；iPhone PWA dev 實機為正式放行門檻。
 
 ### P114（2026-07-15）資安強化批——Vertex token 身分隔離＋診斷去敏＋主題預讀修復
 

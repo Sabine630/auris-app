@@ -1,6 +1,6 @@
 <template>
-  <div class="page active" id="pg-group-room" style="display:flex;flex-direction:column; height: 100%">
-    <div class="chat-hd">
+  <div ref="pageRoot" class="page active keyboard-page" id="pg-group-room" style="display:flex;flex-direction:column">
+    <div class="chat-hd keyboard-header">
       <div class="chat-hd-back" @click="$router.back()"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg></div>
       <div class="chat-hd-av" style="font-size:18px">👥</div>
       <div class="chat-hd-info">
@@ -10,7 +10,7 @@
       <div class="chat-hd-more" @click="showGroupInfo = true">⋯</div>
     </div>
     
-    <div style="flex:1;overflow-y:auto;scrollbar-width:none" id="grp-scroll" ref="scrollArea">
+    <div class="keyboard-scroll" id="grp-scroll" ref="scrollArea">
       <div class="chat-msgs">
         
         <div v-if="!messages.length" style="text-align:center;padding:32px 0;font-size:12px;font-weight:300;color:var(--text-3);letter-spacing:.04em">
@@ -62,7 +62,7 @@
       </div>
     </div>
     
-    <div class="chat-ia">
+    <div class="chat-ia keyboard-input-bar">
       <textarea class="chat-in" ref="chatInp" v-model="inputContent" placeholder="說點什麼或 @點名…" rows="1"
         @keydown.enter.ctrl.prevent="sendMsg" @keydown.enter.meta.prevent="sendMsg" @input="autoResize"></textarea>
       <button class="chat-send" @click="sendMsg" :disabled="!!typingCharId || groupReplying">
@@ -140,11 +140,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbPut, dbAll } from '../services/db.js';
 import { sendGroupMessage, generateGroupAIResponseStream } from '../services/chatEngine.js';
 import { formatContent } from '../services/format.js';
+import { installKeyboardViewport } from '../services/keyboardViewport.js';
 import { globalStore } from '../store/index.js';
 
 const route = useRoute();
@@ -176,8 +177,11 @@ const allCharacters = ref([]);
 
 const scrollArea = ref(null);
 const chatInp = ref(null);
+const pageRoot = ref(null);
+let stopKeyboardViewport = null;
 
 onMounted(async () => {
+  stopKeyboardViewport = installKeyboardViewport(pageRoot.value);
   const g = await dbGet('groups', groupId);
   if (!g) {
     router.push('/group-list');
@@ -192,6 +196,10 @@ onMounted(async () => {
   }
 
   await loadMessages();
+});
+
+onUnmounted(() => {
+  stopKeyboardViewport?.();
 });
 
 async function loadMessages() {

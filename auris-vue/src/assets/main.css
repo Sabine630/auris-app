@@ -192,6 +192,16 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .page.active{opacity:1;transform:translateX(0);z-index:10}
 .page.exit{opacity:0;transform:translateX(-24%);z-index:5}
 
+/* P115：鍵盤輸入頁只保留一個內容捲動區；visualViewport 只縮目前頁面，不動 .phone。 */
+.keyboard-page{overflow:hidden;top:var(--keyboard-top-inset,0px);bottom:var(--keyboard-bottom-inset,0px);height:auto!important}
+.keyboard-page>.keyboard-header{position:relative;top:auto;flex-shrink:0}
+.keyboard-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.keyboard-scroll::-webkit-scrollbar{display:none}
+.keyboard-page>.keyboard-input-bar{position:relative;bottom:auto;flex-shrink:0}
+.keyboard-page.kb-active{transform:none;transition:none}
+.keyboard-page.kb-active>.keyboard-header,
+.keyboard-page.kb-active>.keyboard-input-bar{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg)}
+
 /* ═══ 頁首 ═══ */
 .ph{position:sticky;top:0;z-index:20;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--nav-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:.5px solid var(--border)}
 .ph-back{color:var(--rose);font-size:15px;font-weight:300;cursor:pointer;display:flex;align-items:center;gap:4px;min-width:60px}
@@ -712,7 +722,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .post-comment-btn svg{width:15px;height:15px;stroke:var(--text-3);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 /* 貼文詳情 */
 .post-detail-body{padding:16px 20px 12px;border-bottom:.5px solid var(--border)}
-.post-comments{padding:8px 0 100px}
+.post-comments{padding:8px 0 16px}
 .post-comment-item{padding:12px 20px;display:flex;gap:10px;align-items:flex-start}
 .post-comment-item:not(:last-child){border-bottom:.5px solid var(--border)}
 .comment-av{width:30px;height:30px;border-radius:9px;background:var(--rose-pale);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;overflow:hidden}
@@ -1275,6 +1285,9 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   .page { padding-bottom: 0 !important; }
   .chat-ia {
     padding-bottom: max(6px, calc(env(safe-area-inset-bottom) + 2px));
+  }
+  .keyboard-page.kb-open > .keyboard-input-bar {
+    padding-bottom: 6px !important;
   }
   #lock { border-radius: 0; }
 }
