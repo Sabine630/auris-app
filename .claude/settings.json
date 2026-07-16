@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "Read(//Users/sabinetsai/Desktop/Auris 教學手冊/**)",
+      "Read(//Users/sabinetsai/Library/Caches/ms-playwright/**)",
       "Bash(npm test*)",
       "Bash(npm run test*)",
       "Bash(npm run build*)",
@@ -11,6 +13,9 @@
       "Bash(git branch*)",
       "Bash(git add *)",
       "Bash(git push origin dev)"
+    ],
+    "additionalDirectories": [
+      "/Users/sabinetsai/Desktop/Auris 教學手冊"
     ]
   },
   "hooks": {
@@ -20,19 +25,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-main-push.sh\"",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-main-push.sh\"",
             "timeout": 10,
             "statusMessage": "檢查是否推送 main…"
           },
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/check-version-bump.sh\"",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-version-bump.sh\"",
             "timeout": 15,
             "statusMessage": "檢查版更 checklist…"
           },
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/check-secret-leak.sh\"",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-secret-leak.sh\"",
             "timeout": 15,
             "statusMessage": "掃描金鑰外洩…"
           }

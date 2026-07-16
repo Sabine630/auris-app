@@ -21,12 +21,9 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'auris-vue/package-lock.json'
 
-      - name: Check project config
-        run: node scripts/check-project-config.mjs
-
       - name: Install dependencies
         working-directory: ./auris-vue
-        run: npm ci
+        run: npm install
 
       # 依賴弱點掃描：有 high（含）以上等級漏洞就讓 CI 紅燈（P105 後加入的資安防線）
       - name: Audit dependencies

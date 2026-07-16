@@ -28,17 +28,11 @@
           if(cached&&THEME_BG[cached]){applyBg(THEME_BG[cached]);}
         }catch(e){}
         try{
-          // 不指定版本：只讀既有 auris DB，避免這段預載邏輯與 db.js schema 版號重複維護。
-          // 若 DB 尚不存在就 abort，不能讓預載腳本先建立一個沒有 stores 的空資料庫。
-          var req=indexedDB.open('auris');
-          req.onupgradeneeded=function(e){
-            if(e.oldVersion===0){e.target.transaction.abort();}
-          };
+          var req=indexedDB.open('AurisDB_v2',1);
           req.onsuccess=function(e){
             try{
               var db=e.target.result;
               var tx=db.transaction('settings','readonly');
-              tx.oncomplete=tx.onerror=tx.onabort=function(){try{db.close();}catch(closeErr){}};
               var st=tx.objectStore('settings');
               st.get('theme').onsuccess=function(ev){
                 if(ev.target.result&&THEME_BG[ev.target.result.value || ev.target.result]){
@@ -47,7 +41,7 @@
                   localStorage.setItem('auris-theme', ev.target.result.value || ev.target.result);
                 }
               };
-            }catch(err){try{db&&db.close();}catch(closeErr){}}
+            }catch(err){}
           };
         }catch(err){}
       })();

@@ -1,26 +1,26 @@
 #!/bin/bash
-# PreToolUse(Bash) hook：git commit 前把關版更 checklist。
-# 只有 staged 內容含 auris-vue/src/ 才檢查；[skip-ver] 是明確逃生口。
+# PreToolUse(Bash) hook：git commit 前把關版更 checklist（CLAUDE.md 第 1、2 項＋防呆原則 1）。
+# 只有 commit 內含 auris-vue/src/ 的異動才檢查；純文件 commit 直接放行。
+# 逃生口：commit 訊息含 [skip-ver] 時跳過（例如 WIP、還原類 commit）。
 input=$(cat)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""')
 
-# shellcheck source=scripts/hooks/lib.sh
-. "$(dirname "$0")/lib.sh"
-git_cmd_has_subcommand "$cmd" commit || exit 0
+case "$cmd" in
+  *"git commit"*) ;;
+  *) exit 0 ;;
+esac
 case "$cmd" in
   *"[skip-ver]"*) exit 0 ;;
 esac
 
-project_dir="${CLAUDE_PROJECT_DIR:-}"
-if [ -z "$project_dir" ]; then
-  project_dir=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-fi
-cd "$project_dir" || exit 0
+cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 staged=$(git -c core.quotepath=false diff --cached --name-only)
 
 printf '%s\n' "$staged" | grep -q '^auris-vue/src/' || exit 0
 
 problems=""
+
+# P105 起版號集中在 version.js（APP_VERSION 常數），設定頁只是引用顯示。
 git diff --cached -U0 -- auris-vue/src/version.js 2>/dev/null | grep -q "^+.*APP_VERSION = 'P" \
   || problems="${problems}①version.js 的 APP_VERSION 未 +1；"
 

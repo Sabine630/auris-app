@@ -40,6 +40,6 @@ initDB().then(async () => {
   }
 }).catch(err => {
   console.error('IndexedDB 初始化失敗：', err);
-  logError('init', err, { code: 'indexeddb_init_failed', policy: 'trusted-local' });
+  logError('init', 'IndexedDB 初始化失敗：' + (err?.message || err));
   document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif">資料庫初始化失敗，請嘗試重新整理。</div>';
 })

@@ -253,10 +253,7 @@
       <div class="mem-drawer-hd">
         <span>記憶抽屜</span>
         <div style="display:flex;align-items:center;gap:8px">
-          <div class="mem-add-btn" v-if="memTab === 'mem'" @click="startAddMem" title="手動新增記憶">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </div>
-          <div class="mem-add-btn" v-else-if="bonds.length < BOND_CAP" @click="startAddBond" title="手動新增默契">
+          <div class="mem-add-btn" @click="startAddMem" title="手動新增記憶">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </div>
           <div class="mem-drawer-close" @click="showMemDrawer = false">
@@ -265,13 +262,6 @@
         </div>
       </div>
 
-      <!-- 記憶｜我們的默契 分頁（P112 D4） -->
-      <div class="mem-seg">
-        <div class="mem-seg-btn" :class="{ active: memTab === 'mem' }" @click="memTab = 'mem'">記憶</div>
-        <div class="mem-seg-btn" :class="{ active: memTab === 'bond' }" @click="memTab = 'bond'">我們的默契</div>
-      </div>
-
-      <template v-if="memTab === 'mem'">
       <!-- 手動新增記憶表單 -->
       <div class="mem-new-form" v-if="showNewMemForm">
         <input class="mem-edit-title" v-model="newMemTitle" placeholder="標題（選填）" />
@@ -330,56 +320,6 @@
       <div class="mem-footer">
         <span>已開啟 {{ enabledMemCount }} 筆・約 {{ enabledTokenEstimate }} token</span>
       </div>
-      </template>
-
-      <!-- 我們的默契（P112 D4）：口頭禪/專屬稱呼/暗號，AI 總結時自動收集、注入對話 -->
-      <template v-else>
-        <div class="bond-cap-hint" v-if="bonds.length >= BOND_CAP">默契滿 {{ BOND_CAP }} 條了，整理一下才能收新的</div>
-
-        <div class="mem-new-form" v-if="showNewBondForm">
-          <textarea class="mem-edit-content" v-model="newBondText" rows="2" maxlength="40" placeholder="例如：他都叫我小笨蛋、晚安要說兩次…"></textarea>
-          <div class="mem-edit-actions">
-            <button class="mem-edit-cancel" @click="showNewBondForm = false">取消</button>
-            <button class="mem-edit-save" @click="saveNewBond" :disabled="!newBondText.trim()">新增</button>
-          </div>
-        </div>
-
-        <div class="mem-list" v-if="bonds.length">
-          <div class="mem-item" v-for="b in bonds" :key="b.id">
-            <template v-if="editingBondId === b.id">
-              <div class="mem-edit-body">
-                <textarea class="mem-edit-content" v-model="editBondText" rows="2" maxlength="40"></textarea>
-                <div class="mem-edit-actions">
-                  <button class="mem-edit-cancel" @click="editingBondId = null">取消</button>
-                  <button class="mem-edit-save" @click="saveEditBond(b)" :disabled="!editBondText.trim()">儲存</button>
-                </div>
-              </div>
-            </template>
-            <template v-else>
-              <label class="mem-toggle">
-                <input type="checkbox" :checked="b.enabled" @change="toggleBond(b)">
-                <span class="mem-toggle-track"></span>
-              </label>
-              <div class="mem-body">
-                <div class="mem-content expanded">{{ b.text }}</div>
-              </div>
-              <div class="mem-edit-btn" @click="startEditBond(b)" title="編輯">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              </div>
-              <div class="mem-del" @click="deleteBond(b.id)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-              </div>
-            </template>
-          </div>
-        </div>
-        <div v-else-if="!showNewBondForm" style="padding:24px 16px;text-align:center;font-size:12px;font-weight:300;color:var(--text-3)">
-          還沒有累積默契。<br>AI 總結記憶時會自動收集你們的<br>口頭禪、專屬稱呼與暗號
-        </div>
-
-        <div class="mem-footer">
-          <span>{{ enabledBondCount }}/{{ BOND_CAP }} 條・已開啟的會自然融入他的說話方式</span>
-        </div>
-      </template>
     </div>
 
     <!-- Message Action Sheet -->
@@ -466,8 +406,8 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting, stripUnsafeImage } from '../services/db.js';
-import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive, BOND_CAP } from '../services/chatEngine.js';
+import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting } from '../services/db.js';
+import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive } from '../services/chatEngine.js';
 import { formatContent, splitReply } from '../services/format.js';
 import { estimateTokens } from '../services/tokens.js';
 import { addKeepsake } from '../services/keepsakes.js';
@@ -619,15 +559,6 @@ const sumCount = 20;
 let isAutoSumming = false;
 const REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🙏'];
 
-// ── 我們的默契（P112 D4）──
-const memTab = ref('mem');
-const bonds = ref([]);
-const showNewBondForm = ref(false);
-const newBondText = ref('');
-const editingBondId = ref(null);
-const editBondText = ref('');
-const enabledBondCount = computed(() => bonds.value.filter(b => b.enabled).length);
-
 // ── Image Attachment State ──
 const pendingImage = ref(null); // base64 string，同時用於 API 和存 DB
 const fileInputRef = ref(null);
@@ -758,14 +689,6 @@ async function loadChatMems() {
 
 async function openMemDrawer() {
   await loadChatMems();
-  // 默契可能剛被背景自動總結默默補了新條目——開抽屜時從 DB 讀最新（P112 D4）
-  try {
-    const fresh = await dbGet('characters', charId);
-    if (fresh) {
-      bonds.value = fresh.bonds || [];
-      if (character.value) character.value.bonds = fresh.bonds || [];
-    }
-  } catch (_) {}
   showMemDrawer.value = true;
 }
 
@@ -820,58 +743,6 @@ async function saveEditMem(mem) {
   mem.content = c || mem.content;
   await dbPut('chat_memories', { ...mem });
   editingMemId.value = null;
-}
-
-// ── 我們的默契（P112 D4）────────────────────────────────────────────────────
-// 寫前重讀最新角色物件（比照 maybeAutoSummarize 的防撞法）：只覆蓋 bonds 欄位，
-// 不整包覆寫，避免吃掉編輯空窗期其他地方（CharEdit/自動總結）對角色的修改。
-async function persistBonds() {
-  const fresh = await dbGet('characters', charId);
-  if (!fresh) return;
-  fresh.bonds = JSON.parse(JSON.stringify(bonds.value));
-  await dbPut('characters', fresh);
-  if (character.value) character.value.bonds = fresh.bonds;
-}
-
-function startAddBond() {
-  memTab.value = 'bond';
-  showNewBondForm.value = true;
-  newBondText.value = '';
-  editingBondId.value = null;
-}
-
-async function saveNewBond() {
-  const text = newBondText.value.trim().slice(0, 40);
-  if (!text) return;
-  if (bonds.value.length >= BOND_CAP) { window.toast_(`默契滿 ${BOND_CAP} 條了，先整理一下`); return; }
-  if (bonds.value.some(b => b.text === text)) { window.toast_('這條默契已經在了'); return; }
-  bonds.value.push({ id: `bond_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, text, enabled: true, createdAt: Date.now() });
-  await persistBonds();
-  showNewBondForm.value = false;
-}
-
-async function toggleBond(b) {
-  b.enabled = !b.enabled;
-  await persistBonds();
-}
-
-async function deleteBond(id) {
-  bonds.value = bonds.value.filter(b => b.id !== id);
-  if (editingBondId.value === id) editingBondId.value = null;
-  await persistBonds();
-}
-
-function startEditBond(b) {
-  editingBondId.value = b.id;
-  editBondText.value = b.text;
-}
-
-async function saveEditBond(b) {
-  const text = editBondText.value.trim().slice(0, 40);
-  if (!text) return;
-  b.text = text;
-  await persistBonds();
-  editingBondId.value = null;
 }
 
 // ── Proactive Timer Functions ──
@@ -1435,7 +1306,7 @@ async function importChat(e) {
     for (let i = 0; i < json.messages.length; i++) {
       const m = json.messages[i];
       if (!m || !m.role || !m.content) continue;
-      await dbPut('messages', stripUnsafeImage({ ...m, id: `msg_import_${base}_${i}`, charId }));
+      await dbPut('messages', { ...m, id: `msg_import_${base}_${i}`, charId });
       count++;
     }
     const allMsgs = await dbIdx('messages', 'charId', charId);
@@ -1987,38 +1858,6 @@ async function retryAfterRefusal() {
   transition: transform .3s cubic-bezier(.32,.72,0,1);
 }
 .mem-drawer.open { transform: translateY(0); }
-
-/* ── 記憶｜我們的默契 分頁（P112 D4）── */
-.mem-seg {
-  display: flex;
-  gap: 6px;
-  padding: 10px 16px 0;
-  flex-shrink: 0;
-}
-.mem-seg-btn {
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: .5px solid var(--border-2);
-  font-size: 12px;
-  font-weight: 300;
-  color: var(--text-3);
-  cursor: pointer;
-}
-.mem-seg-btn.active {
-  border-color: var(--rose);
-  color: var(--rose);
-  font-weight: 400;
-}
-.bond-cap-hint {
-  margin: 10px 16px 0;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: var(--rose-pale, rgba(201,136,122,.12));
-  font-size: 11px;
-  font-weight: 300;
-  color: var(--rose);
-  text-align: center;
-}
 
 .mem-drawer-hd {
   display: flex;

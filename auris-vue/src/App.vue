@@ -47,15 +47,13 @@ import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from './store/index.js';
 import { getSetting, setSetting, dbAll, dbIdx, dbIdxCount, dbGet, dbDel } from './services/db.js';
 import { generateDiary, generatePost } from './services/contentEngine.js';
-import { generateCycleCareMessage, generateScheduleMessage, generateMissYouMessage, generateDailyQuestion, hasUnrepliedProactive, processDueBusyReply, generateCapsuleDueMessage } from './services/chatEngine.js';
-import { runMonthlyReviews } from './services/reviewEngine.js';
-import { dueCapsules, markDueResult } from './services/capsules.js';
+import { generateCycleCareMessage, generateScheduleMessage, generateMissYouMessage, generateDailyQuestion, hasUnrepliedProactive, processDueBusyReply } from './services/chatEngine.js';
 import { getCyclePhase } from './services/cycle.js';
 import { localDateKey } from './services/date.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
-const ANNOUNCEMENT_VERSION = 'P114';
+const ANNOUNCEMENT_VERSION = 'P110';
 const showAnnouncement = ref(false);
 
 // ── 全域 confirm modal ─────────────────────────────────────────────────────
@@ -369,32 +367,12 @@ async function runBusyReplyCatchup() {
   } catch (_) {}
 }
 
-// 時間膠囊到期派發（P111 D3）：openAt 到了就讓角色主動傳「膠囊到期了，來拆」＋通知。
-// 比照定時提醒：不吃 min-gap（到期是事件），但吃勿擾時段（半夜不吵）與防堆疊閘門；
-// 每輪最多派一顆，成敗回寫 markDueResult（失敗重試 3 次後放棄通知，膠囊本身仍可手動拆）。
-async function runCapsuleDue() {
-  try {
-    if (inQuietHours()) return false;
-    for (const cap of await dueCapsules()) {
-      const c = await dbGet('characters', cap.charId);
-      if (!c || c.proactiveMute) continue;
-      if (await hasUnrepliedProactive(cap.charId)) continue; // 上一則主動還沒回，這輪先不疊
-      let ok = false;
-      try { ok = !!(await generateCapsuleDueMessage(cap.charId, cap)); } catch (_) {}
-      await markDueResult(cap.id, ok);
-      return true; // 每輪最多一顆
-    }
-  } catch (_) {}
-  return false;
-}
-
 let proactiveBusy = false;
 async function runAllProactive() {
   if (proactiveBusy) return;
   proactiveBusy = true;
   try {
     await runBusyReplyCatchup();
-    if (await runCapsuleDue()) return; // 膠囊到期算「這輪的一則」，其餘派發下輪再說
     await runScheduleTriggers();
     await runProactiveDispatch();
   } finally {
@@ -432,9 +410,6 @@ onMounted(async () => {
 
   // Daily auto-generation (runs silently in background, P50)
   runDailyAutoGen();
-
-  // 回憶月報（P111 D1）：每月首次開 app 背景補生成上個月的「我們的這個月」＋通知
-  runMonthlyReviews();
 
   // 主動訊息（背景靜默；P79 起改為分時段、一次一則，不再開 app 同時全冒出來）
   // P81：用 runAllProactive 序列化＋上鎖，定時先跑完再跑環境，整輪最多一則，杜絕競態疊訊息。

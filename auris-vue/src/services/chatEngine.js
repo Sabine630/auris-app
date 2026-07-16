@@ -6,7 +6,6 @@ import { splitReply, applyNameMacros } from './format.js';
 import { estimateTokens } from './tokens.js';
 import { getWeatherCtx } from './weather.js';
 import { getTodayMood, moodContext } from './mood.js';
-import { localDateKey } from './date.js';
 
 // 長期記憶注入的 token 上限：記憶越多越稀釋、越燒錢，超量時依相關性截斷（保留最相關的）。
 const MEM_TOKEN_BUDGET = 1500;
@@ -247,26 +246,6 @@ async function buildAIChatSetup(charId, allMsgs) {
   let moodCtx = '';
   try { moodCtx = moodContext(await getTodayMood()); } catch (_) {}
 
-  // 時間膠囊（P111 D3）：「拆封當天」把兩封信一次性注入，讓角色能自然聊起。
-  // 直接讀 settings（不 import capsules.js，避免 capsules→chatEngine→capsules 循環依賴）。
-  // 只在拆封當天注入（隔天起交給長期記憶／自動總結接手），放易變段不破壞快取。
-  let capsuleCtx = '';
-  try {
-    const caps = (await getSetting('capsules')) || [];
-    const today = localDateKey();
-    const openedToday = caps.filter(k =>
-      k.charId === charId && k.opened && k.openedAt && localDateKey(new Date(k.openedAt)) === today);
-    if (openedToday.length) {
-      capsuleCtx = '\n【時間膠囊】今天你們一起拆開了' + openedToday.map(k => {
-        const b = new Date(k.buriedAt);
-        const when = `${b.getFullYear()} 年 ${b.getMonth() + 1} 月 ${b.getDate()} 日`;
-        return `在 ${when} 埋下的時間膠囊。對方當時寫給未來的信：「${(k.mine || '').substring(0, 300)}」`
-          + (k.aiLetter ? `你當時也寫了一封：「${k.aiLetter.substring(0, 300)}」` : '');
-      }).join('；')
-        + '。請把這件事放在心上：可以自然聊起信裡的內容、呼應當時的心願或約定與現在的變化，語氣有溫度，不要逐字複誦整封信。';
-    }
-  } catch (_) {}
-
   const storyCtx = c.stories?.filter(s => s.content).map(s => `【${s.title}】${s.content}`).join('\n') || '';
 
   // 範例對話（few-shot）：抓住角色「說話聲音」最強的槓桿。放在 system prompt 內當標註過的範例，
@@ -280,13 +259,6 @@ async function buildAIChatSetup(charId, allMsgs) {
   // 動作排版（全域開關）：請角色用 *星號* 包動作／場景敘述、用「」包對話，前端會渲染成斜體旁白與上色。
   const formatCtx = formatStyle
     ? '\n【排版規則】把動作、表情、場景等敘述用半形星號 *像這樣* 包起來（會顯示成斜體旁白），角色說出口的話用「」括住。例：*他笑了笑*「好啊，那走吧。」自然運用即可，不要每句都硬套。'
-    : '';
-
-  // 專屬默契（P112 D4）：累積的「我們的梗」注入穩定段尾——變動頻率低（只在總結/手動編輯時變），
-  // 放穩定段不破壞快取價值；讓角色自然使用口頭禪/專屬稱呼/暗號，長期相處的累積感來源。
-  const enabledBonds = (c.bonds || []).filter(b => b && b.enabled && b.text);
-  const bondsCtx = enabledBonds.length
-    ? `\n【我們的默契】以下是你們相處中累積的專屬默契（口頭禪、專屬稱呼、暗號、共同的梗），請在合適的時機自然使用，不要刻意逐條展示、也不要一次全用：\n${enabledBonds.map((b, i) => `${i + 1}. ${b.text}`).join('\n')}`
     : '';
 
   // 回覆長度貼合角色個性：高冷／話少的角色不該被硬性字數逼著湊長段（取代舊的固定「50～150 字」）。
@@ -322,7 +294,7 @@ ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}
 ${c.isAI ? '' : `永遠不要承認你是 AI 或程式。`}
 ${c.extra ? `【補充指令】${c.extra}` : ''}
-${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${formatCtx}${bondsCtx}
+${scheduleCtx}${playerScheduleCtx}${personalDateCtx}${cycleCtx}${formatCtx}
 【回覆品質要求】
 ${lengthGuide}
 ・要回應對方說的具體內容，展現你真的在聽、在意
@@ -361,7 +333,7 @@ ${lengthGuide}
   // 角色卡欄位（個性/背景故事/關係背景/補充指令/範例對話…）常見 SillyTavern 式 {{user}}/{{char}}
   // 佔位符，組完 prompt 後整段換成真名，模型才不會照抄佔位符進輸出。
   const systemStable = applyNameMacros(systemPrompt, youName, c.name);
-  const systemVolatile = applyNameMacros(`${timeCtx}${weatherCtx}${worldCtx}${memCtx}${moodCtx}${capsuleCtx}${longFormNote}`, youName, c.name);
+  const systemVolatile = applyNameMacros(`${timeCtx}${weatherCtx}${worldCtx}${memCtx}${moodCtx}${longFormNote}`, youName, c.name);
 
   return { c, provider, model, base, apiKey, history, systemStable, systemVolatile, dynamicMaxTokens };
 }
@@ -522,7 +494,7 @@ function buildProactiveHistory(history, task, active) {
 
 // 所有「角色主動發起」訊息的內部標記值（純邏輯判斷用，不渲染成標籤）。
 // 派發器靠它判斷「上一則是不是還沒回的主動開場白」，避免一次堆好幾則。
-export const PROACTIVE_KINDS = new Set(['proactive', 'cycleCare', 'schedule', 'missYou', 'dailyQuestion', 'capsule']);
+export const PROACTIVE_KINDS = new Set(['proactive', 'cycleCare', 'schedule', 'missYou', 'dailyQuestion']);
 
 // 該角色最新一則「真實對話」訊息（排除 heart voice）是否為一則尚未回覆的主動訊息。
 // 用於派發前的防堆疊閘門：上一則主動開場白還沒被回，就先不要再丟新的。
@@ -994,36 +966,6 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
 }
 
 // ── Long-term Memory: Summarize Recent Messages ───────────────────────────
-// 專屬默契（P112 D4）上限：滿了新梗靜默不收（UI 提示整理），避免 prompt 無限膨脹。
-export const BOND_CAP = 15;
-
-// 解析總結輸出尾端的 BONDS 行（P112 D4）。格式壞掉一律當「沒有新梗」，摘要不受影響。
-export function parseSummaryBonds(text) {
-  const m = (text || '').match(/\n?\s*BONDS[:：]\s*(\[[\s\S]*?\])\s*$/i);
-  if (!m) return { summary: (text || '').trim(), bonds: [] };
-  let bonds = [];
-  try {
-    const arr = JSON.parse(m[1]);
-    if (Array.isArray(arr)) {
-      bonds = arr.filter(x => typeof x === 'string').map(x => x.trim()).filter(Boolean);
-    }
-  } catch (_) {}
-  return { summary: text.slice(0, m.index).trim(), bonds };
-}
-
-// 合併新梗進 characters 軟欄位 bonds：完全相同文字去重（模型端已給既有清單自行去重，這是防線）、
-// 單條截 40 字、滿 BOND_CAP 靜默不收。回傳新陣列（不改原引用）。
-export function mergeBonds(existing, texts, cap = BOND_CAP) {
-  const cur = Array.isArray(existing) ? existing.slice() : [];
-  for (const t of texts || []) {
-    if (cur.length >= cap) break;
-    const txt = (t || '').trim().slice(0, 40);
-    if (!txt || cur.some(b => b && b.text === txt)) continue;
-    cur.push({ id: `bond_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, text: txt, enabled: true, createdAt: Date.now() });
-  }
-  return cur;
-}
-
 export async function summarizeToMemory(charId, recentMsgs, count = 20) {
   const apiKey = await getSetting('api_key');
   if (!apiKey) throw new Error('請先在設定中填入 API 金鑰');
@@ -1033,40 +975,14 @@ export async function summarizeToMemory(charId, recentMsgs, count = 20) {
   const slice = recentMsgs.filter(m => m.type !== 'hv').slice(-count);
   const transcript = slice.map(m => (m.role === 'user' ? '我：' : `${c?.name || 'AI'}：`) + m.content).join('\n');
 
-  // 專屬默契（P112 D4）：搭同一次總結呼叫多要一個輸出欄位抽新梗——把現有清單給模型、
-  // 只回新增項（模型自行去重）。已滿上限就不問（省 token，也不會收）。
-  const curBonds = (c?.bonds || []).filter(b => b && b.text);
-  const askBonds = c && curBonds.length < BOND_CAP;
-  const bondsInstr = askBonds
-    ? `\n\n另外，這個 app 會累積兩人的「專屬默契」（明確重複出現或彼此約定的：口頭禪、專屬稱呼、暗號、共同的梗）。`
-      + `目前已記錄：${curBonds.length ? curBonds.map(b => `「${b.text}」`).join('、') : '（無）'}。`
-      + `若這段對話出現**不在上列**的新默契，請在摘要後另起一行輸出 BONDS: ["…","…"]`
-      + `（每條 20 字內、最多 3 條，只收明確重複或約定過的，不確定就不收）；沒有新默契就輸出 BONDS: []。`
-    : '';
+  const systemPrompt = '你是一個對話分析助手。請將以下聊天記錄濃縮成一段 100～200 字的重點摘要，保留：使用者透露的個人資訊、重要事件、雙方的情感狀態、以及任何未來可能有用的背景資訊。用第三人稱描述。只輸出摘要文字，不需要任何前綴說明。';
 
-  const systemPrompt = '你是一個對話分析助手。請將以下聊天記錄濃縮成一段 100～200 字的重點摘要，保留：使用者透露的個人資訊、重要事件、雙方的情感狀態、以及任何未來可能有用的背景資訊。用第三人稱描述。只輸出摘要文字，不需要任何前綴說明。' + bondsInstr;
-
-  const raw = await sendLLMRequest(
+  const summary = await sendLLMRequest(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: transcript }],
     { max_tokens: 800 }
   ).then(t => t.trim());
 
-  const { summary, bonds: newBonds } = parseSummaryBonds(raw);
   if (!summary) throw new Error('AI 回傳空白，請稍後重試');
-
-  // 新梗默默入列、不提示（D4 定案）。寫前重讀最新角色物件，避免總結空窗期蓋掉別處的編輯。
-  if (askBonds && newBonds.length) {
-    try {
-      const fresh = await dbGet('characters', charId);
-      if (fresh) {
-        const merged = mergeBonds(fresh.bonds, newBonds);
-        if (merged.length !== (fresh.bonds || []).length) {
-          fresh.bonds = merged;
-          await dbPut('characters', JSON.parse(JSON.stringify(fresh)));
-        }
-      }
-    } catch (_) {}
-  }
 
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -1157,81 +1073,4 @@ export async function generateDailyQuestion(charId) {
   if (!text || !text.trim()) return null;
 
   return await persistProactive(charId, text, { kind: 'dailyQuestion', notifPrefix: 'notif_dq_', notifText: '今天想問你一個問題' });
-}
-
-// ── 時間膠囊（P111 D3）────────────────────────────────────────────────────
-// 埋膠囊當下「他也寫一封」：用此刻的完整聊天脈絡生成角色寫給未來的信。
-// 生成後立即封存（呼叫端存進 capsules，不落聊天室、拆封前不顯示）。回傳信件文字或 null。
-export async function generateCapsuleLetter(charId, openAt) {
-  const allMsgs = await dbIdx('messages', 'charId', charId);
-  allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const { provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
-
-  const o = new Date(openAt);
-  const openStr = `${o.getFullYear()} 年 ${o.getMonth() + 1} 月 ${o.getDate()} 日`;
-  const task = `對方剛埋下一顆時間膠囊（一封寫給未來的信，${openStr} 才會拆開），並邀請你也偷偷寫一封放進去，到那天一起拆。請寫下你這封信——收信人是「${openStr} 那天的對方」。`;
-  const capsuleTail = `\n\n【時間膠囊】${task}以此刻你們的相處與心情為底：可以提到現在正在發生的事、你希望到那天實現的事、想對未來的他／她說的話。用你自己的口吻，真誠、有溫度，100～250 字。這是一封信，不是聊天訊息——直接輸出信的內容，不要旁白、不要引號、不要落款格式。`
-    + proactiveTimeAnchor();
-
-  // 信件指令併進對話尾端（維持 user/assistant 交替，同 buildProactiveHistory 的處理）
-  const instr = `（這不是對方傳來的訊息，而是給你的系統提示：${task}請直接輸出信的內容，不要把這段提示寫進信裡。）`;
-  const capsuleHistory = history.slice();
-  const last = capsuleHistory[capsuleHistory.length - 1];
-  if (last && last.role === 'user') {
-    capsuleHistory[capsuleHistory.length - 1] = { ...last, content: last.content + '\n\n' + instr };
-  } else {
-    capsuleHistory.push({ role: 'user', content: instr });
-  }
-
-  try {
-    const { fullText } = await callLLM({
-      provider, model, base, apiKey,
-      system: cacheSystem(systemStable, systemVolatile, capsuleTail),
-      messages: capsuleHistory,
-      maxTokens: 600,
-      temperature: 0.85,
-      stream: false,
-      extra: { frequency_penalty: 0.5, presence_penalty: 0.2 },
-    });
-    return (fullText || '').trim() || null;
-  } catch (e) {
-    console.error('generateCapsuleLetter failed:', e);
-    return null;
-  }
-}
-
-// 膠囊到期：角色主動傳訊提醒「當時的你寫了信給現在的你」，邀請對方去拆。
-// 由 App.vue 的 runCapsuleDue 背景派發（每輪最多一顆）；成敗回寫交給呼叫端 markDueResult。
-export async function generateCapsuleDueMessage(charId, capsule) {
-  const allMsgs = await dbIdx('messages', 'charId', charId);
-  allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const { provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
-
-  const b = new Date(capsule.buriedAt);
-  const buriedStr = `${b.getFullYear()} 年 ${b.getMonth() + 1} 月 ${b.getDate()} 日`;
-  const active = isRecentlyActive(allMsgs);
-  const task = `對方在 ${buriedStr} 埋了一顆時間膠囊——一封寫給未來的信，今天到期、可以拆開了。對方當時寫的內容節錄：「${(capsule.mine || '').substring(0, 200)}」。請主動傳訊息告訴對方膠囊到期了：輕輕呼應對方當時寫下的話（例如「那時候你說……現在呢？」），並邀請對方去「我們的回憶」拆開來看${capsule.aiLetter ? '——你當時也偷偷寫了一封，要一起拆' : ''}。不要把信的全文貼出來，留一點拆開的期待感。`;
-  const dueTail = `\n\n【時間膠囊到期】${task}簡短（三句以內）、有溫度。` + (active ? PROACTIVE_ACTIVE_TAIL : '') + proactiveTimeAnchor() + PROACTIVE_NO_NARRATION;
-
-  const dueHistory = buildProactiveHistory(history, task, active);
-
-  let text = '';
-  try {
-    const { fullText } = await callLLM({
-      provider, model, base, apiKey,
-      system: cacheSystem(systemStable, systemVolatile, dueTail),
-      messages: dueHistory,
-      maxTokens: 250,
-      temperature: 0.85,
-      stream: false,
-      extra: { frequency_penalty: 0.5, presence_penalty: 0.2 },
-    });
-    text = fullText;
-  } catch (e) {
-    console.error('generateCapsuleDueMessage failed:', e);
-    return null;
-  }
-  if (!text || !text.trim()) return null;
-
-  return await persistProactive(charId, text, { kind: 'capsule', notifPrefix: 'notif_cap_', notifText: '你們的時間膠囊到期了' });
 }

@@ -131,15 +131,13 @@ function applyImage(messages, image, provider) {
 //   image       base64 data URL，附加到最後一則 user 訊息
 //   extra       { frequency_penalty, presence_penalty }：僅 provider==='openai' 且非推理型時帶上
 // 回傳 { fullText, truncated }
-// 失敗一律記進診斷 ring buffer（provider/model＋HTTP status／錯誤分類）；第三方
-// response message 不會保存。使用者主動中斷（AbortError）不算失敗、不記。
+// 失敗一律記進診斷 ring buffer（provider/model＋錯誤訊息，HTTP 狀態已含在各 throw 的
+// message 內）；使用者主動中斷（AbortError）不算失敗、不記。
 export async function callLLM(opts) {
   try {
     return await callLLMInner(opts);
   } catch (e) {
-    if (e?.name !== 'AbortError') {
-      logError('llm', e, { provider: opts.provider, model: opts.model });
-    }
+    if (e?.name !== 'AbortError') logError('llm', `${opts.provider || '?'}/${opts.model || '?'}：${e?.message || e}`);
     throw e;
   }
 }

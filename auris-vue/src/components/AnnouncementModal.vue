@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P114 更新公告</div>
+      <div class="ann-badge">P110 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -16,35 +16,35 @@
               <div class="ann-title">近期更新</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">回憶月報 📖</div>
-                  <div class="ann-item-desc">每月替你們整理聊天統計、心情與收藏金句，再由角色寫一封回顧短信。到「我們的回憶 → 歷月回顧」也能手動生成，並存成主題配色的月報圖卡。</div>
+                  <div class="ann-item-title">回憶收藏盒 ⭐</div>
+                  <div class="ann-item-desc">捨不得忘的訊息，長按選「收藏成回憶」（可補一句備註），就會收進關係主頁新的「我們的回憶」。收藏存的是快照——之後就算清空聊天記錄，回憶也不會消失。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">寫給未來的時間膠囊 ⏳</div>
-                  <div class="ann-item-desc">封存一段想對未來說的話，也可以請角色偷偷寫一封信。等約定日期到來，他會主動提醒你；拆封當天聊天時，他也記得這件事。</div>
+                  <div class="ann-item-title">對話分享卡 🖼️</div>
+                  <div class="ann-item-desc">長按訊息「分享成卡片」，把他說的話做成美圖卡存圖或分享。配色跟著你的主題走，他連發的幾則會完整帶上，也可以加上你問的那句變成一問一答；角色名可匿名、你的名字一律不出現，曬對話不曬隱私。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">我們的默契 🤝</div>
-                  <div class="ann-item-desc">角色會在整理記憶時，順手記下你們的口頭禪、專屬稱呼、暗號與共同的梗。可在聊天室的記憶抽屜查看、修改或關閉，讓相處方式自然累積。</div>
+                  <div class="ann-item-title">備份提醒 🛟</div>
+                  <div class="ann-item-desc">所有資料都只存在你的裝置上，備份是唯一防線——太久沒備份時首頁會出現提醒卡，一鍵就能匯出。另外彈窗配色、心聲偶發簡體字等小問題也一併修正了。</div>
                 </div>
               </div>
             </template>
 
             <!-- 第二頁：使用方式 -->
             <template v-else-if="page === 1">
-              <div class="ann-title">更安心、更穩定</div>
+              <div class="ann-title">怎麼用</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">備份還原更安全 🛟</div>
-                  <div class="ann-item-desc">匯入若中途失敗，原有資料會完整保留；API key、provider 與模型設定不會寫進備份檔，也不會被別人的備份改掉。換裝置時仍需重新輸入 API key。</div>
+                  <div class="ann-item-title">長按訊息＝新的百寶箱</div>
+                  <div class="ann-item-desc">聊天室長按任何一則訊息：複製、收藏成回憶、分享成卡片、編輯重傳、重新生成，都在同一個選單。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">診斷資訊更重視隱私 🔒</div>
-                  <div class="ann-item-desc">第三方與網路錯誤只保存安全分類；本地錯誤也會先遮蔽金鑰與網址。複製診斷資訊時不會包含對話內容或 API key。</div>
+                  <div class="ann-item-title">去哪看收藏？</div>
+                  <div class="ann-item-desc">聊天室右上 ⋯ → 關係主頁 → 「我們的回憶」。每個角色一盒，可以翻看、補備註後的樣子，也能刪除（會先跳確認，不怕誤點）。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">主題與 Vertex 修復 ✨</div>
-                  <div class="ann-item-desc">重新開啟 App 時會更早套用正確主題；Vertex AI 切換不同 service account 時，不再共用上一組帳號的 token。</div>
+                  <div class="ann-item-title">回報問題更省力</div>
+                  <div class="ann-item-desc">遇到怪狀況時：設定 → 複製診斷資訊，把內容貼給開發者即可——裡面只有版本、裝置與錯誤紀錄，絕不包含你的對話內容和金鑰。</div>
                 </div>
               </div>
             </template>
@@ -78,7 +78,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P114</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P110</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
