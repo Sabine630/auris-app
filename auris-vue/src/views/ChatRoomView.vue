@@ -1868,8 +1868,7 @@ async function retryAfterRefusal() {
 .chat-img-btn:hover { color: var(--rose); }
 .chat-img-btn svg { width: 22px; height: 22px; }
 .chat-img-btn:disabled { opacity: .4; pointer-events: none; }
-.chat-mic-btn.recording { color: var(--rose); animation: mic-pulse 1s ease-in-out infinite; }
-@keyframes mic-pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+.chat-mic-btn.recording { color: var(--rose); }
 
 .msg-image {
   display: block;
@@ -1887,12 +1886,11 @@ async function retryAfterRefusal() {
   content: '▍';
   display: inline-block;
   margin-left: 1px;
-  animation: blink-cursor .8s step-end infinite;
   color: var(--text-3);
   font-size: .85em;
   vertical-align: baseline;
+  opacity: .7;
 }
-@keyframes blink-cursor { 50% { opacity: 0; } }
 
 /* Memory icon button in header */
 .chat-hd-mem {

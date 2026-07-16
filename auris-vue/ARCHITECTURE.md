@@ -480,7 +480,8 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 - **三頁單一捲動區**：ChatRoom／GroupRoom／PostDetail 改為 header＋`.keyboard-scroll`＋普通 flex `.keyboard-input-bar`；外層 overflow hidden，移除 header/輸入列 sticky。kb-active 期間停用 blur 與頁面 transition/transform，kb-open 時移除 bottom safe-area 空帶。
 - **送出與清理時序**：blur 不立即還原；輸入列 pointer interaction lock 保障 click 先完成，viewport 回升才清除；unmount 完整解除監聽與 CSS 變數。
 - **全域 focus／合成層收斂**：`App.vue` 的 smooth `scrollIntoView` 排除 keyboard page，監聽器改具名可清理；route fade 與 active `.page` 移除水平 transform，只保留 opacity，避免 WebKit 切片。
-- `keyboardViewport.test.js` 14 案例；vitest 180/180、build 與設定檢查成功；390×844 本機版面 smoke test 通過，iPhone PWA dev 實機仍為正式放行門檻。
+- **等待動畫合成層收斂**：實機錄影確認殘餘缺塊只在單聊／群聊共用的 `.tdot` 無限 transform 動畫期間出現。輸入中／生成中三點改為靜態明暗，單聊與群聊的串流游標取消無限 opacity 動畫；腦內基地生成點與錄音鈕剩餘的無限動畫也一併靜態化，避免 WebKit shared backing 持續錯誤重繪。
+- `keyboardViewport.test.js` 14 案例、`iosCompositor.test.js` 3 案例；vitest 183/183、build 與設定檢查成功；本機實際 stylesheet 確認等待提示沒有 animation／transform，iPhone PWA dev 實機仍為正式放行門檻。
 
 ### P114（2026-07-15）資安強化批——Vertex token 身分隔離＋診斷去敏＋主題預讀修復
 

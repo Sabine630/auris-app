@@ -548,11 +548,12 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 
 .msg-time{font-size:11px;font-weight:300;color:var(--text-3);margin-top:4px;padding:0 2px;letter-spacing:.01em}
 
-/* 打字動畫 */
+/* 輸入中提示
+   P115：iOS WebKit 會在含捲動層的 PWA 中，把小元素的無限 transform 動畫錯誤併入
+   大面積 shared backing，造成整頁反覆缺塊。三點改為靜態明暗，避免建立動畫合成層。 */
 .typing-wrap{display:flex;align-items:center;gap:4px;padding:10px 13px;background:var(--surface);border-radius:4px 16px 16px 16px;border:.5px solid var(--border);width:fit-content;box-shadow:var(--sh)}
-.tdot{width:5px;height:5px;background:var(--text-3);border-radius:50%;animation:tb .8s ease-in-out infinite}
-.tdot:nth-child(2){animation-delay:.15s}.tdot:nth-child(3){animation-delay:.3s}
-@keyframes tb{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+.tdot{width:5px;height:5px;background:var(--text-3);border-radius:50%;opacity:.45}
+.tdot:nth-child(2){opacity:.65}.tdot:nth-child(3){opacity:.85}
 
 /* Heart Voice：左側線條區塊 */
 .heart-voice{
@@ -685,8 +686,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .empty-cta{display:inline-block;margin-top:14px;padding:10px 22px;background:var(--rose);color:#fff;border:none;border-radius:20px;font-family:var(--font);font-size:12px;font-weight:300;letter-spacing:.06em;cursor:pointer;transition:background .15s,transform .1s}
 .empty-cta:active{transform:scale(.96)}
 .empty-cta.secondary{background:transparent;color:var(--rose);border:1px solid var(--rose)}
-.bb-gen-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--rose);opacity:.6;animation:pulse 1.6s ease-in-out infinite;vertical-align:middle;margin-left:6px}
-@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:.9;transform:scale(1.2)}}
+.bb-gen-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--rose);opacity:.7;vertical-align:middle;margin-left:6px}
 .bb-entry-sel{background:var(--rose-pale)}
 .bb-checkbox{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:8px;transition:all .15s}
 .bb-checkbox.checked{background:var(--rose);border-color:var(--rose)}
@@ -811,10 +811,10 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .dream-detail-time{font-size:11px;font-weight:300;color:var(--text-3)}
 .dream-detail-text{font-family:var(--font-serif);font-style:italic;font-size:16px;font-weight:300;color:var(--text);line-height:2;white-space:pre-wrap}
 
-/* 生成中動畫 */
+/* 生成中提示同樣保持靜態，避免 iOS WebKit 動畫合成層破圖。 */
 .gen-loading{display:flex;align-items:center;justify-content:center;gap:5px;padding:12px 0}
-.gen-dot{width:5px;height:5px;border-radius:50%;background:var(--rose);animation:tb .8s ease-in-out infinite}
-.gen-dot:nth-child(2){animation-delay:.15s}.gen-dot:nth-child(3){animation-delay:.3s}
+.gen-dot{width:5px;height:5px;border-radius:50%;background:var(--rose);opacity:.45}
+.gen-dot:nth-child(2){opacity:.65}.gen-dot:nth-child(3){opacity:.85}
 
 /* 輸入區 */
 .chat-ia{position:sticky;bottom:0;background:var(--nav-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:.5px solid var(--border);padding:10px 16px 12px;display:flex;align-items:flex-end;gap:8px}

@@ -400,10 +400,9 @@ async function sendMsg() {
   content: '▍';
   display: inline-block;
   margin-left: 1px;
-  animation: blink-cursor .8s step-end infinite;
   color: var(--text-3);
   font-size: .85em;
   vertical-align: baseline;
+  opacity: .7;
 }
-@keyframes blink-cursor { 50% { opacity: 0; } }
 </style>
