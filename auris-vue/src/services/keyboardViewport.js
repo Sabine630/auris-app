@@ -1,23 +1,33 @@
 const KEYBOARD_THRESHOLD = 80;
 const VIEWPORT_RESTORED_EPSILON = 40;
-const SETTLE_DELAY_MS = 60;
+const SETTLE_DELAYS_MS = [60, 240, 500];
 const BLUR_DELAY_MS = 100;
 
 function finiteNumber(value, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
 
-// 以鍵盤升起前的頁面框為基準，只計算目前 visual viewport 遮住的上下區域。
-// 不讀 window.scrollY，也不平移整個 .phone，避開 P83/P85 已知失敗路徑。
-export function computeKeyboardInsets({ baseTop, baseBottom, viewportTop, viewportHeight }) {
+// visualViewport.offsetTop 與 page rect 不在同一個座標原點：手機版 .phone 的
+// safe-area padding 會反映在 baseTop，卻不會出現在 resting viewportTop。
+// 因此先用 focus 前的 viewportTop 把目前 offset 轉成「頁面內位移」，再計算
+// 上下 inset；不可直接拿 viewportTop - baseTop，否則整頁會上移一個 safe-area。
+export function computeKeyboardInsets({
+  baseTop,
+  baseBottom,
+  baselineViewportTop = 0,
+  viewportTop,
+  viewportHeight
+}) {
   const top = finiteNumber(baseTop);
   const bottom = Math.max(top, finiteNumber(baseBottom, top));
-  const visibleTop = finiteNumber(viewportTop);
+  const pageHeight = bottom - top;
+  const restingViewportTop = finiteNumber(baselineViewportTop);
+  const visibleTop = Math.max(0, finiteNumber(viewportTop) - restingViewportTop);
   const visibleHeight = Math.max(0, finiteNumber(viewportHeight));
   const visibleBottom = visibleTop + visibleHeight;
-  const topInset = Math.max(0, visibleTop - top);
-  const bottomInset = Math.max(0, bottom - visibleBottom);
-  const availableHeight = Math.max(0, bottom - top - topInset - bottomInset);
+  const topInset = visibleTop;
+  const bottomInset = Math.max(0, pageHeight - visibleBottom);
+  const availableHeight = Math.max(0, pageHeight - topInset - bottomInset);
 
   return { topInset, bottomInset, availableHeight };
 }
@@ -56,7 +66,7 @@ export function installKeyboardViewport(page, options = {}) {
   let focusWithin = false;
   let firstFrame = 0;
   let secondFrame = 0;
-  let settleTimer = 0;
+  const settleTimers = new Set();
   let blurTimer = 0;
   let interactionTimer = 0;
 
@@ -74,6 +84,7 @@ export function installKeyboardViewport(page, options = {}) {
     baseline = {
       top: finiteNumber(rect.top),
       bottom: finiteNumber(rect.bottom, rect.top),
+      viewportTop: finiteNumber(vv.offsetTop),
       viewportHeight: Math.max(0, finiteNumber(vv.height, win.innerHeight))
     };
   }
@@ -96,6 +107,7 @@ export function installKeyboardViewport(page, options = {}) {
     const { topInset, bottomInset } = computeKeyboardInsets({
       baseTop: baseline.top,
       baseBottom: baseline.bottom,
+      baselineViewportTop: baseline.viewportTop,
       viewportTop: vv.offsetTop,
       viewportHeight: currentHeight
     });
@@ -105,13 +117,19 @@ export function installKeyboardViewport(page, options = {}) {
     page.classList.add('kb-open');
   }
 
-  // iOS PWA 偶爾在 resize 當下先回報 offsetTop=0；double-rAF 後量一次，
-  // 再以短延遲做 trailing reconcile，避免永久採到過早的數值。
+  function clearSettleTimers() {
+    for (const timer of settleTimers) clearTimer(timer);
+    settleTimers.clear();
+  }
+
+  // WebKit 可能在 resize 當下先回報舊的 offsetTop/height，且 standalone PWA
+  // 不一定會在數值穩定後再送事件。double-rAF 後先量一次，再於鍵盤動畫期間
+  // 做三次有限的 trailing reconcile；不使用永久 polling。
   function scheduleMeasure() {
     if (destroyed) return;
     if (firstFrame) cancelFrame(firstFrame);
     if (secondFrame) cancelFrame(secondFrame);
-    if (settleTimer) clearTimer(settleTimer);
+    clearSettleTimers();
     firstFrame = requestFrame(() => {
       firstFrame = 0;
       secondFrame = requestFrame(() => {
@@ -119,10 +137,13 @@ export function installKeyboardViewport(page, options = {}) {
         measureNow();
       });
     });
-    settleTimer = setTimer(() => {
-      settleTimer = 0;
-      measureNow();
-    }, SETTLE_DELAY_MS);
+    for (const delay of SETTLE_DELAYS_MS) {
+      const timer = setTimer(() => {
+        settleTimers.delete(timer);
+        measureNow();
+      }, delay);
+      settleTimers.add(timer);
+    }
   }
 
   function onPointerDown(event) {
@@ -194,7 +215,7 @@ export function installKeyboardViewport(page, options = {}) {
     vv.removeEventListener('scroll', scheduleMeasure);
     if (firstFrame) cancelFrame(firstFrame);
     if (secondFrame) cancelFrame(secondFrame);
-    if (settleTimer) clearTimer(settleTimer);
+    clearSettleTimers();
     if (blurTimer) clearTimer(blurTimer);
     if (interactionTimer) clearTimer(interactionTimer);
     clearGeometry();

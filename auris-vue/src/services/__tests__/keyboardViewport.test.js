@@ -14,17 +14,32 @@ describe('computeKeyboardInsets', () => {
 
   it('鍵盤縮小 visual viewport 時只計算底部遮蔽', () => {
     expect(computeKeyboardInsets({ baseTop: 48, baseBottom: 844, viewportTop: 0, viewportHeight: 500 }))
-      .toEqual({ topInset: 0, bottomInset: 344, availableHeight: 452 });
+      .toEqual({ topInset: 0, bottomInset: 296, availableHeight: 500 });
   });
 
-  it('offsetTop > 0 時同時計算頂部與底部 inset', () => {
-    expect(computeKeyboardInsets({ baseTop: 48, baseBottom: 844, viewportTop: 180, viewportHeight: 500 }))
-      .toEqual({ topInset: 132, bottomInset: 164, availableHeight: 500 });
+  it('safe-area page top 不可直接從 visual viewport offset 扣除', () => {
+    expect(computeKeyboardInsets({
+      baseTop: 48,
+      baseBottom: 844,
+      baselineViewportTop: 0,
+      viewportTop: 180,
+      viewportHeight: 500
+    })).toEqual({ topInset: 180, bottomInset: 116, availableHeight: 500 });
+  });
+
+  it('以 focus 前 viewport offset 為原點，避免 iOS 26 殘留 offset 重複補償', () => {
+    expect(computeKeyboardInsets({
+      baseTop: 48,
+      baseBottom: 844,
+      baselineViewportTop: 24,
+      viewportTop: 180,
+      viewportHeight: 500
+    })).toEqual({ topInset: 156, bottomInset: 140, availableHeight: 500 });
   });
 
   it('無效與負值不會產生 NaN 或負高度', () => {
     expect(computeKeyboardInsets({ baseTop: NaN, baseBottom: -10, viewportTop: -20, viewportHeight: -1 }))
-      .toEqual({ topInset: 0, bottomInset: 20, availableHeight: 0 });
+      .toEqual({ topInset: 0, bottomInset: 0, availableHeight: 0 });
   });
 });
 
@@ -118,8 +133,8 @@ describe('installKeyboardViewport', () => {
     vv.emit('resize');
     vi.runAllTimers();
 
-    expect(page.styles.get('--keyboard-top-inset')).toBe('132px');
-    expect(page.styles.get('--keyboard-bottom-inset')).toBe('164px');
+    expect(page.styles.get('--keyboard-top-inset')).toBe('180px');
+    expect(page.styles.get('--keyboard-bottom-inset')).toBe('116px');
     expect(page.classes.has('kb-open')).toBe(true);
     destroy();
     vi.useRealTimers();
@@ -135,6 +150,24 @@ describe('installKeyboardViewport', () => {
     page.emit('focusout', textarea);
     vi.runAllTimers();
     expect(page.classes.has('kb-open')).toBe(true);
+    destroy();
+    vi.useRealTimers();
+  });
+
+  it('延遲到 240ms 才更新的 offsetTop 仍會被 trailing reconcile 採用', () => {
+    const { page, vv, destroy, textarea } = controllerHarness();
+    page.emit('pointerdown', textarea);
+    page.emit('focusin', textarea);
+    vv.height = 500;
+    vv.offsetTop = 0;
+    vv.emit('resize');
+    vi.advanceTimersByTime(100);
+    expect(page.styles.get('--keyboard-top-inset')).toBe('0px');
+
+    vv.offsetTop = 180;
+    vi.advanceTimersByTime(150);
+    expect(page.styles.get('--keyboard-top-inset')).toBe('180px');
+    expect(page.styles.get('--keyboard-bottom-inset')).toBe('116px');
     destroy();
     vi.useRealTimers();
   });

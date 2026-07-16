@@ -189,7 +189,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .screen{flex:1;overflow:hidden;position:relative}
 .page{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;opacity:0;transform:translateX(100%);transition:opacity .28s cubic-bezier(.4,0,.2,1),transform .28s cubic-bezier(.4,0,.2,1);scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .page::-webkit-scrollbar{display:none}
-.page.active{opacity:1;transform:translateX(0);z-index:10}
+.page.active{opacity:1;transform:none;z-index:10;transition:opacity .2s ease}
 .page.exit{opacity:0;transform:translateX(-24%);z-index:5}
 
 /* P115：鍵盤輸入頁只保留一個內容捲動區；visualViewport 只縮目前頁面，不動 .phone。 */

@@ -474,12 +474,11 @@ onUnmounted(() => {
 <style>
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity 0.2s ease;
 }
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-  transform: translateX(10px);
 }
 .cm-overlay {
   position: fixed; inset: 0; z-index: 9999;
