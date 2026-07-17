@@ -3,7 +3,7 @@ node_modules/
 .env
 Auris 使用說明.md
 使用說明截圖/
-# .claude/ 的 hooks、skills、settings.json 屬專案開發系統，要進版控；只排除個人本機設定
+# 共用 hooks 在 scripts/hooks/；Claude/Codex 的 skills 與專案設定要進版控，只排除個人本機設定
 .claude/settings.local.json
 
 # 正式版由 GitHub Actions 自 auris-vue/dist 部署，專案根目錄不再放 build 成品（P97-P100 整理批次）。

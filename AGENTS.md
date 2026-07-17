@@ -1,4 +1,4 @@
-# Auris 專案 Claude 工作規則
+# Auris 專案 Codex 工作規則
 
 ## 自動化防線與 Skills（2026-07-05 起）
 
@@ -10,12 +10,12 @@
 | `/release` | 發布正式版（確認授權、公告版號四處同步、**上版前資安檢測**、merge dev→main、確認 Actions 部署） |
 | `/verify-app` | 驗證改動（vitest、dev server 實測、排版問題先定層再動手） |
 
-Hooks（共用腳本在 `scripts/hooks/`，由 `.claude/settings.json` 掛載；個人路徑與權限只放在已忽略的 `.claude/settings.local.json`）：
+Hooks（共用腳本在 `scripts/hooks/`，由 `.codex/hooks.json` 掛載；路徑由 Git 專案根目錄解析，不得寫死本機絕對路徑）：
 - **guard-main-push**：任何推送 main 的指令一律先跳使用者確認
 - **check-version-bump**：commit 含 `auris-vue/src/` 異動時，強制檢查版號已 +1、進度總覽已更新、「當前版本」恰好 2 處；WIP 等特殊 commit 可在訊息加 `[skip-ver]` 略過
 - **check-secret-leak**：commit 前掃描新增內容有無 API 金鑰／私鑰特徵（sk-…、AIza…、PRIVATE KEY、ghp_… 等；`sk-demo-` 為示範模式白名單），防測試金鑰誤入版控；確認誤報可在訊息加 `[skip-secret]` 略過
 
-資安防線（2026-07-11 起）：CI（ci.yml）含 `npm audit --audit-level=high` 依賴弱掃；發正式版前 `/release` 步驟 3 必須依明確 checklist 審查整包待發 diff，不能只靠指令名稱宣稱已完成。
+資安防線（2026-07-11 起）：CI（ci.yml）含 `npm audit --audit-level=high` 依賴弱掃；發正式版前 `/release` 步驟 3 必須依明確 checklist 審查整包待發 diff；並非所有工具都提供同名 `/security-review` 指令，發版驗收必須以明確 checklist 與實際證據為準（Claude Code 有內建 `/security-review`，可作為 checklist 之外的第二道檢查，但不可互相取代）。
 
 ## 版更 Checklist（每次 commit 前必做，= /bump 的內容）
 

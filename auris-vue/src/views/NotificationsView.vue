@@ -82,6 +82,7 @@ function openNotif(n) {
   else if (n.type === 'post') router.push('/post/' + n.targetId);
   else if (n.type === 'chat') router.push({ path: '/chat/' + n.charId, query: n.messageId ? { msg: n.messageId } : {} });
   else if (n.type === 'hv') router.push('/blackbox');
+  else if (n.type === 'review') router.push({ path: '/memories/' + n.charId, query: { tab: 'review' } }); // 月報（P111 D1）：直達回顧分頁
 }
 </script>
 

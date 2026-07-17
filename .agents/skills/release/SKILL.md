@@ -46,14 +46,13 @@ git log origin/dev -1 --oneline   # 最新改動已推上 dev
    ```bash
    cd auris-vue && npm audit --audit-level=high   # 應為 0 vulnerabilities
    ```
-2. **程式碼資安審查（checklist 為必要步驟）**：直接審 `git diff main...dev` 的整包待發內容，至少逐項查核並留下結論：
+2. **程式碼資安審查**：直接審 `git diff main...dev` 的整包待發內容，至少逐項查核並留下結論：
    - 不可信輸入進 DOM：所有動態 `v-html` 是否經 `formatContent` escape；匯入 JSON／AI 回覆／錯誤訊息是否可能成為 HTML、URL 或 script sink。
    - 憑證與 endpoint：備份、診斷、log、demo、測試與新增檔案不得含真實 key；API base／provider 變更不得把既有 key 靜默送往新目的地。
    - 資料完整性：IndexedDB 多 store 寫入是否需要單一 transaction；匯入失敗不得破壞原資料或留下半套新增資料。
    - 外部請求與 CSP：圖片、連結、自訂 endpoint、第三方資源是否擴大追蹤或 CSP 攻擊面。
    - 依賴、workflow 與分支防線：audit 結果、Actions 權限、main required checks 與部署來源是否符合預期。
    - 對每個發現標出嚴重度、檔案／行號、可利用前提與驗收條件。medium 以上先修復並重跑；確認誤報時向使用者說明證據後才能放行。
-3. **內建 `/security-review` 作為第二道檢查**：checklist 完成後額外執行 Claude Code 內建的 `/security-review`。它不能取代 checklist，也不能只因指令執行完成就宣稱資安審查通過；兩者的發現都要清零或說明。
 
 ## 步驟 4：合併與推送
 
@@ -65,6 +64,6 @@ git checkout dev        # 推完立刻切回開發分支
 
 ## 步驟 5：確認部署
 
-使用 GitHub app／API 確認 main 最新 deploy workflow 成功；環境有 `gh` 時可用 `gh run list --branch main -L 1`。再開正式站核對實際版號與 console。
+使用 GitHub app／API確認 main 最新 deploy workflow 成功；環境有 `gh` 時可用 `gh run list --branch main -L 1`。再開正式站核對實際版號與 console。
 
 完成後正式站更新：https://sabine630.github.io/auris-app

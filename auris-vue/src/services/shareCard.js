@@ -140,6 +140,114 @@ export function renderShareCard({ messages, charName, dateText }) {
   return canvas;
 }
 
+// ── 月報卡面（P111 D1，與對話卡共用引擎）────────────────────────────────────
+// 「我們的這個月」存圖：標題＋統計列＋角色回顧短信＋（可選）金句。
+// stats: { msgCount, chatDays, topPeriod, moodDist }（reviewEngine.computeStats 的輸出）
+export function renderMonthCard({ title, charName, stats, letter, quote }) {
+  const c = themeColors();
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  const bodyFont = `400 38px ${FONT_STACK}`;
+  const lineH = 60;
+  const boxW = CARD_W - PAD * 2;
+  const boxPad = 52;
+
+  // 統計欄位（有值才放）
+  const tiles = [
+    { v: String(stats?.msgCount ?? 0), l: '則訊息' },
+    { v: String(stats?.chatDays ?? 0), l: '天有聊天' },
+    stats?.topPeriod ? { v: stats.topPeriod, l: '最常聊' } : null,
+    stats?.moodDist?.[0] ? { v: stats.moodDist[0].emoji, l: `最常${stats.moodDist[0].label}` } : null,
+  ].filter(Boolean);
+
+  // 先量高：header＋統計列＋信＋金句＋footer
+  ctx.font = bodyFont;
+  const letterLines = letter ? wrapText(ctx, letter, boxW - boxPad * 2) : [];
+  const quoteLines = quote ? wrapText(ctx, `「${quote}」`, boxW - boxPad * 2) : [];
+  const headerH = 190;
+  const tilesH = tiles.length ? 200 : 0;
+  const letterH = letterLines.length ? letterLines.length * lineH + boxPad * 2 : 0;
+  const quoteH = quoteLines.length ? quoteLines.length * lineH + boxPad * 2 : 0;
+  const gap = 44;
+  const footerH = 130;
+  const cardH = PAD + headerH + tilesH + (letterH ? letterH + gap : 0) + (quoteH ? quoteH + gap : 0) + footerH + PAD;
+
+  canvas.width = CARD_W;
+  canvas.height = cardH;
+
+  // 底
+  ctx.fillStyle = c.bg;
+  ctx.fillRect(0, 0, CARD_W, cardH);
+
+  // header：月份標題＋角色名
+  ctx.textAlign = 'center';
+  ctx.fillStyle = c.text;
+  ctx.font = `600 58px ${FONT_STACK}`;
+  ctx.fillText(title, CARD_W / 2, PAD + 66);
+  ctx.fillStyle = c.text3;
+  ctx.font = `300 32px ${FONT_STACK}`;
+  ctx.fillText(charName, CARD_W / 2, PAD + 128);
+
+  // 統計列：等寬 tile，值大字＋標籤小字
+  let y = PAD + headerH;
+  if (tiles.length) {
+    const tileW = boxW / tiles.length;
+    tiles.forEach((t, i) => {
+      const cx = PAD + tileW * i + tileW / 2;
+      ctx.fillStyle = c.rose;
+      ctx.font = `600 64px ${FONT_STACK}`;
+      ctx.fillText(t.v, cx, y + 84);
+      ctx.fillStyle = c.text3;
+      ctx.font = `300 28px ${FONT_STACK}`;
+      ctx.fillText(t.l, cx, y + 140);
+    });
+    y += tilesH;
+  }
+
+  // 角色回顧短信（surface 圓角卡）
+  ctx.textAlign = 'left';
+  if (letterLines.length) {
+    ctx.fillStyle = c.surface;
+    roundRect(ctx, PAD, y, boxW, letterH, [36, 36, 36, 36]);
+    ctx.fill();
+    ctx.strokeStyle = c.border;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = c.text;
+    ctx.font = bodyFont;
+    letterLines.forEach((line, li) => {
+      ctx.fillText(line, PAD + boxPad, y + boxPad + lineH * li + 42);
+    });
+    y += letterH + gap;
+  }
+
+  // 金句（rose 底白字，同對話卡使用者泡泡的視覺重量）
+  if (quoteLines.length) {
+    ctx.fillStyle = c.rose;
+    roundRect(ctx, PAD, y, boxW, quoteH, [36, 36, 36, 36]);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = bodyFont;
+    quoteLines.forEach((line, li) => {
+      ctx.fillText(line, PAD + boxPad, y + boxPad + lineH * li + 42);
+    });
+    y += quoteH + gap;
+  }
+
+  // footer 浮水印（與對話卡一致）
+  ctx.textAlign = 'center';
+  ctx.fillStyle = c.text3;
+  ctx.globalAlpha = 0.75;
+  ctx.font = `500 30px ${FONT_STACK}`;
+  ctx.fillText('Auris', CARD_W / 2, cardH - PAD - 44);
+  ctx.font = `300 24px ${FONT_STACK}`;
+  ctx.fillText(SITE_URL, CARD_W / 2, cardH - PAD - 4);
+  ctx.globalAlpha = 1;
+
+  return canvas;
+}
+
 // 分享（navigator.share 檔案分享）→ 不支援就下載 fallback。回傳 'shared'|'downloaded'|'cancelled'
 export async function shareCardImage(canvas, filename = 'auris-card.png') {
   const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
