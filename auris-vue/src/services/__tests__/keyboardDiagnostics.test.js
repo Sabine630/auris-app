@@ -2,10 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildKeyboardDiagnosticHref,
   formatKeyboardDiagnosticSnapshot,
-  installRootScrollGuard,
-  isStandaloneDisplay,
   parseKeyboardDiagnostics
 } from '../keyboardDiagnostics.js';
+import { isStandaloneDisplay } from '../keyboardRootScrollGuard.js';
 import { APP_VERSION } from '../../version.js';
 
 describe('keyboard diagnostics query switches', () => {
@@ -22,8 +21,7 @@ describe('keyboard diagnostics query switches', () => {
       enabled: false,
       nofx: new Set(),
       isolation: '',
-      shell: '',
-      rootGuard: ''
+      shell: ''
     });
   });
 
@@ -60,21 +58,14 @@ describe('keyboard diagnostics query switches', () => {
     expect(new URLSearchParams(href).has('kbshell')).toBe(false);
   });
 
-  it('switches the root scroll guard without dropping shell and isolation flags', () => {
-    const href = buildKeyboardDiagnosticHref('?kbdiag=1&kbshell=absolute&kbiso=paint', { rootGuard: 'guard' });
+  it('drops the retired P123 kbroot experiment from all diagnostic links', () => {
+    const href = buildKeyboardDiagnosticHref('?kbdiag=1&kbroot=guard&demo=1', { effect: 'caret' });
     const params = new URLSearchParams(href);
 
-    expect(params.get('kbshell')).toBe('absolute');
-    expect(params.get('kbiso')).toBe('paint');
-    expect(params.get('kbroot')).toBe('guard');
-    expect(parseKeyboardDiagnostics(href).rootGuard).toBe('guard');
+    expect(params.has('kbroot')).toBe(false);
+    expect(params.get('demo')).toBe('1');
   });
 
-  it('ignores unknown root guard modes and restores free root scrolling on an empty change', () => {
-    expect(parseKeyboardDiagnostics('?kbdiag=1&kbroot=nope').rootGuard).toBe('');
-    const href = buildKeyboardDiagnosticHref('?kbdiag=1&kbroot=guard', { rootGuard: '' });
-    expect(new URLSearchParams(href).has('kbroot')).toBe(false);
-  });
 });
 
 describe('standalone display detection', () => {
@@ -119,8 +110,8 @@ describe('keyboard diagnostic evidence', () => {
       { reason: 'test' },
       win,
       doc,
-      { nofx: new Set(), isolation: '', shell: '', rootGuard: 'guard' },
-      { corrections: 2, lastBefore: 404, lastAfter: 0, active: true }
+      { nofx: new Set(), isolation: '', shell: '' },
+      { enabled: true, corrections: 2, lastBefore: 404, lastAfter: 0, active: true }
     );
 
     expect(readout).toContain(`kbdiag ${APP_VERSION} · standalone`);
@@ -129,117 +120,7 @@ describe('keyboard diagnostic evidence', () => {
     expect(readout).toContain('body rect 0.0…852.0');
     expect(readout).toContain('body scroll 7.0');
     expect(readout).toContain('shell original');
-    expect(readout).toContain('root guard · fix 2');
+    expect(readout).toContain('root official · fix 2');
     expect(readout).toContain('guard 404.0→0.0 · active');
-  });
-});
-
-function createEventTarget() {
-  const listeners = new Map();
-  return {
-    addEventListener(type, listener) {
-      if (!listeners.has(type)) listeners.set(type, new Set());
-      listeners.get(type).add(listener);
-    },
-    removeEventListener(type, listener) {
-      listeners.get(type)?.delete(listener);
-    },
-    dispatch(type, event = {}) {
-      for (const listener of listeners.get(type) || []) listener({ type, ...event });
-    },
-    listenerCount(type) {
-      return listeners.get(type)?.size || 0;
-    }
-  };
-}
-
-describe('root scroll guard', () => {
-  it('resets iOS root scrolling only while a text control is focused and the keyboard viewport is open', () => {
-    const vv = Object.assign(createEventTarget(), { height: 852, offsetTop: 0 });
-    const win = Object.assign(createEventTarget(), {
-      visualViewport: vv,
-      innerHeight: 852,
-      scrollY: 0,
-      requestAnimationFrame: callback => { callback(); return 1; },
-      cancelAnimationFrame: () => {},
-      setTimeout: () => 1,
-      clearTimeout: () => {}
-    });
-    const doc = Object.assign(createEventTarget(), {
-      documentElement: { scrollTop: 0 },
-      body: { scrollTop: 0 },
-      activeElement: { tagName: 'BODY' }
-    });
-    const states = [];
-    win.scrollTo = (_x, y) => {
-      win.scrollY = y;
-      doc.documentElement.scrollTop = y;
-    };
-    const cleanup = installRootScrollGuard({
-      windowObj: win,
-      documentObj: doc,
-      onStateChange: state => states.push(state)
-    });
-
-    win.scrollY = 12;
-    doc.documentElement.scrollTop = 12;
-    win.dispatch('scroll');
-    expect(win.scrollY).toBe(12);
-
-    const input = { tagName: 'INPUT' };
-    doc.activeElement = input;
-    doc.dispatch('focusin', { target: input });
-    vv.height = 448;
-    vv.offsetTop = 345;
-    win.innerHeight = 448;
-    win.scrollY = 404;
-    doc.documentElement.scrollTop = 404;
-    win.dispatch('scroll');
-
-    expect(win.scrollY).toBe(0);
-    expect(doc.documentElement.scrollTop).toBe(0);
-    expect(states.at(-1)).toMatchObject({
-      active: true,
-      corrections: 1,
-      lastBefore: 404,
-      lastAfter: 0
-    });
-
-    cleanup();
-    expect(win.listenerCount('scroll')).toBe(0);
-    expect(vv.listenerCount('resize')).toBe(0);
-    expect(doc.listenerCount('focusin')).toBe(0);
-  });
-
-  it('stops correcting after focus leaves the text control', () => {
-    const vv = Object.assign(createEventTarget(), { height: 852, offsetTop: 0 });
-    const win = Object.assign(createEventTarget(), {
-      visualViewport: vv,
-      innerHeight: 852,
-      scrollY: 0,
-      requestAnimationFrame: callback => { callback(); return 1; },
-      cancelAnimationFrame: () => {},
-      setTimeout: () => 1,
-      clearTimeout: () => {},
-      scrollTo: () => {}
-    });
-    const doc = Object.assign(createEventTarget(), {
-      documentElement: { scrollTop: 0 },
-      body: { scrollTop: 0 },
-      activeElement: { tagName: 'BODY' }
-    });
-    const cleanup = installRootScrollGuard({ windowObj: win, documentObj: doc });
-    const textarea = { tagName: 'TEXTAREA' };
-
-    doc.dispatch('focusin', { target: textarea });
-    vv.height = 448;
-    doc.dispatch('focusout', { target: textarea });
-    win.scrollY = 404;
-    doc.documentElement.scrollTop = 404;
-    win.dispatch('scroll');
-
-    expect(win.scrollY).toBe(404);
-    expect(doc.documentElement.scrollTop).toBe(404);
-    cleanup();
   });
 });

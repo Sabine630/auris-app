@@ -7,10 +7,13 @@ import { isDemo } from './services/demoMode.js'
 import { seedDemoIfEmpty } from './services/demoData.js'
 import { installGlobalErrorLog, logError } from './services/diag.js'
 import { installKeyboardDiagnostics } from './services/keyboardDiagnostics.js'
+import { installIosStandaloneRootScrollGuard } from './services/keyboardRootScrollGuard.js'
 
 // 診斷（P105 M3）：越早掛越好——連 initDB 失敗都要留下紀錄。
 installGlobalErrorLog();
-// P116??????????????????????????????????
+// P124：iOS standalone 鍵盤期間攔截 WebKit 對 root document 的 focus scroll。
+installIosStandaloneRootScrollGuard();
+// P116 起的可證偽面板；正常網址不建立 UI，正式 Guard 不依賴此診斷開關。
 installKeyboardDiagnostics();
 
 initDB().then(async () => {

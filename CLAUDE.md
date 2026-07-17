@@ -112,7 +112,8 @@ git push origin main   # Actions 自動 build（auris-vue/dist）並部署 GitHu
 
 ## iOS PWA 鍵盤處理原則
 
-- 手機版 `body` 必須維持 `position: static`；外層以 `height: 100dvh` + `overflow: hidden` 防捲動（P120 實機 A/B 證實 `body fixed` 會造成鍵盤期間 WebKit 畫面缺塊）
+- 手機版 `body` 必須維持 `position: static`；外層以 `height: 100dvh` + `overflow: hidden` 防捲動（P120 實機 A/B 證實 `body fixed` 會造成頂部 WebKit 畫面缺塊；P122 又證實 static 單獨使用會放行 root focus scroll，須與 P124 Guard 成套保留）
+- `services/keyboardRootScrollGuard.js` 是 iOS standalone 正式修復：只在文字輸入聚焦且 visual viewport 比基準縮小超過 80px 時，把 WebKit 偷捲的 window/document/body root scroll 歸零；Safari 一般分頁、桌面 PWA、鍵盤關閉與失焦不介入。不得改回診斷 query 才啟用
 - `globalStore.keyboardOffset` 追蹤鍵盤高度，`BottomNav` 用 `kb-hidden` class 隱藏
 - 聊天室／群聊／貼文留言使用 `services/keyboardViewport.js`＋`.keyboard-page`：外層不捲動，只有 `.keyboard-scroll` 捲動，輸入列是普通 flex 子元素（禁止 sticky/fixed）
 - `.keyboard-page` 內的輸入框不得走 App 全域 smooth `scrollIntoView`；由 scoped visualViewport controller 局部調整頁面 top/bottom inset

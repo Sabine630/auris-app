@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-17（P123）
+> 最後更新：2026-07-17（P124）
 
 ---
 
@@ -230,16 +230,29 @@ iOS PWA 鍵盤輸入頁的局部 visual viewport controller，供單聊、群聊
 
 blur 不直接還原：輸入列 pointer 操作期間維持 interaction lock，讓送出 click 先完成；viewport 回升後才清除。iOS PWA 偶爾在 resize 當下暫報舊的 `offsetTop/height` 且穩定後不再送事件，故使用三次有限 trailing reconcile，不永久輪詢。
 
-### `services/keyboardDiagnostics.js`（P116）
+### `services/keyboardRootScrollGuard.js`（P124）
 
-iOS PWA 鍵盤問題的可證偽實機診斷層。正常網址保持惰性；只有 query 指定時才在 `html` 掛實驗 class，`kbdiag=1` 另建立即時面板。面板顯示 App 版本、body computed position/rect/scrollTop、window/document scroll、visual viewport、頁面 rect、controller baseline/inset、focus 與 standalone/browser 模式，並以同頁連結切 Static/Absolute/Fixed 與 Root Scroll Guard 等實驗組合。shell 字樣只代表 query 狀態；實機結論必須同時核對 computed body、root scroll 與 guard before→after 值。
+iOS／iPadOS standalone PWA 的正式 root focus-scroll 修復。P120–P123 實機矩陣證實：`body fixed` 會觸發頂部 compositor 缺塊；`body static` 雖避開該問題，文字輸入 focus 時 WebKit 仍可能把 window/document 偷捲 404px，令 body rect 變成 `-404…389` 並在鍵盤上方露出白帶。正式組合因此是 **body static＋Root Scroll Guard**，兩者不可拆開。
+
+入口同時要求 `isIosDevice()` 與 `isStandaloneDisplay()`；Safari 一般分頁、桌面 standalone 或沒有 visualViewport 時不掛任何監聽。執行期再要求文字型 input／textarea／contenteditable 聚焦且 viewport 比 resting baseline 縮小超過 80px，才將 window、documentElement、body scroll 歸零。checkbox 等非文字 input、鍵盤關閉、一般頁面捲動與失焦皆不介入。修正使用立即、rAF 與 60／240／500ms 有限複核覆蓋鍵盤動畫，不永久 polling。
 
 | 函式 | 用途 |
 |------|------|
-| `parseKeyboardDiagnostics(search)` | allowlist 解析 `nofx`、`kbiso`、`kbshell` 與 `kbroot=guard` |
+| `isIosDevice(win)` | 接受 iPhone/iPad/iPod user agent，以及 `MacIntel + maxTouchPoints > 1` 的 iPadOS desktop UA |
+| `isStandaloneDisplay(win)` | 接受 iOS `navigator.standalone` 或標準 `(display-mode: standalone)` |
+| `installIosStandaloneRootScrollGuard(options)` | 正式入口：平台／display／visualViewport 三重 eligibility，符合才安裝 Guard |
+| `installRootScrollGuard(options)` | 可測核心：focus＋viewport shrink 期間監聽 root scroll 並歸零，回傳完整 cleanup |
+| `subscribeRootScrollGuardState(fn)` | 供診斷面板唯讀顯示 official/off、fix 與 before→after，不控制正式啟用狀態 |
+
+### `services/keyboardDiagnostics.js`（P116）
+
+iOS PWA 鍵盤問題的可證偽實機診斷層。正常網址保持惰性；只有 query 指定時才在 `html` 掛實驗 class，`kbdiag=1` 另建立即時面板。面板顯示 App 版本、body computed position/rect/scrollTop、window/document scroll、visual viewport、頁面 rect、controller baseline/inset、focus、standalone/browser 模式，以及正式 Root Guard 的唯讀狀態／fix／before→after。面板仍可切 Static/Absolute/Fixed 等 compositor 實驗，但 P124 起不再提供 Root自由／Root鎖定；正式 Guard 不可由診斷 query 關閉。shell 字樣只代表 query 狀態，實機結論仍須核對 computed body 與 root scroll。
+
+| 函式 | 用途 |
+|------|------|
+| `parseKeyboardDiagnostics(search)` | allowlist 解析 `nofx`、`kbiso` 與 `kbshell`；P123 `kbroot` 已退役 |
 | `buildKeyboardDiagnosticHref(search, change)` | 保留其他 query，切換單一嫌疑或隔離模式 |
 | `installKeyboardDiagnostics()` | 掛實驗 class；`kbdiag=1` 時建立面板與 viewport/focus 監聽 |
-| `installRootScrollGuard(options)` | 診斷限定：文字 focus＋鍵盤開啟時攔截 iOS root scroll；rAF＋有限 trailing reconcile，回傳 destroy |
 | `publishKeyboardDiagnostic(snapshot)` | 由 `keyboardViewport.js` 發布 baseline 與量測結果 |
 | `isKeyboardEffectDisabled(effect)` | 聊天頁判斷是否暫停逐 chunk DOM 更新 |
 
@@ -488,6 +501,14 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P124（2026-07-17）iOS PWA 鍵盤雙缺塊正式修復
+
+- P123 最終 43.612 秒 iPhone standalone 實機影片通過：聊天室與貼文留言均顯示 `guard 404→0`，API 自訂模型兩輪為 `11→0`、`2→0`；鍵盤期間 window/html scroll 為 0、body rect 維持 `0…852`，收鍵盤後 viewport 回 852 且沒有頂部缺塊、底部白帶或殘留跳位。
+- 新增 `keyboardRootScrollGuard.js` 正式服務並由 `main.js` 啟動。只有 iOS/iPadOS＋standalone＋visualViewport 三條件成立才掛監聽；執行時再限文字輸入 focus＋viewport 縮小超過 80px，其他平台、Safari 分頁、非文字 input、鍵盤關閉與失焦均不介入。
+- 正式 Guard 延續 P123 已實機驗證的立即、rAF、60／240／500ms 有限複核與完整 listener/timer cleanup；手機 shell 繼續使用 body static，不恢復會造成頂部缺塊的 fixed/absolute。
+- 診斷面板移除 Root自由／Root鎖定與 `kbroot` 生成，改訂閱正式 service 唯讀顯示 `root official/off`、fix、before→after；舊 query 由面板連結清除，無法關閉正式修復。
+- 新測試覆蓋 main 啟動接線、iPhone/iPadOS 辨識、非 iOS standalone 與 Safari 分頁零監聽、404→0、失焦停止、checkbox 不介入、cleanup，以及診斷退役 query。
 
 ### P123（2026-07-17）iOS PWA Root Scroll Guard A/B
 

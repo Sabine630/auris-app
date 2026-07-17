@@ -202,7 +202,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .keyboard-page.kb-active>.keyboard-header,
 .keyboard-page.kb-active>.keyboard-input-bar{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg)}
 
-/* P116 ?????????????????????????????? */
+/* P116：iOS PWA 鍵盤診斷開關；正常網址不套用。 */
 html.diag-nofx-blur *,html.diag-nofx-blur *::before,html.diag-nofx-blur *::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 html.diag-nofx-caret .keyboard-page .keyboard-input-bar input:focus,
 html.diag-nofx-caret .keyboard-page .keyboard-input-bar textarea:focus{caret-color:transparent!important}
@@ -214,7 +214,6 @@ html.diag-kbiso-layer .keyboard-scroll{transform:translateZ(0);backface-visibili
 #keyboard-diagnostic-panel pre{margin:0;font:inherit;white-space:pre-wrap}
 #keyboard-diagnostic-controls{margin-top:3px}
 #keyboard-diagnostic-shell-controls{display:block}
-#keyboard-diagnostic-root-controls{display:block}
 
 /* P122: diagnostic-only body positioning A/B; production remains static. */
 html.diag-kbshell-absolute body{position:absolute!important;inset:0!important;width:100%!important;height:100dvh!important;min-height:0!important;overflow:hidden!important}
