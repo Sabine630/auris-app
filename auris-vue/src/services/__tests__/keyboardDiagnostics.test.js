@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildKeyboardDiagnosticHref,
+  isStandaloneDisplay,
   parseKeyboardDiagnostics
 } from '../keyboardDiagnostics.js';
 
@@ -36,5 +37,21 @@ describe('keyboard diagnostics query switches', () => {
 
     expect(params.get('nofx')).toBe('stream');
     expect(params.get('kbiso')).toBe('layer');
+  });
+});
+
+describe('standalone display detection', () => {
+  it('recognizes the iOS navigator.standalone signal', () => {
+    expect(isStandaloneDisplay({
+      navigator: { standalone: true },
+      matchMedia: () => ({ matches: false })
+    })).toBe(true);
+  });
+
+  it('falls back to the standard display-mode media query', () => {
+    expect(isStandaloneDisplay({
+      navigator: {},
+      matchMedia: () => ({ matches: true })
+    })).toBe(true);
   });
 });

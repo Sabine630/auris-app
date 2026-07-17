@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-17（P116）
+> 最後更新：2026-07-17（P117）
 
 ---
 
@@ -487,6 +487,10 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 
 ## 12. 版本更新紀錄
 
+### P117（2026-07-17）iOS PWA standalone 診斷辨識修正
+
+- P116 面板只看 `display-mode: standalone`，iPhone 主畫面啟動仍可能被誤標為 browser；新增 `isStandaloneDisplay`，同時接受 iOS `navigator.standalone === true` 與標準 media query。
+- 僅修正診斷標籤，不變更鍵盤 controller、viewport 幾何或實驗效果；新增兩條模式辨識測試。
 ### P116（2026-07-17）iOS PWA 鍵盤可證偽診斷版
 
 - 新增 `keyboardDiagnostics.js`：`kbdiag=1` 顯示 viewport／inset／baseline／focus／display-mode，面板可切換 caret、blur、stream、paint、layer 實驗並保留其他 query。

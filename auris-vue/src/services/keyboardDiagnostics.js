@@ -37,6 +37,11 @@ export function buildKeyboardDiagnosticHref(search = '', change = {}) {
   return `?${params.toString()}`;
 }
 
+export function isStandaloneDisplay(win = window) {
+  return win.navigator?.standalone === true
+    || win.matchMedia?.('(display-mode: standalone)')?.matches === true;
+}
+
 function currentConfig() {
   return parseKeyboardDiagnostics(globalThis.location?.search || '');
 }
@@ -61,7 +66,7 @@ function formatSnapshot(snapshot, win, doc, config) {
   const rect = page?.getBoundingClientRect?.();
   const styles = page ? win.getComputedStyle?.(page) : null;
   const focus = doc.activeElement;
-  const displayMode = win.matchMedia?.('(display-mode: standalone)')?.matches ? 'standalone' : 'browser';
+  const displayMode = isStandaloneDisplay(win) ? 'standalone' : 'browser';
   return [
     `kbdiag · ${displayMode}`,
     `event ${snapshot?.reason || 'install'}`,
