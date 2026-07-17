@@ -181,7 +181,7 @@ function buildSeed() {
     },
     settings: {
       onboarding_done: true,
-      last_seen_announcement: 'P114',   // 與 App.vue 的 ANNOUNCEMENT_VERSION 一致 → 略過公告 modal
+      last_seen_announcement: 'P126',   // 與 App.vue 的 ANNOUNCEMENT_VERSION 一致 → 略過公告 modal
       api_key: 'sk-demo-xxxxxxxxxxxxxxxxxxxx',
       api_provider: 'openai',
       api_model: 'gpt-4o',
