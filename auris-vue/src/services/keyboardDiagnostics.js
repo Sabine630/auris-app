@@ -112,6 +112,10 @@ export function installKeyboardDiagnostics(options = {}) {
     if (active) link.classList.add('active');
     controls.appendChild(link);
   }
+  const labLink = doc.createElement('a');
+  labLink.href = `${import.meta.env.BASE_URL}keyboard-lab.html`;
+  labLink.textContent = '\u7d14\u9801\u6e2c\u8a66';
+  controls.appendChild(labLink);
   panel.append(readout, controls);
   doc.body.appendChild(panel);
 

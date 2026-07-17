@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-17（P117）
+> 最後更新：2026-07-17（P118）
 
 ---
 
@@ -487,6 +487,12 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 
 ## 12. 版本更新紀錄
 
+### P118（2026-07-17）iOS PWA 純鍵盤架構對照實驗
+
+- API 設定頁不使用 `keyboardViewport.js`／`.keyboard-page` 卻同樣缺塊，跨頁證據排除 P115 controller 是必要條件，嫌疑上移到共用 shell 或 standalone WebKit。
+- 新增 `public/keyboard-lab.html`：同源、普通 document flow 的靜態控制頁，不載入 Vue，不使用 body fixed、Auris 四層容器、fixed/absolute、blur、transform、動畫或真實資料。
+- 診斷面板新增「純頁測試」入口；控制頁顯示 standalone、visual viewport、window/document 高度與 focus。純頁若正常可支持 shell 假設；純頁若仍缺塊則否定 shell 是必要條件。
+- `keyboardLab.test.js` 以 source guard 鎖住控制頁純度；實機 PWA 為結論門檻。
 ### P117（2026-07-17）iOS PWA standalone 診斷辨識修正
 
 - P116 面板只看 `display-mode: standalone`，iPhone 主畫面啟動仍可能被誤標為 browser；新增 `isStandaloneDisplay`，同時接受 iOS `navigator.standalone === true` 與標準 media query。
