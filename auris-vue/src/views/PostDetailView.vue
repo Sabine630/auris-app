@@ -1,12 +1,12 @@
 <template>
-  <div class="page active" id="pg-post-detail" style="display:flex;flex-direction:column;height:100%">
-    <div class="ph">
+  <div ref="pageRoot" class="page active keyboard-page" id="pg-post-detail" style="display:flex;flex-direction:column">
+    <div class="ph keyboard-header">
       <div class="ph-back" @click="$router.back()"><svg viewBox="0 0 8 14"><path d="M7 1L1 7L7 13"/></svg>返回</div>
       <div class="ph-title">貼文</div>
       <div></div>
     </div>
     
-    <div id="post-detail-content" style="flex:1;overflow-y:auto;scrollbar-width:none">
+    <div id="post-detail-content" class="keyboard-scroll">
       <div v-if="post" class="post-detail-body">
         <div class="post-card-top">
           <div class="post-av">
@@ -86,7 +86,7 @@
       </div>
     </div>
     
-    <div class="post-comment-bar">
+    <div class="post-comment-bar keyboard-input-bar">
       <textarea class="post-comment-in" ref="commentInp" v-model="inputComment" placeholder="留個言…" rows="1"
         @keydown.enter.ctrl.prevent="submitComment" @keydown.enter.meta.prevent="submitComment" @input="autoResize"></textarea>
       <button class="post-comment-send" @click="submitComment" :disabled="isReplying">
@@ -137,12 +137,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { globalStore } from '../store/index.js';
 import { dbGet, dbPut, dbDel, getSetting } from '../services/db.js';
 import { generateCommentReply, regenerateCommentReply, regeneratePost } from '../services/contentEngine.js';
 import { formatContent } from '../services/format.js';
+import { installKeyboardViewport } from '../services/keyboardViewport.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -151,6 +152,8 @@ const postId = route.params.id;
 const post = ref(null);
 const inputComment = ref('');
 const commentInp = ref(null);
+const pageRoot = ref(null);
+let stopKeyboardViewport = null;
 const meName = ref('');
 const meAvatar = ref('🙂');
 const isReplying = ref(false);
@@ -165,6 +168,7 @@ const editingCommentIdx = ref(-1);
 const editCommentText = ref('');
 
 onMounted(async () => {
+  stopKeyboardViewport = installKeyboardViewport(pageRoot.value);
   await globalStore.loadCharacters();
   const meSetting = await getSetting('me_settings');
   if (meSetting && meSetting.name) meName.value = meSetting.name;
@@ -172,6 +176,10 @@ onMounted(async () => {
 
   await loadPost();
   if (route.query.edit) startEditPost();   // 從列表「編輯貼文」進來
+});
+
+onUnmounted(() => {
+  stopKeyboardViewport?.();
 });
 
 async function loadPost() {

@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-15（P114）
+> 最後更新：2026-07-17（P125）
 
 ---
 
@@ -218,6 +218,45 @@ API 請求的底層工具（供 `llm.js` 引用）。
 | `snoozeBackupReminder()` | 「稍後」：寫 `backup_snooze_until`＝現在＋3 天 |
 | `shouldRemindBackup()` | 首頁提醒卡判斷：snooze 期內回 `null`；從未備份且訊息 ≥ 50 回 `{ kind:'first' }`；距上次 ≥ 14 天回 `{ kind:'overdue', days }` |
 
+### `services/keyboardViewport.js`（P115）
+iOS PWA 鍵盤輸入頁的局部 visual viewport controller，供單聊、群聊、貼文留言共用。鍵盤 focus 前記錄頁面基準框與 resting viewport offset；鍵盤升起後先把 `offsetTop` 換成頁面局部座標，再只對當前 `.keyboard-page` 套用上下 inset。這可隔離 `.phone` safe-area 與 layout viewport 的不同原點；不修改 `.phone`，不使用 `window.scrollTo`，也不以 transform 平移整個 App（P83/P85 教訓）。
+
+| 函式 | 用途 |
+|------|------|
+| `computeKeyboardInsets(metrics)` | 純函式：以基準頁面高度、resting/current viewport offset 與 height 算頁面局部 `topInset`／`bottomInset`／可用高度 |
+| `isKeyboardViewportOpen()` | visual viewport 比 focus 前基準矮超過 80px 才判定鍵盤開啟 |
+| `isViewportRestored()` | 以 40px 容差判定 viewport 已回升，可安全清除局部版面 |
+| `installKeyboardViewport(page)` | 掛 focus／pointer／visualViewport／orientation 監聽；double-rAF＋60／240／500ms 有限 trailing reconcile；回傳 destroy 清理函式 |
+
+blur 不直接還原：輸入列 pointer 操作期間維持 interaction lock，讓送出 click 先完成；viewport 回升後才清除。iOS PWA 偶爾在 resize 當下暫報舊的 `offsetTop/height` 且穩定後不再送事件，故使用三次有限 trailing reconcile，不永久輪詢。
+
+### `services/keyboardRootScrollGuard.js`（P124）
+
+iOS／iPadOS standalone PWA 的正式 root focus-scroll 修復。P120–P123 實機矩陣證實：`body fixed` 會觸發頂部 compositor 缺塊；`body static` 雖避開該問題，文字輸入 focus 時 WebKit 仍可能把 window/document 偷捲 404px，令 body rect 變成 `-404…389` 並在鍵盤上方露出白帶。正式組合因此是 **body static＋Root Scroll Guard**，兩者不可拆開。
+
+入口同時要求 `isIosDevice()` 與 `isStandaloneDisplay()`；Safari 一般分頁、桌面 standalone 或沒有 visualViewport 時不掛任何監聽。執行期再要求文字型 input／textarea／contenteditable 聚焦且 viewport 比 resting baseline 縮小超過 80px，才將 window、documentElement、body scroll 歸零。checkbox 等非文字 input、鍵盤關閉、一般頁面捲動與失焦皆不介入。修正使用立即、rAF 與 60／240／500ms 有限複核覆蓋鍵盤動畫，不永久 polling。
+
+| 函式 | 用途 |
+|------|------|
+| `isIosDevice(win)` | 接受 iPhone/iPad/iPod user agent，以及 `MacIntel + maxTouchPoints > 1` 的 iPadOS desktop UA |
+| `isStandaloneDisplay(win)` | 接受 iOS `navigator.standalone` 或標準 `(display-mode: standalone)` |
+| `installIosStandaloneRootScrollGuard(options)` | 正式入口：平台／display／visualViewport 三重 eligibility，符合才安裝 Guard |
+| `installRootScrollGuard(options)` | 可測核心：focus＋viewport shrink 期間監聽 root scroll 並歸零，回傳完整 cleanup |
+| `subscribeRootScrollGuardState(fn)` | 供診斷面板唯讀顯示 official/off、fix 與 before→after，不控制正式啟用狀態 |
+
+### `services/keyboardDiagnostics.js`（P116）
+
+iOS PWA 鍵盤問題的可證偽實機診斷層。正常網址保持惰性；只有 query 指定時才在 `html` 掛實驗 class，`kbdiag=1` 另建立即時面板。面板顯示 App 版本、body computed position/rect/scrollTop、window/document scroll、visual viewport、頁面 rect、controller baseline/inset、focus、standalone/browser 模式，以及正式 Root Guard 的唯讀狀態／fix／before→after。面板仍可切 Static/Absolute/Fixed 等 compositor 實驗，但 P124 起不再提供 Root自由／Root鎖定；正式 Guard 不可由診斷 query 關閉。shell 字樣只代表 query 狀態，實機結論仍須核對 computed body 與 root scroll。
+
+| 函式 | 用途 |
+|------|------|
+| `parseKeyboardDiagnostics(search)` | allowlist 解析 `nofx`、`kbiso` 與 `kbshell`；P123 `kbroot` 已退役 |
+| `buildKeyboardDiagnosticHref(search, change)` | 保留其他 query，切換單一嫌疑或隔離模式 |
+| `installKeyboardDiagnostics()` | 掛實驗 class；`kbdiag=1` 時建立面板與 viewport/focus 監聽 |
+| `publishKeyboardDiagnostic(snapshot)` | 由 `keyboardViewport.js` 發布 baseline 與量測結果 |
+| `isKeyboardEffectDisabled(effect)` | 聊天頁判斷是否暫停逐 chunk DOM 更新 |
+
+`nofx` 與 `kbiso` 是診斷工具，不是正式 WebKit 修法；單元測試只保證開關接線，不得據此宣稱根因。診斷模式下動態 manifest 的 `start_url` 保留目前 path＋query，方便 standalone PWA 內由面板重載切換。
 ### `services/diag.js`（P105／P114 信任分級）
 診斷匯出——本地錯誤日誌＋一鍵匯出，降低 bug 回報來回成本（P103 教訓）。錯誤存 **localStorage**（同步、不依賴 IndexedDB，連 DB 初始化失敗都記得下來），只存這台裝置。ring buffer 為 **schema 2 結構化欄位**（`code`／`status`／`provider`／`model`／`location`／`localMessage`），兩條 policy：**strict**（預設——LLM／網路／unhandledrejection／來源不明：只留分類與安全 metadata，不保存原始 message）、**trusted-local**（受控 call site 明確指定——同源 window runtime error、`initDB` 失敗：訊息經「刪控制字元 → 遮蔽金鑰成 `[REDACTED]` → 遮蔽 URL 成 `[URL]` → 截 300 字」後保留）。
 
@@ -432,6 +471,9 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 |-------|------|
 | `.page` | 頁面根容器，設定為滿版及垂直捲動 |
 | `.ph` | 頁首 (Page Header) |
+| `.keyboard-page` | P115 鍵盤輸入頁外殼；本身不捲動，只吃 scoped visual viewport inset |
+| `.keyboard-scroll` | 鍵盤輸入頁唯一內容捲動區（`flex:1; min-height:0`） |
+| `.keyboard-input-bar` | 普通 flex 底部輸入列；不使用 sticky/fixed |
 | `.empty-cta` | **空狀態的行動按鈕（玫瑰色背景，專屬）** |
 | `.btn-primary` | 深色主要按鈕（如聊天發送） |
 | `.modal-overlay` / `.modal-box` | 彈窗遮罩與底部升起內容區 |
@@ -443,8 +485,9 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 1. **刪除關聯資料**：在刪除角色時，必須同步清除所有帶有該 `charId` 的資料表：`messages`, `memories`, `chat_memories`, `moments`, `diary`, `dreams`, `notifications`, `wishes`, `notes`（見 `CharManageView.confirmDelete`）。
 2. **新增設定項目**：直接透過 `setSetting('new_key', value)` 新增即可，不需修改資料庫結構。
 3. **空狀態原則**：遇到尚未開發或空列表時，按鈕一律使用 `.empty-cta` 而非 `.btn-primary`，且未完成的功能應掛上 `@click="$toast('尚在開發，敬請期待')"`。
-4. **`.page` 內不要用 `position:fixed`**（P107 教訓）：`.page` 帶 `transform` 轉場，fixed 後代會退化成相對 `.page` 內容定位、跟著捲動跑位。頁內底部停靠列用 `position:sticky; bottom:0`；全螢幕遮罩／sheet 類請 `Teleport to="body"` 或確認該頁不整頁捲動。
-5. **主題色只掛在 `#phone-container [data-theme]`**（P107 教訓）：JS 讀主題 CSS 變數要 `getComputedStyle(document.getElementById('phone-container'))`，讀 `documentElement` 只會拿到 `:root` 的預設奶白值。P110 起 `data-theme` 另鏡射到 `body`（`App.vue` `syncRootBg`），`Teleport to="body"` 的元件因此也吃得到主題——新增 Teleport 元件不必再自己處理。
+4. **`.page` 內不要用 `position:fixed`**（P107 教訓）：active `.page` 自 P115 已移除 transform 合成層，但 fixed 後代在路由進退場／多層捲動下仍容易改變 containing block、跟著內容跑位。一般可捲動頁的底部管理列可用 `position:sticky; bottom:0`；但**有 iOS 鍵盤的聊天／留言頁禁止 sticky**（P115），必須用 `.keyboard-page` 單一捲動區＋普通 flex `.keyboard-input-bar`。全螢幕遮罩／sheet 類請 `Teleport to="body"`。
+5. **手機 shell 禁止 body fixed**（P120 實機 A/B）：手機／standalone body 維持 position:static，以 100dvh + overflow:hidden 固定外框；position:fixed 會在 iOS PWA 鍵盤期間觸發 WebKit 畫面缺塊。若需反證，只能使用 kbdiag 的舊Fixed模式，不得恢復為正式 CSS。
+6. **主題色只掛在 `#phone-container [data-theme]`**（P107 教訓）：JS 讀主題 CSS 變數要 `getComputedStyle(document.getElementById('phone-container'))`，讀 `documentElement` 只會拿到 `:root` 的預設奶白值。P110 起 `data-theme` 另鏡射到 `body`（`App.vue` `syncRootBg`），`Teleport to="body"` 的元件因此也吃得到主題——新增 Teleport 元件不必再自己處理。
 
 ---
 
@@ -458,6 +501,86 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P125（2026-07-17）日記輸出語言與中英夾雜修復
+
+- 定層確認日記內的英文是 LLM 原始輸出並直接落庫，`DiaryDetailView`／`formatContent` 僅拆標題、escape HTML 與轉換換行，不會翻譯或插入英文。
+- `generateDiary` 不再把所有角色日記寫死為寬鬆的「用繁體中文」；新增 `diaryLanguageRule`，依 `characters.lang` 套用繁體中文、簡體中文、日文、韓文或英文的強制輸出規則，舊資料缺少／出現未知語言值時安全回退繁體中文。
+- 繁體中文規則禁止模型為強調、文藝感、旁白感或內心戲自行插入英文／其他語言；僅在角色設定明確要求多語混用、不可翻譯的專有名詞／品牌／作品名／程式碼或忠實原文引述時例外。日記 prompt 帶入 `extra` 補充設定，讓真正的多語角色能明確命中例外。
+- 新增 `contentEngine.test.js`，9 項測試覆蓋五種語言、舊資料 fallback、繁中防 code-switch、日文接線與多語例外；不做生成後刪英文字的破壞性後處理。
+
+### P124（2026-07-17）iOS PWA 鍵盤雙缺塊正式修復
+
+完整實機矩陣、雙根因模型、否決方案與後續排障順序見 [`docs/iOS PWA 鍵盤缺塊事後報告 P116-P124.md`](../docs/iOS%20PWA%20鍵盤缺塊事後報告%20P116-P124.md)。
+
+- P123 最終 43.612 秒 iPhone standalone 實機影片通過：聊天室與貼文留言均顯示 `guard 404→0`，API 自訂模型兩輪為 `11→0`、`2→0`；鍵盤期間 window/html scroll 為 0、body rect 維持 `0…852`，收鍵盤後 viewport 回 852 且沒有頂部缺塊、底部白帶或殘留跳位。
+- 新增 `keyboardRootScrollGuard.js` 正式服務並由 `main.js` 啟動。只有 iOS/iPadOS＋standalone＋visualViewport 三條件成立才掛監聽；執行時再限文字輸入 focus＋viewport 縮小超過 80px，其他平台、Safari 分頁、非文字 input、鍵盤關閉與失焦均不介入。
+- 正式 Guard 延續 P123 已實機驗證的立即、rAF、60／240／500ms 有限複核與完整 listener/timer cleanup；手機 shell 繼續使用 body static，不恢復會造成頂部缺塊的 fixed/absolute。
+- 診斷面板移除 Root自由／Root鎖定與 `kbroot` 生成，改訂閱正式 service 唯讀顯示 `root official/off`、fix、before→after；舊 query 由面板連結清除，無法關閉正式修復。
+- 新測試覆蓋 main 啟動接線、iPhone/iPadOS 辨識、非 iOS standalone 與 Safari 分頁零監聽、404→0、失焦停止、checkbox 不介入、cleanup，以及診斷退役 query。
+
+### P123（2026-07-17）iOS PWA Root Scroll Guard A/B
+
+- P122 Absolute 實機影片證實三頁鍵盤開啟時 `window/html scroll 0→404`、body rect `0…852→-404…389`；visual viewport 底部 448 與 body 底部 389 相差 59px，直接對應鍵盤上方白帶。Absolute 與 Static 都會跟隨 document focus scroll，故否決 Absolute 正式化。
+- 正式 Static shell 不變；診斷新增 `kbroot=guard`。只在文字輸入聚焦且 viewport 比基準縮小超過 80px 時，把 window/documentElement/body root scroll 歸零；鍵盤關閉、一般捲動、失焦皆不介入。
+- Guard 監聽 window scroll 與 visualViewport resize/scroll，使用立即修正、rAF 與 60／240／500ms 有限複核覆蓋 WebKit 鍵盤動畫，不永久 polling；destroy 會移除監聽、rAF 與 timers。
+- 面板新增 Root自由／Root鎖定、累計 `fix` 與最後 `before→after`。單元測試鎖住 404→0、關閉時不干預、失焦停止與 listener cleanup；實機放行仍要求聊天室、貼文、API 三頁同時無頂部缺塊、白帶與收鍵盤跳位。
+
+### P122（2026-07-17）iOS PWA Absolute body 雙問題 A/B
+
+- P121 實機影片證實正式 Static 已載入：聊天室、貼文留言、API 皆重現鍵盤上方白帶；API 開鍵盤時 body rect 從 `0…852` 變為 `-404…389`，定位為 body static 放行 iOS document 偷捲後露出底層。
+- 此證據修正 P120 結論：body fixed 會觸發頂部 WebKit 缺塊，body static 又會使底部白帶回歸，兩者是相反失敗模式，不能再用二選一當修復。
+- 診斷 shell 新增 `kbshell=absolute`：只在顯式 query 下將 body 設為 absolute/inset 0/100dvh/overflow hidden；正常網址仍為 Static，Fixed 仍只是反向對照。
+- 面板新增 `window.scrollY` 與 `documentElement.scrollTop`，並監聽 window scroll 重畫讀值；單元測試鎖住 query 白名單、證據文字與 Absolute CSS 不得溢出診斷 selector。
+- 放行必須同時通過聊天、貼文留言、API 的頂部、底部、收鍵盤與 rect/scroll 四項實機門檻；未通過前不改正式 CSS。
+
+### P121（2026-07-17）iOS PWA body computed 證據強化
+
+- 正確解碼 P120 實機 MP4 後，新版／shell original 在 API 與聊天室鍵盤期間皆出現持續白色缺塊；舊Fixed／shell fixed 同片未出現持續缺塊，與 P119 結果相反。
+- P120 面板的 shell original/fixed 只來自 query 解析，無法排除 PWA 快取、舊 hashed asset 或實際 computed style 與預期不一致，因此不據影片反轉 shell CSS。
+- `keyboardDiagnostics.js` 面板新增 `APP_VERSION`、body computed position、body rect top/bottom 與 `body.scrollTop`；下次實機錄影必須同時顯示 P121、shell original 與 body pos static 才能證明正式 CSS 已載入。
+- 新增單元測試鎖住診斷證據文字；本版不修改 body、phone、screen、page 或 keyboard controller CSS／邏輯。
+
+### P120（2026-07-17）iOS PWA fixed body 缺塊修復候選
+
+- P119 實機矩陣為 Body 正常、Page 異常、Clip 異常、Flow 正常；Body 是唯一單變因即恢復的模式，將根因定位為手機版 body position:fixed。
+- 正式手機／standalone CSS 改用 body position:static，保留 100dvh、overflow hidden、phone flex 與 page absolute，避免引入 Flow 模式的其他結構變更。
+- 診斷 shell 模式縮成新版與舊Fixed反向控制；舊 kbshell 值會被白名單忽略，普通網址不載入診斷 class。
+- 新增 keyboardShellFix.test.js 鎖住 mobile body static，並確保 fixed 只留在明確的反向診斷 selector；AGENTS.md、CLAUDE.md 同步更新維護原則。
+- 實機放行門檻：正常模式 API／聊天室皆不缺塊，鍵盤升降不偷捲、不產生底部空帶；舊Fixed應可重現缺塊作為因果反證。
+
+### P119（2026-07-17）iOS PWA 共用 shell 分層對照
+
+- P118 同源純頁在 standalone PWA 鍵盤開啟時正常，而聊天與 API 頁缺塊，證實 PWA／viewport meta 並非充分條件，共用 Auris shell 是目前唯一必要差異。
+- 診斷服務新增 kbshell 白名單與面板單選列：body、page、clip、flow；query 切換保留既有 nofx／kbiso 與其他參數。
+- CSS 只在 html.diag-kbshell-* 下覆寫：分別移除 body fixed、page absolute、phone/screen clipping，或將整組手機 shell 改為普通 document flow。正常網址零影響。
+- 實機結論門檻：哪個最小模式使 API 輸入頁正常，就定位哪一層；若僅 Flow 正常，表示問題來自多層組合並支持行動版 flow 重構。
+
+### P118（2026-07-17）iOS PWA 純鍵盤架構對照實驗
+
+- API 設定頁不使用 `keyboardViewport.js`／`.keyboard-page` 卻同樣缺塊，跨頁證據排除 P115 controller 是必要條件，嫌疑上移到共用 shell 或 standalone WebKit。
+- 新增 `public/keyboard-lab.html`：同源、普通 document flow 的靜態控制頁，不載入 Vue，不使用 body fixed、Auris 四層容器、fixed/absolute、blur、transform、動畫或真實資料。
+- 診斷面板新增「純頁測試」入口；控制頁顯示 standalone、visual viewport、window/document 高度與 focus。純頁若正常可支持 shell 假設；純頁若仍缺塊則否定 shell 是必要條件。
+- `keyboardLab.test.js` 以 source guard 鎖住控制頁純度；實機 PWA 為結論門檻。
+### P117（2026-07-17）iOS PWA standalone 診斷辨識修正
+
+- P116 面板只看 `display-mode: standalone`，iPhone 主畫面啟動仍可能被誤標為 browser；新增 `isStandaloneDisplay`，同時接受 iOS `navigator.standalone === true` 與標準 media query。
+- 僅修正診斷標籤，不變更鍵盤 controller、viewport 幾何或實驗效果；新增兩條模式辨識測試。
+### P116（2026-07-17）iOS PWA 鍵盤可證偽診斷版
+
+- 新增 `keyboardDiagnostics.js`：`kbdiag=1` 顯示 viewport／inset／baseline／focus／display-mode，面板可切換 caret、blur、stream、paint、layer 實驗並保留其他 query。
+- `keyboardViewport.js` 發布基準與開關狀態快照；`nofx=stream` 保留網路串流但單聊／群聊不逐 chunk 修改 DOM，完成後才一次顯示。
+- CSS 實驗 class 分別隱藏焦點 caret、停用全站 backdrop filter，或以 contain／獨立 layer 隔離 `.keyboard-scroll`；正常網址不套用。
+- 診斷模式 manifest 保留目前 path＋query，支援 standalone PWA 面板內重載切換。
+- 測試只驗證開關與 controller 回歸，不把任何假設記成根因；iPhone Safari／PWA 對照錄影仍是下一個放行門檻。
+### P115（2026-07-16）iOS PWA 鍵盤輸入頁穩定化
+
+- **局部 visual viewport（新增 `keyboardViewport.js`）**：focus 前記錄頁面基準框與 resting viewport offset，將 current offset 換成頁面局部座標後才套 `.keyboard-page` 的 `top/bottom inset`，避免 safe-area 原點被重複扣除；double-rAF＋60／240／500ms 有限 trailing reconcile；不動 `.phone`、不用 `window.scrollTo`、不 transform 整個 App。
+- **三頁單一捲動區**：ChatRoom／GroupRoom／PostDetail 改為 header＋`.keyboard-scroll`＋普通 flex `.keyboard-input-bar`；外層 overflow hidden，移除 header/輸入列 sticky。kb-active 期間停用 blur 與頁面 transition/transform，kb-open 時移除 bottom safe-area 空帶。
+- **送出與清理時序**：blur 不立即還原；輸入列 pointer interaction lock 保障 click 先完成，viewport 回升才清除；unmount 完整解除監聽與 CSS 變數。
+- **全域 focus／合成層收斂**：`App.vue` 的 smooth `scrollIntoView` 排除 keyboard page，監聽器改具名可清理；route fade 與 active `.page` 移除水平 transform，只保留 opacity，避免 WebKit 切片。
+- **等待動畫合成層收斂**：實機錄影確認殘餘缺塊只在單聊／群聊共用的 `.tdot` 無限 transform 動畫期間出現。輸入中／生成中三點改為靜態明暗，單聊與群聊的串流游標取消無限 opacity 動畫；腦內基地生成點與錄音鈕剩餘的無限動畫也一併靜態化，避免 WebKit shared backing 持續錯誤重繪。
+- `keyboardViewport.test.js` 14 案例、`iosCompositor.test.js` 3 案例；vitest 183/183、build 與設定檢查成功；本機實際 stylesheet 確認等待提示沒有 animation／transform，iPhone PWA dev 實機仍為正式放行門檻。
 
 ### P114（2026-07-15）資安強化批——Vertex token 身分隔離＋診斷去敏＋主題預讀修復
 

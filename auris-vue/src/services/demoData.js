@@ -34,6 +34,12 @@ function buildSeed() {
     cycleCare: false, autoSummarize: true, autoSumEvery: 20, isAI: false,
     taboo: '不要主動提到廣播意外事故。', extra: '',
     scheduleTriggers: [{ id: 'st1', time: '22:30', label: '廣播開始時段', enabled: true }],
+    // 我們的默契（P112 D4）：characters 軟欄位，注入 prompt 讓角色自然使用
+    bonds: [
+      { id: 'bond1', text: '晚安要說「今晚也有雨聲陪你」', enabled: true, createdAt: now - 25 * D },
+      { id: 'bond2', text: '她緊張時要她先深呼吸三次', enabled: true, createdAt: now - 12 * D },
+      { id: 'bond3', text: '「布丁又翻筆記本了」＝有趣的事發生', enabled: true, createdAt: now - 6 * D },
+    ],
     createdAt: now - 30 * D,
   };
 
@@ -123,6 +129,49 @@ function buildSeed() {
     { id: 'note2', charId: CHAR_ID, text: '下次幫他帶山城老家寄來的茶葉', done: false, createdAt: now - 4 * D },
   ];
 
+  // ── 我們的回憶（P106 收藏盒／P111 月報＋時間膠囊）────────────────────────────
+  // 收藏＝訊息快照（settings `keepsakes`），對應上面 MESSAGES 的 m3、m9
+  const KEEPSAKES = [
+    { id: 'ks_demo1', msgId: 'm3', charId: CHAR_ID, charName: '夜雨', role: 'assistant',
+      content: '那就讓它轉吧。有時候，試圖停下反而更累。我在這裡，你不用一個人撐著。',
+      note: '睡不著的那晚，這句話讓我安心下來', msgAt: now - 7 * D + 120000, savedAt: now - 6 * D },
+    { id: 'ks_demo2', msgId: 'm9', charId: CHAR_ID, charName: '夜雨', role: 'assistant',
+      content: '緊張說明你在意。在意本身，沒有什麼不好的。',
+      note: '', msgAt: now - 1800000, savedAt: now - 1200000 },
+  ];
+
+  // 時間膠囊（settings `capsules`）：一顆已拆（展示兩封信）＋一顆封存中（展示等待感）
+  const CAPSULES = [
+    { id: 'cap_demo1', charId: CHAR_ID, charName: '夜雨',
+      mine: '給 45 天後的我們：希望那時期末考已經結束，我也敢把一直沒說出口的話說出口了。如果還沒有，就再給我一點時間。',
+      aiLetter: '給未來的小晴：寫這封信的今晚也在下雨。不知道拆開的那天，你是不是已經考完了。無論結果如何，記得我說過的——成績只是截面，不是你的全部。到那天，換我聽你說。',
+      buriedAt: now - 10 * D, openAt: now + 45 * D,
+      opened: false, openedAt: 0, dueNotified: false, dueTries: 0 },
+    { id: 'cap_demo2', charId: CHAR_ID, charName: '夜雨',
+      mine: '給三個月後的我們：今天是我們認識滿一百天，我把這一刻封存起來。希望那時的我們，還是會在深夜一起聽雨。',
+      aiLetter: '拆開這封信的你，晚安。寫信的此刻你剛說完「認識滿一百天」，我在麥克風後面偷偷笑了很久。三個月後的我們是什麼樣子呢？我猜，還是老樣子——你說，我聽，雨下著。這樣就很好。',
+      buriedAt: now - 100 * D, openAt: now - 5 * D,
+      opened: true, openedAt: now - 5 * D, dueNotified: true, dueTries: 1 },
+  ];
+
+  // 回憶月報（settings `monthly_reviews`）：上個月的月報一份
+  const pm = new Date(new Date(now).getFullYear(), new Date(now).getMonth() - 1, 1);
+  const prevYm = `${pm.getFullYear()}-${String(pm.getMonth() + 1).padStart(2, '0')}`;
+  const MONTHLY_REVIEWS = [
+    { id: 'rev_demo1', charId: CHAR_ID, charName: '夜雨', ym: prevYm,
+      stats: { ym: prevYm, msgCount: 342, chatDays: 24, topPeriod: '深夜',
+        moodDist: [
+          { key: 'happy', emoji: '😊', label: '開心', count: 9 },
+          { key: 'tired', emoji: '😴', label: '累了', count: 6 },
+        ],
+        milestones: [] },
+      letter: '這個月，你在深夜出現的次數變多了。一開始我以為是失眠，後來才知道，你是把想說的話留到我節目結束之後。考壞的那天你聲音很低，我說不出什麼漂亮的安慰，只記得你後來說了句「跟你說完就好多了」——那句話我留到現在。下個月，希望你能多睡一點。想聊的話，我都在，雨也在。',
+      quotes: [
+        { role: 'assistant', content: '緊張說明你在意。在意本身，沒有什麼不好的。', note: '' },
+      ],
+      createdAt: now - 5 * D },
+  ];
+
   return {
     stores: {
       characters: [CHAR], messages: MESSAGES, chat_memories: CHAT_MEMORIES,
@@ -132,11 +181,14 @@ function buildSeed() {
     },
     settings: {
       onboarding_done: true,
-      last_seen_announcement: 'P114',   // 與 App.vue 的 ANNOUNCEMENT_VERSION 一致 → 略過公告 modal
+      last_seen_announcement: 'P126',   // 與 App.vue 的 ANNOUNCEMENT_VERSION 一致 → 略過公告 modal
       api_key: 'sk-demo-xxxxxxxxxxxxxxxxxxxx',
       api_provider: 'openai',
       api_model: 'gpt-4o',
       me_settings: ME_SETTINGS,
+      keepsakes: KEEPSAKES,
+      capsules: CAPSULES,
+      monthly_reviews: MONTHLY_REVIEWS,
     },
   };
 }
@@ -171,6 +223,14 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 // 回傳一段假文字。system/messages 供判斷用途；聊天走人物語氣，內容生成走對應題材。
 export function demoReply({ system = '', messages = [] } = {}) {
   const s = String(system);
+  // 時間膠囊信件（demo 裡勾「他也寫一封」時走到）：膠囊 tail 一定含【時間膠囊】，須排在聊天判斷之前
+  if (s.includes('時間膠囊')) {
+    return '給拆開這封信的你：寫下這些字的今晚，雨還在下，你剛埋好你那封信。我不知道到那天我們聊到了哪裡，但我希望你過得比現在更安穩一點。如果那天也下雨，就當作是我先替你把背景音準備好了。到時見。';
+  }
+  // 回憶月報的回顧短信
+  if (s.includes('回顧短信')) {
+    return '這個月你在深夜出現的次數變多了。有幾晚你沒說話，只是待著，我也就陪著。印象最深的是你說「跟你說完就好多了」的那天——那句話我留到現在。下個月，希望你能多睡一點。想聊的話，我都在，雨也在。';
+  }
   if (s.includes('日記')) {
     return '雨一直下到後半夜。錄音室很安靜，只有我和麥克風的呼吸聲。\n\n今天想起了小晴白天說的話，忽然覺得，能被人記著，是一件很暖的事。\n\n我把這份暖，也寫進今晚的節目裡了。';
   }

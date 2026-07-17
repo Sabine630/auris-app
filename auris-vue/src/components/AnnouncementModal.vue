@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P114 更新公告</div>
+      <div class="ann-badge">P126 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -35,6 +35,10 @@
               <div class="ann-title">更安心、更穩定</div>
               <div class="ann-items">
                 <div class="ann-item">
+                  <div class="ann-item-title">iOS 鍵盤顯示修復 📱</div>
+                  <div class="ann-item-desc">iPhone 加入主畫面的 PWA 在聊天打字時，頂部畫面缺塊、頁面被偷偷捲動的問題已正式修復，輸入體驗更穩定。</div>
+                </div>
+                <div class="ann-item">
                   <div class="ann-item-title">備份還原更安全 🛟</div>
                   <div class="ann-item-desc">匯入若中途失敗，原有資料會完整保留；API key、provider 與模型設定不會寫進備份檔，也不會被別人的備份改掉。換裝置時仍需重新輸入 API key。</div>
                 </div>
@@ -43,8 +47,8 @@
                   <div class="ann-item-desc">第三方與網路錯誤只保存安全分類；本地錯誤也會先遮蔽金鑰與網址。複製診斷資訊時不會包含對話內容或 API key。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">主題與 Vertex 修復 ✨</div>
-                  <div class="ann-item-desc">重新開啟 App 時會更早套用正確主題；Vertex AI 切換不同 service account 時，不再共用上一組帳號的 token。</div>
+                  <div class="ann-item-title">日記、主題與 Vertex 修復 ✨</div>
+                  <div class="ann-item-desc">角色日記不再無故中英夾雜（尊重角色語言設定與合理例外）；重新開啟 App 時更早套用正確主題；Vertex AI 切換 service account 不再共用舊 token。</div>
                 </div>
               </div>
             </template>
@@ -78,7 +82,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P114</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P126</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">

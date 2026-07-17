@@ -1,5 +1,5 @@
 // ── 版號常數（P105 版號常數手術）────────────────────────────────────────────
 // 全站唯一的版號來源：設定頁顯示、診斷匯出、錯誤日誌逐筆蓋版號都引用這裡。
 // 版更時只改這個檔（check-version-bump hook 盯的也是這個檔）。
-export const APP_VERSION = 'P114';
-export const VERSION_NOTE = 'P114 資安強化：Vertex 帳號切換不再共用 token、診斷改信任分級（第三方錯誤只留分類、本地錯誤保留遮蔽後訊息）、主題預讀改用正確資料庫';
+export const APP_VERSION = 'P126';
+export const VERSION_NOTE = 'P126 教學示範模式內容同步 P106–P112 功能';

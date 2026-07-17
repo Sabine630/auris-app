@@ -55,7 +55,7 @@ import { localDateKey } from './services/date.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
-const ANNOUNCEMENT_VERSION = 'P114';
+const ANNOUNCEMENT_VERSION = 'P126';
 const showAnnouncement = ref(false);
 
 // ── 全域 confirm modal ─────────────────────────────────────────────────────
@@ -82,6 +82,18 @@ window.openAnnouncement_ = () => { showAnnouncement.value = true; };
 const route = useRoute();
 const router = useRouter();
 const time = ref('');
+let focusScrollTimer = null;
+
+function onGlobalFocusIn(e) {
+  const t = e.target;
+  if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
+  if (t.id === 'lock-in' || t.closest?.('.keyboard-page')) return;
+  if (focusScrollTimer) clearTimeout(focusScrollTimer);
+  focusScrollTimer = setTimeout(() => {
+    focusScrollTimer = null;
+    try { t.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {}
+  }, 300);
+}
 
 const showNav = computed(() => {
   const hiddenRoutes = ['chat', 'onboarding', 'api', 'lock', 'char-edit', 'char-manage', 'group-room', 'group-create', 'post-detail', 'diary-detail', 'dream-detail', 'relation'];
@@ -142,7 +154,9 @@ function generatePWAIcon() {
       name: 'Auris',
       short_name: 'Auris',
       description: '你說，他在聽',
-      start_url: './',
+      start_url: new URLSearchParams(window.location.search).get('kbdiag') === '1'
+        ? `${window.location.pathname}${window.location.search}`
+        : './',
       display: 'standalone',
       background_color: themeBg,
       theme_color: themeBg,
@@ -448,17 +462,12 @@ onMounted(async () => {
   }, { passive: false });
 
   // iOS PWA keyboard: scroll focused input into view after keyboard animates in
-  document.addEventListener('focusin', (e) => {
-    const t = e.target;
-    if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
-    if (t.id === 'lock-in') return;
-    setTimeout(() => {
-      try { t.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {}
-    }, 300);
-  });
+  document.addEventListener('focusin', onGlobalFocusIn);
 });
 
 onUnmounted(() => {
+  document.removeEventListener('focusin', onGlobalFocusIn);
+  if (focusScrollTimer) clearTimeout(focusScrollTimer);
   clearInterval(timer);
   clearInterval(schedTimer);
 });
@@ -467,12 +476,11 @@ onUnmounted(() => {
 <style>
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity 0.2s ease;
 }
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-  transform: translateX(10px);
 }
 .cm-overlay {
   position: fixed; inset: 0; z-index: 9999;
