@@ -504,6 +504,8 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 
 ### P124（2026-07-17）iOS PWA 鍵盤雙缺塊正式修復
 
+完整實機矩陣、雙根因模型、否決方案與後續排障順序見 [`docs/iOS PWA 鍵盤缺塊事後報告 P116-P124.md`](../docs/iOS%20PWA%20鍵盤缺塊事後報告%20P116-P124.md)。
+
 - P123 最終 43.612 秒 iPhone standalone 實機影片通過：聊天室與貼文留言均顯示 `guard 404→0`，API 自訂模型兩輪為 `11→0`、`2→0`；鍵盤期間 window/html scroll 為 0、body rect 維持 `0…852`，收鍵盤後 viewport 回 852 且沒有頂部缺塊、底部白帶或殘留跳位。
 - 新增 `keyboardRootScrollGuard.js` 正式服務並由 `main.js` 啟動。只有 iOS/iPadOS＋standalone＋visualViewport 三條件成立才掛監聽；執行時再限文字輸入 focus＋viewport 縮小超過 80px，其他平台、Safari 分頁、非文字 input、鍵盤關閉與失焦均不介入。
 - 正式 Guard 延續 P123 已實機驗證的立即、rAF、60／240／500ms 有限複核與完整 listener/timer cleanup；手機 shell 繼續使用 body static，不恢復會造成頂部缺塊的 fixed/absolute。
