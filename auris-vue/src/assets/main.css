@@ -214,6 +214,7 @@ html.diag-kbiso-layer .keyboard-scroll{transform:translateZ(0);backface-visibili
 #keyboard-diagnostic-panel pre{margin:0;font:inherit;white-space:pre-wrap}
 #keyboard-diagnostic-controls{margin-top:3px}
 #keyboard-diagnostic-shell-controls{display:block}
+#keyboard-diagnostic-root-controls{display:block}
 
 /* P122: diagnostic-only body positioning A/B; production remains static. */
 html.diag-kbshell-absolute body{position:absolute!important;inset:0!important;width:100%!important;height:100dvh!important;min-height:0!important;overflow:hidden!important}

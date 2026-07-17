@@ -3,6 +3,9 @@ import { APP_VERSION } from '../version.js';
 const VALID_NOFX = new Set(['blur', 'caret', 'stream']);
 const VALID_ISOLATION = new Set(['paint', 'layer']);
 const VALID_SHELL = new Set(['absolute', 'fixed']);
+const VALID_ROOT_GUARD = new Set(['guard']);
+const ROOT_GUARD_THRESHOLD = 80;
+const ROOT_GUARD_SETTLE_DELAYS_MS = [60, 240, 500];
 
 function tokens(params, key) {
   return params.getAll(key)
@@ -16,11 +19,13 @@ export function parseKeyboardDiagnostics(search = '') {
   const nofx = new Set(tokens(params, 'nofx').filter(value => VALID_NOFX.has(value)));
   const isolation = tokens(params, 'kbiso').find(value => VALID_ISOLATION.has(value)) || '';
   const shell = tokens(params, 'kbshell').find(value => VALID_SHELL.has(value)) || '';
+  const rootGuard = tokens(params, 'kbroot').find(value => VALID_ROOT_GUARD.has(value)) || '';
   return {
     enabled: params.get('kbdiag') === '1',
     nofx,
     isolation,
-    shell
+    shell,
+    rootGuard
   };
 }
 
@@ -42,6 +47,10 @@ export function buildKeyboardDiagnosticHref(search = '', change = {}) {
   if (Object.prototype.hasOwnProperty.call(change, 'shell')) {
     if (VALID_SHELL.has(change.shell)) params.set('kbshell', change.shell);
     else params.delete('kbshell');
+  }
+  if (Object.prototype.hasOwnProperty.call(change, 'rootGuard')) {
+    if (VALID_ROOT_GUARD.has(change.rootGuard)) params.set('kbroot', change.rootGuard);
+    else params.delete('kbroot');
   }
   return `?${params.toString()}`;
 }
@@ -69,7 +78,154 @@ function formatNumber(value) {
   return Number.isFinite(value) ? value.toFixed(1) : '—';
 }
 
-export function formatKeyboardDiagnosticSnapshot(snapshot, win, doc, config) {
+function isTextControl(target) {
+  const tag = target?.tagName?.toUpperCase?.();
+  return tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable === true;
+}
+
+function rootScrollPosition(win, doc) {
+  return Math.max(
+    Math.abs(Number(win.scrollY) || 0),
+    Math.abs(Number(doc.documentElement?.scrollTop) || 0),
+    Math.abs(Number(doc.body?.scrollTop) || 0)
+  );
+}
+
+export function installRootScrollGuard(options = {}) {
+  const win = options.windowObj || window;
+  const doc = options.documentObj || document;
+  const vv = options.visualViewport || win.visualViewport;
+  if (!vv) return () => {};
+
+  const requestFrame = options.requestFrame || win.requestAnimationFrame.bind(win);
+  const cancelFrame = options.cancelFrame || win.cancelAnimationFrame.bind(win);
+  const setTimer = options.setTimer || win.setTimeout.bind(win);
+  const clearTimer = options.clearTimer || win.clearTimeout.bind(win);
+  const onStateChange = options.onStateChange || (() => {});
+  let baselineHeight = Math.max(Number(vv.height) || 0, Number(win.innerHeight) || 0);
+  let focused = isTextControl(doc.activeElement);
+  let destroyed = false;
+  let frame = 0;
+  let corrections = 0;
+  let lastBefore = 0;
+  let lastAfter = 0;
+  let lastReason = 'install';
+  const settleTimers = new Set();
+
+  const keyboardOpen = () => baselineHeight - (Number(vv.height) || baselineHeight) > ROOT_GUARD_THRESHOLD;
+  const publish = () => onStateChange({
+    enabled: true,
+    active: focused && keyboardOpen(),
+    corrections,
+    lastBefore,
+    lastAfter,
+    reason: lastReason,
+    baselineHeight
+  });
+
+  function correctNow(reason) {
+    if (destroyed || !focused || !keyboardOpen()) return false;
+    const before = rootScrollPosition(win, doc);
+    lastReason = reason;
+    if (before <= 0.5) {
+      lastAfter = before;
+      publish();
+      return false;
+    }
+
+    lastBefore = before;
+    if (doc.documentElement) doc.documentElement.scrollTop = 0;
+    if (doc.body) doc.body.scrollTop = 0;
+    win.scrollTo?.(0, 0);
+    lastAfter = rootScrollPosition(win, doc);
+    corrections += 1;
+    publish();
+    return true;
+  }
+
+  function scheduleCorrection(reason) {
+    if (destroyed || !focused || !keyboardOpen()) return;
+    correctNow(reason);
+    if (frame) cancelFrame(frame);
+    frame = requestFrame(() => {
+      frame = 0;
+      correctNow(`${reason}:raf`);
+    });
+  }
+
+  function clearSettleTimers() {
+    for (const timer of settleTimers) clearTimer(timer);
+    settleTimers.clear();
+  }
+
+  function scheduleSettledCorrections(reason) {
+    scheduleCorrection(reason);
+    clearSettleTimers();
+    for (const delay of ROOT_GUARD_SETTLE_DELAYS_MS) {
+      const timer = setTimer(() => {
+        settleTimers.delete(timer);
+        scheduleCorrection(`${reason}:${delay}`);
+      }, delay);
+      settleTimers.add(timer);
+    }
+  }
+
+  function updateRestingBaseline() {
+    if (focused && keyboardOpen()) return;
+    baselineHeight = Math.max(baselineHeight, Number(vv.height) || 0, Number(win.innerHeight) || 0);
+  }
+
+  function onFocusIn(event) {
+    if (!isTextControl(event.target)) return;
+    focused = true;
+    updateRestingBaseline();
+    scheduleSettledCorrections('focusin');
+    publish();
+  }
+
+  function onFocusOut() {
+    focused = false;
+    clearSettleTimers();
+    publish();
+  }
+
+  function onViewport(event) {
+    updateRestingBaseline();
+    scheduleSettledCorrections(`vv:${event.type}`);
+  }
+
+  function onWindowScroll() {
+    scheduleCorrection('window:scroll');
+  }
+
+  function onOrientationChange() {
+    baselineHeight = Math.max(Number(vv.height) || 0, Number(win.innerHeight) || 0);
+    lastReason = 'orientationchange';
+    publish();
+  }
+
+  vv.addEventListener('resize', onViewport);
+  vv.addEventListener('scroll', onViewport);
+  win.addEventListener('scroll', onWindowScroll, true);
+  win.addEventListener('orientationchange', onOrientationChange);
+  doc.addEventListener('focusin', onFocusIn, true);
+  doc.addEventListener('focusout', onFocusOut, true);
+  publish();
+
+  return () => {
+    destroyed = true;
+    vv.removeEventListener('resize', onViewport);
+    vv.removeEventListener('scroll', onViewport);
+    win.removeEventListener('scroll', onWindowScroll, true);
+    win.removeEventListener('orientationchange', onOrientationChange);
+    doc.removeEventListener('focusin', onFocusIn, true);
+    doc.removeEventListener('focusout', onFocusOut, true);
+    if (frame) cancelFrame(frame);
+    clearSettleTimers();
+  };
+}
+
+export function formatKeyboardDiagnosticSnapshot(snapshot, win, doc, config, guardState = {}) {
   const vv = win.visualViewport;
   const page = doc.querySelector?.('.keyboard-page.kb-active, .keyboard-page');
   const rect = page?.getBoundingClientRect?.();
@@ -94,7 +250,9 @@ export function formatKeyboardDiagnosticSnapshot(snapshot, win, doc, config) {
     `state ${page?.classList?.contains('kb-open') ? 'open' : 'closed'} / ${page?.classList?.contains('kb-active') ? 'active' : 'idle'}`,
     `focus ${focus?.tagName?.toLowerCase?.() || 'none'}${focus?.className ? '.' + String(focus.className).trim().replace(/\s+/g, '.') : ''}`,
     `nofx ${[...config.nofx].join(',') || 'none'} · iso ${config.isolation || 'none'}`,
-    `shell ${config.shell || 'original'}`
+    `shell ${config.shell || 'original'}`,
+    `root ${config.rootGuard || 'free'} · fix ${guardState.corrections || 0}`,
+    `guard ${formatNumber(guardState.lastBefore)}→${formatNumber(guardState.lastAfter)} · ${guardState.active ? 'active' : 'idle'}`
   ].join('\n');
 }
 
@@ -145,6 +303,20 @@ export function installKeyboardDiagnostics(options = {}) {
     shellRow.appendChild(link);
   }
   controls.appendChild(shellRow);
+  const rootGuardSpecs = [
+    ['', 'Root自由', !config.rootGuard],
+    ['guard', 'Root鎖定', config.rootGuard === 'guard']
+  ];
+  const rootGuardRow = doc.createElement('div');
+  rootGuardRow.id = 'keyboard-diagnostic-root-controls';
+  for (const [rootGuard, label, active] of rootGuardSpecs) {
+    const link = doc.createElement('a');
+    link.href = buildKeyboardDiagnosticHref(win.location?.search || '', { rootGuard });
+    link.textContent = label;
+    if (active) link.classList.add('active');
+    rootGuardRow.appendChild(link);
+  }
+  controls.appendChild(rootGuardRow);
   const labLink = doc.createElement('a');
   labLink.href = `${import.meta.env.BASE_URL}keyboard-lab.html`;
   labLink.textContent = '\u7d14\u9801\u6e2c\u8a66';
@@ -153,10 +325,11 @@ export function installKeyboardDiagnostics(options = {}) {
   doc.body.appendChild(panel);
 
   let lastSnapshot = { reason: 'install' };
+  let guardState = {};
   let frame = 0;
   const render = () => {
     frame = 0;
-    readout.textContent = formatKeyboardDiagnosticSnapshot(lastSnapshot, win, doc, config);
+    readout.textContent = formatKeyboardDiagnosticSnapshot(lastSnapshot, win, doc, config, guardState);
   };
   const scheduleRender = reason => {
     if (reason) lastSnapshot = { ...lastSnapshot, reason };
@@ -169,6 +342,16 @@ export function installKeyboardDiagnostics(options = {}) {
     lastSnapshot = snapshot || lastSnapshot;
     scheduleRender();
   };
+  const removeRootGuard = config.rootGuard === 'guard'
+    ? installRootScrollGuard({
+      windowObj: win,
+      documentObj: doc,
+      onStateChange: state => {
+        guardState = state;
+        scheduleRender(`guard:${state.reason}`);
+      }
+    })
+    : () => {};
 
   subscribers.add(onSnapshot);
   win.visualViewport?.addEventListener('resize', onViewport);
@@ -185,6 +368,7 @@ export function installKeyboardDiagnostics(options = {}) {
     win.removeEventListener('scroll', onWindowScroll, true);
     doc.removeEventListener('focusin', onFocus, true);
     doc.removeEventListener('focusout', onFocus, true);
+    removeRootGuard();
     if (frame) win.cancelAnimationFrame(frame);
     panel.remove();
   };
