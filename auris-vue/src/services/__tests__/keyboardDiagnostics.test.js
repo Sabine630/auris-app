@@ -43,13 +43,13 @@ describe('keyboard diagnostics query switches', () => {
   });
 
   it('switches shell experiments without dropping the current diagnostic flags', () => {
-    const href = buildKeyboardDiagnosticHref('?kbdiag=1&nofx=stream&kbiso=paint', { shell: 'fixed' });
+    const href = buildKeyboardDiagnosticHref('?kbdiag=1&nofx=stream&kbiso=paint', { shell: 'absolute' });
     const params = new URLSearchParams(href);
 
     expect(params.get('nofx')).toBe('stream');
     expect(params.get('kbiso')).toBe('paint');
-    expect(params.get('kbshell')).toBe('fixed');
-    expect(parseKeyboardDiagnostics(href).shell).toBe('fixed');
+    expect(params.get('kbshell')).toBe('absolute');
+    expect(parseKeyboardDiagnostics(href).shell).toBe('absolute');
   });
 
   it('ignores unknown shell modes and restores the original shell on an empty change', () => {
@@ -84,6 +84,7 @@ describe('keyboard diagnostic evidence', () => {
     const win = {
       visualViewport: { height: 500, offsetTop: 12 },
       innerHeight: 852,
+      scrollY: 11,
       navigator: { standalone: true },
       matchMedia: () => ({ matches: false }),
       getComputedStyle: element => element === body
@@ -92,6 +93,7 @@ describe('keyboard diagnostic evidence', () => {
     };
     const doc = {
       body,
+      documentElement: { scrollTop: 13 },
       activeElement: { tagName: 'BODY', className: '' },
       querySelector: () => null
     };
@@ -103,6 +105,7 @@ describe('keyboard diagnostic evidence', () => {
     );
 
     expect(readout).toContain(`kbdiag ${APP_VERSION} · standalone`);
+    expect(readout).toContain('scroll w 11.0 · html 13.0');
     expect(readout).toContain('body pos static');
     expect(readout).toContain('body rect 0.0…852.0');
     expect(readout).toContain('body scroll 7.0');

@@ -2,7 +2,7 @@ import { APP_VERSION } from '../version.js';
 
 const VALID_NOFX = new Set(['blur', 'caret', 'stream']);
 const VALID_ISOLATION = new Set(['paint', 'layer']);
-const VALID_SHELL = new Set(['fixed']);
+const VALID_SHELL = new Set(['absolute', 'fixed']);
 
 function tokens(params, key) {
   return params.getAll(key)
@@ -84,6 +84,7 @@ export function formatKeyboardDiagnosticSnapshot(snapshot, win, doc, config) {
     `event ${snapshot?.reason || 'install'}`,
     `vv h ${formatNumber(vv?.height)} · top ${formatNumber(vv?.offsetTop)}`,
     `window h ${formatNumber(win.innerHeight)}`,
+    `scroll w ${formatNumber(win.scrollY)} · html ${formatNumber(doc.documentElement?.scrollTop)}`,
     `body pos ${bodyStyles?.position || '—'}`,
     `body rect ${formatNumber(bodyRect?.top)}…${formatNumber(bodyRect?.bottom)}`,
     `body scroll ${formatNumber(body?.scrollTop)}`,
@@ -130,8 +131,9 @@ export function installKeyboardDiagnostics(options = {}) {
     controls.appendChild(link);
   }
   const shellSpecs = [
-    ['', '\u65b0\u7248', !config.shell],
-    ['fixed', '\u820aFixed', config.shell === 'fixed']
+    ['', 'Static', !config.shell],
+    ['absolute', 'Absolute', config.shell === 'absolute'],
+    ['fixed', 'Fixed', config.shell === 'fixed']
   ];
   const shellRow = doc.createElement('div');
   shellRow.id = 'keyboard-diagnostic-shell-controls';
@@ -161,6 +163,7 @@ export function installKeyboardDiagnostics(options = {}) {
     if (!frame) frame = win.requestAnimationFrame(render);
   };
   const onViewport = event => scheduleRender(`vv:${event.type}`);
+  const onWindowScroll = () => scheduleRender('window:scroll');
   const onFocus = event => scheduleRender(event.type);
   const onSnapshot = snapshot => {
     lastSnapshot = snapshot || lastSnapshot;
@@ -170,6 +173,7 @@ export function installKeyboardDiagnostics(options = {}) {
   subscribers.add(onSnapshot);
   win.visualViewport?.addEventListener('resize', onViewport);
   win.visualViewport?.addEventListener('scroll', onViewport);
+  win.addEventListener('scroll', onWindowScroll, true);
   doc.addEventListener('focusin', onFocus, true);
   doc.addEventListener('focusout', onFocus, true);
   scheduleRender();
@@ -178,6 +182,7 @@ export function installKeyboardDiagnostics(options = {}) {
     subscribers.delete(onSnapshot);
     win.visualViewport?.removeEventListener('resize', onViewport);
     win.visualViewport?.removeEventListener('scroll', onViewport);
+    win.removeEventListener('scroll', onWindowScroll, true);
     doc.removeEventListener('focusin', onFocus, true);
     doc.removeEventListener('focusout', onFocus, true);
     if (frame) win.cancelAnimationFrame(frame);

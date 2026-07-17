@@ -215,7 +215,8 @@ html.diag-kbiso-layer .keyboard-scroll{transform:translateZ(0);backface-visibili
 #keyboard-diagnostic-controls{margin-top:3px}
 #keyboard-diagnostic-shell-controls{display:block}
 
-/* P120: reverse A/B control; normal mobile shell is static, this restores the proven-bad old fixed body. */
+/* P122: diagnostic-only body positioning A/B; production remains static. */
+html.diag-kbshell-absolute body{position:absolute!important;inset:0!important;width:100%!important;height:100dvh!important;min-height:0!important;overflow:hidden!important}
 html.diag-kbshell-fixed body{position:fixed!important}
 
 /* ═══ 頁首 ═══ */

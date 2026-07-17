@@ -15,4 +15,9 @@ describe('mobile shell keyboard compositor fix', () => {
   it('retains the old fixed body only as an explicit reverse diagnostic control', () => {
     expect(css).toContain('html.diag-kbshell-fixed body{position:fixed!important}');
   });
+
+  it('keeps the absolute body candidate isolated behind an explicit diagnostic selector', () => {
+    expect(css).toContain('html.diag-kbshell-absolute body{position:absolute!important;inset:0!important');
+    expect(css).not.toContain('body{position:absolute;width:100%}');
+  });
 });
