@@ -213,6 +213,19 @@ html.diag-kbiso-layer .keyboard-scroll{transform:translateZ(0);backface-visibili
 #keyboard-diagnostic-panel a.active{background:#fff;color:#111}
 #keyboard-diagnostic-panel pre{margin:0;font:inherit;white-space:pre-wrap}
 #keyboard-diagnostic-controls{margin-top:3px}
+#keyboard-diagnostic-shell-controls{display:block}
+
+/* P119: diagnostic-only iOS PWA shell A/B modes. */
+html.diag-kbshell-body body{position:static!important}
+html.diag-kbshell-page .page{position:relative!important;inset:auto!important;width:100%!important;height:100%!important}
+html.diag-kbshell-clip .phone,
+html.diag-kbshell-clip .screen{overflow:visible!important}
+html.diag-kbshell-flow,
+html.diag-kbshell-flow body{height:auto!important;min-height:100%!important;overflow:auto!important}
+html.diag-kbshell-flow body{position:static!important}
+html.diag-kbshell-flow .phone{height:auto!important;min-height:100dvh!important;overflow:visible!important}
+html.diag-kbshell-flow .screen{flex:none!important;min-height:0!important;overflow:visible!important;position:static!important}
+html.diag-kbshell-flow .page{position:relative!important;inset:auto!important;width:100%!important;min-height:100dvh!important;height:auto!important;overflow:visible!important;opacity:1!important;transform:none!important;transition:none!important}
 
 /* ═══ 頁首 ═══ */
 .ph{position:sticky;top:0;z-index:20;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--nav-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:.5px solid var(--border)}

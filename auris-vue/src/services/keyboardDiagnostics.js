@@ -1,5 +1,6 @@
 const VALID_NOFX = new Set(['blur', 'caret', 'stream']);
 const VALID_ISOLATION = new Set(['paint', 'layer']);
+const VALID_SHELL = new Set(['body', 'page', 'clip', 'flow']);
 
 function tokens(params, key) {
   return params.getAll(key)
@@ -12,10 +13,12 @@ export function parseKeyboardDiagnostics(search = '') {
   const params = new URLSearchParams(search);
   const nofx = new Set(tokens(params, 'nofx').filter(value => VALID_NOFX.has(value)));
   const isolation = tokens(params, 'kbiso').find(value => VALID_ISOLATION.has(value)) || '';
+  const shell = tokens(params, 'kbshell').find(value => VALID_SHELL.has(value)) || '';
   return {
     enabled: params.get('kbdiag') === '1',
     nofx,
-    isolation
+    isolation,
+    shell
   };
 }
 
@@ -33,6 +36,10 @@ export function buildKeyboardDiagnosticHref(search = '', change = {}) {
   if (Object.prototype.hasOwnProperty.call(change, 'isolation')) {
     if (VALID_ISOLATION.has(change.isolation)) params.set('kbiso', change.isolation);
     else params.delete('kbiso');
+  }
+  if (Object.prototype.hasOwnProperty.call(change, 'shell')) {
+    if (VALID_SHELL.has(change.shell)) params.set('kbshell', change.shell);
+    else params.delete('kbshell');
   }
   return `?${params.toString()}`;
 }
@@ -77,7 +84,8 @@ function formatSnapshot(snapshot, win, doc, config) {
     `baseline h ${formatNumber(snapshot?.baselineHeight)} · top ${formatNumber(snapshot?.baselineTop)}`,
     `state ${page?.classList?.contains('kb-open') ? 'open' : 'closed'} / ${page?.classList?.contains('kb-active') ? 'active' : 'idle'}`,
     `focus ${focus?.tagName?.toLowerCase?.() || 'none'}${focus?.className ? '.' + String(focus.className).trim().replace(/\s+/g, '.') : ''}`,
-    `nofx ${[...config.nofx].join(',') || 'none'} · iso ${config.isolation || 'none'}`
+    `nofx ${[...config.nofx].join(',') || 'none'} · iso ${config.isolation || 'none'}`,
+    `shell ${config.shell || 'original'}`
   ].join('\n');
 }
 
@@ -89,6 +97,7 @@ export function installKeyboardDiagnostics(options = {}) {
 
   for (const effect of config.nofx) root.classList.add(`diag-nofx-${effect}`);
   if (config.isolation) root.classList.add(`diag-kbiso-${config.isolation}`);
+  if (config.shell) root.classList.add(`diag-kbshell-${config.shell}`);
   if (!config.enabled) return () => {};
 
   const panel = doc.createElement('section');
@@ -112,6 +121,23 @@ export function installKeyboardDiagnostics(options = {}) {
     if (active) link.classList.add('active');
     controls.appendChild(link);
   }
+  const shellSpecs = [
+    ['', '\u539f\u6bbc', !config.shell],
+    ['body', 'Body', config.shell === 'body'],
+    ['page', 'Page', config.shell === 'page'],
+    ['clip', 'Clip', config.shell === 'clip'],
+    ['flow', 'Flow', config.shell === 'flow']
+  ];
+  const shellRow = doc.createElement('div');
+  shellRow.id = 'keyboard-diagnostic-shell-controls';
+  for (const [shell, label, active] of shellSpecs) {
+    const link = doc.createElement('a');
+    link.href = buildKeyboardDiagnosticHref(win.location?.search || '', { shell });
+    link.textContent = label;
+    if (active) link.classList.add('active');
+    shellRow.appendChild(link);
+  }
+  controls.appendChild(shellRow);
   const labLink = doc.createElement('a');
   labLink.href = `${import.meta.env.BASE_URL}keyboard-lab.html`;
   labLink.textContent = '\u7d14\u9801\u6e2c\u8a66';

@@ -18,7 +18,8 @@ describe('keyboard diagnostics query switches', () => {
     expect(parseKeyboardDiagnostics('?demo=1')).toEqual({
       enabled: false,
       nofx: new Set(),
-      isolation: ''
+      isolation: '',
+      shell: ''
     });
   });
 
@@ -37,6 +38,22 @@ describe('keyboard diagnostics query switches', () => {
 
     expect(params.get('nofx')).toBe('stream');
     expect(params.get('kbiso')).toBe('layer');
+  });
+
+  it('switches shell experiments without dropping the current diagnostic flags', () => {
+    const href = buildKeyboardDiagnosticHref('?kbdiag=1&nofx=stream&kbiso=paint', { shell: 'flow' });
+    const params = new URLSearchParams(href);
+
+    expect(params.get('nofx')).toBe('stream');
+    expect(params.get('kbiso')).toBe('paint');
+    expect(params.get('kbshell')).toBe('flow');
+    expect(parseKeyboardDiagnostics(href).shell).toBe('flow');
+  });
+
+  it('ignores unknown shell modes and restores the original shell on an empty change', () => {
+    expect(parseKeyboardDiagnostics('?kbdiag=1&kbshell=nope').shell).toBe('');
+    const href = buildKeyboardDiagnosticHref('?kbdiag=1&kbshell=body', { shell: '' });
+    expect(new URLSearchParams(href).has('kbshell')).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-17（P118）
+> 最後更新：2026-07-17（P119）
 
 ---
 
@@ -486,6 +486,13 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P119（2026-07-17）iOS PWA 共用 shell 分層對照
+
+- P118 同源純頁在 standalone PWA 鍵盤開啟時正常，而聊天與 API 頁缺塊，證實 PWA／viewport meta 並非充分條件，共用 Auris shell 是目前唯一必要差異。
+- 診斷服務新增 kbshell 白名單與面板單選列：body、page、clip、flow；query 切換保留既有 nofx／kbiso 與其他參數。
+- CSS 只在 html.diag-kbshell-* 下覆寫：分別移除 body fixed、page absolute、phone/screen clipping，或將整組手機 shell 改為普通 document flow。正常網址零影響。
+- 實機結論門檻：哪個最小模式使 API 輸入頁正常，就定位哪一層；若僅 Flow 正常，表示問題來自多層組合並支持行動版 flow 重構。
 
 ### P118（2026-07-17）iOS PWA 純鍵盤架構對照實驗
 
