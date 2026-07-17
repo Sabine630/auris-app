@@ -1,5 +1,5 @@
 // ── 版號常數（P105 版號常數手術）────────────────────────────────────────────
 // 全站唯一的版號來源：設定頁顯示、診斷匯出、錯誤日誌逐筆蓋版號都引用這裡。
 // 版更時只改這個檔（check-version-bump hook 盯的也是這個檔）。
-export const APP_VERSION = 'P119';
-export const VERSION_NOTE = 'P119 iOS PWA 診斷：新增共用 shell 分層 A/B 開關';
+export const APP_VERSION = 'P120';
+export const VERSION_NOTE = 'P120 iOS PWA 修復：移除造成鍵盤缺塊的 fixed body';

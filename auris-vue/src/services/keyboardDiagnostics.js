@@ -1,6 +1,6 @@
 const VALID_NOFX = new Set(['blur', 'caret', 'stream']);
 const VALID_ISOLATION = new Set(['paint', 'layer']);
-const VALID_SHELL = new Set(['body', 'page', 'clip', 'flow']);
+const VALID_SHELL = new Set(['fixed']);
 
 function tokens(params, key) {
   return params.getAll(key)
@@ -122,11 +122,8 @@ export function installKeyboardDiagnostics(options = {}) {
     controls.appendChild(link);
   }
   const shellSpecs = [
-    ['', '\u539f\u6bbc', !config.shell],
-    ['body', 'Body', config.shell === 'body'],
-    ['page', 'Page', config.shell === 'page'],
-    ['clip', 'Clip', config.shell === 'clip'],
-    ['flow', 'Flow', config.shell === 'flow']
+    ['', '\u65b0\u7248', !config.shell],
+    ['fixed', '\u820aFixed', config.shell === 'fixed']
   ];
   const shellRow = doc.createElement('div');
   shellRow.id = 'keyboard-diagnostic-shell-controls';

@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-17（P119）
+> 最後更新：2026-07-17（P120）
 
 ---
 
@@ -472,7 +472,8 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 2. **新增設定項目**：直接透過 `setSetting('new_key', value)` 新增即可，不需修改資料庫結構。
 3. **空狀態原則**：遇到尚未開發或空列表時，按鈕一律使用 `.empty-cta` 而非 `.btn-primary`，且未完成的功能應掛上 `@click="$toast('尚在開發，敬請期待')"`。
 4. **`.page` 內不要用 `position:fixed`**（P107 教訓）：active `.page` 自 P115 已移除 transform 合成層，但 fixed 後代在路由進退場／多層捲動下仍容易改變 containing block、跟著內容跑位。一般可捲動頁的底部管理列可用 `position:sticky; bottom:0`；但**有 iOS 鍵盤的聊天／留言頁禁止 sticky**（P115），必須用 `.keyboard-page` 單一捲動區＋普通 flex `.keyboard-input-bar`。全螢幕遮罩／sheet 類請 `Teleport to="body"`。
-5. **主題色只掛在 `#phone-container [data-theme]`**（P107 教訓）：JS 讀主題 CSS 變數要 `getComputedStyle(document.getElementById('phone-container'))`，讀 `documentElement` 只會拿到 `:root` 的預設奶白值。P110 起 `data-theme` 另鏡射到 `body`（`App.vue` `syncRootBg`），`Teleport to="body"` 的元件因此也吃得到主題——新增 Teleport 元件不必再自己處理。
+5. **手機 shell 禁止 body fixed**（P120 實機 A/B）：手機／standalone body 維持 position:static，以 100dvh + overflow:hidden 固定外框；position:fixed 會在 iOS PWA 鍵盤期間觸發 WebKit 畫面缺塊。若需反證，只能使用 kbdiag 的舊Fixed模式，不得恢復為正式 CSS。
+6. **主題色只掛在 `#phone-container [data-theme]`**（P107 教訓）：JS 讀主題 CSS 變數要 `getComputedStyle(document.getElementById('phone-container'))`，讀 `documentElement` 只會拿到 `:root` 的預設奶白值。P110 起 `data-theme` 另鏡射到 `body`（`App.vue` `syncRootBg`），`Teleport to="body"` 的元件因此也吃得到主題——新增 Teleport 元件不必再自己處理。
 
 ---
 
@@ -486,6 +487,14 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P120（2026-07-17）iOS PWA fixed body 缺塊修復候選
+
+- P119 實機矩陣為 Body 正常、Page 異常、Clip 異常、Flow 正常；Body 是唯一單變因即恢復的模式，將根因定位為手機版 body position:fixed。
+- 正式手機／standalone CSS 改用 body position:static，保留 100dvh、overflow hidden、phone flex 與 page absolute，避免引入 Flow 模式的其他結構變更。
+- 診斷 shell 模式縮成新版與舊Fixed反向控制；舊 kbshell 值會被白名單忽略，普通網址不載入診斷 class。
+- 新增 keyboardShellFix.test.js 鎖住 mobile body static，並確保 fixed 只留在明確的反向診斷 selector；AGENTS.md、CLAUDE.md 同步更新維護原則。
+- 實機放行門檻：正常模式 API／聊天室皆不缺塊，鍵盤升降不偷捲、不產生底部空帶；舊Fixed應可重現缺塊作為因果反證。
 
 ### P119（2026-07-17）iOS PWA 共用 shell 分層對照
 
