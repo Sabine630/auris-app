@@ -1,3 +1,5 @@
+import { APP_VERSION } from '../version.js';
+
 const VALID_NOFX = new Set(['blur', 'caret', 'stream']);
 const VALID_ISOLATION = new Set(['paint', 'layer']);
 const VALID_SHELL = new Set(['fixed']);
@@ -67,18 +69,24 @@ function formatNumber(value) {
   return Number.isFinite(value) ? value.toFixed(1) : '—';
 }
 
-function formatSnapshot(snapshot, win, doc, config) {
+export function formatKeyboardDiagnosticSnapshot(snapshot, win, doc, config) {
   const vv = win.visualViewport;
   const page = doc.querySelector?.('.keyboard-page.kb-active, .keyboard-page');
   const rect = page?.getBoundingClientRect?.();
   const styles = page ? win.getComputedStyle?.(page) : null;
+  const body = doc.body;
+  const bodyRect = body?.getBoundingClientRect?.();
+  const bodyStyles = body ? win.getComputedStyle?.(body) : null;
   const focus = doc.activeElement;
   const displayMode = isStandaloneDisplay(win) ? 'standalone' : 'browser';
   return [
-    `kbdiag · ${displayMode}`,
+    `kbdiag ${APP_VERSION} · ${displayMode}`,
     `event ${snapshot?.reason || 'install'}`,
     `vv h ${formatNumber(vv?.height)} · top ${formatNumber(vv?.offsetTop)}`,
     `window h ${formatNumber(win.innerHeight)}`,
+    `body pos ${bodyStyles?.position || '—'}`,
+    `body rect ${formatNumber(bodyRect?.top)}…${formatNumber(bodyRect?.bottom)}`,
+    `body scroll ${formatNumber(body?.scrollTop)}`,
     `page ${formatNumber(rect?.top)}…${formatNumber(rect?.bottom)}`,
     `inset t ${snapshot?.topInset ?? (styles?.getPropertyValue('--keyboard-top-inset')?.trim() || '0')} · b ${snapshot?.bottomInset ?? (styles?.getPropertyValue('--keyboard-bottom-inset')?.trim() || '0')}`,
     `baseline h ${formatNumber(snapshot?.baselineHeight)} · top ${formatNumber(snapshot?.baselineTop)}`,
@@ -146,7 +154,7 @@ export function installKeyboardDiagnostics(options = {}) {
   let frame = 0;
   const render = () => {
     frame = 0;
-    readout.textContent = formatSnapshot(lastSnapshot, win, doc, config);
+    readout.textContent = formatKeyboardDiagnosticSnapshot(lastSnapshot, win, doc, config);
   };
   const scheduleRender = reason => {
     if (reason) lastSnapshot = { ...lastSnapshot, reason };

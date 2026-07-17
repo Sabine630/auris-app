@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildKeyboardDiagnosticHref,
+  formatKeyboardDiagnosticSnapshot,
   isStandaloneDisplay,
   parseKeyboardDiagnostics
 } from '../keyboardDiagnostics.js';
+import { APP_VERSION } from '../../version.js';
 
 describe('keyboard diagnostics query switches', () => {
   it('parses combined and repeated nofx values while ignoring unknown flags', () => {
@@ -70,5 +72,40 @@ describe('standalone display detection', () => {
       navigator: {},
       matchMedia: () => ({ matches: true })
     })).toBe(true);
+  });
+});
+
+describe('keyboard diagnostic evidence', () => {
+  it('prints the app version and computed body geometry instead of relying on query state', () => {
+    const body = {
+      scrollTop: 7,
+      getBoundingClientRect: () => ({ top: 0, bottom: 852 })
+    };
+    const win = {
+      visualViewport: { height: 500, offsetTop: 12 },
+      innerHeight: 852,
+      navigator: { standalone: true },
+      matchMedia: () => ({ matches: false }),
+      getComputedStyle: element => element === body
+        ? { position: 'static' }
+        : { getPropertyValue: () => '' }
+    };
+    const doc = {
+      body,
+      activeElement: { tagName: 'BODY', className: '' },
+      querySelector: () => null
+    };
+    const readout = formatKeyboardDiagnosticSnapshot(
+      { reason: 'test' },
+      win,
+      doc,
+      { nofx: new Set(), isolation: '', shell: '' }
+    );
+
+    expect(readout).toContain(`kbdiag ${APP_VERSION} · standalone`);
+    expect(readout).toContain('body pos static');
+    expect(readout).toContain('body rect 0.0…852.0');
+    expect(readout).toContain('body scroll 7.0');
+    expect(readout).toContain('shell original');
   });
 });
