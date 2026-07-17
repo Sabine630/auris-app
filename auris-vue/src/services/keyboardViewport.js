@@ -1,3 +1,5 @@
+import { publishKeyboardDiagnostic } from './keyboardDiagnostics.js';
+
 const KEYBOARD_THRESHOLD = 80;
 const VIEWPORT_RESTORED_EPSILON = 40;
 const SETTLE_DELAYS_MS = [60, 240, 500];
@@ -87,6 +89,13 @@ export function installKeyboardViewport(page, options = {}) {
       viewportTop: finiteNumber(vv.offsetTop),
       viewportHeight: Math.max(0, finiteNumber(vv.height, win.innerHeight))
     };
+    publishKeyboardDiagnostic({
+      reason: 'baseline',
+      baselineHeight: baseline.viewportHeight,
+      baselineTop: baseline.viewportTop,
+      topInset: 0,
+      bottomInset: 0
+    });
   }
 
   function measureNow() {
@@ -101,6 +110,13 @@ export function installKeyboardViewport(page, options = {}) {
       if (!interactionActive && isViewportRestored(baseline.viewportHeight, currentHeight)) {
         if (!focusWithin) page.classList.remove('kb-active');
       }
+      publishKeyboardDiagnostic({
+        reason: 'measure:closed',
+        baselineHeight: baseline.viewportHeight,
+        baselineTop: baseline.viewportTop,
+        topInset: 0,
+        bottomInset: 0
+      });
       return;
     }
 
@@ -115,6 +131,13 @@ export function installKeyboardViewport(page, options = {}) {
     page.style.setProperty('--keyboard-bottom-inset', `${bottomInset}px`);
     page.classList.add('kb-active');
     page.classList.add('kb-open');
+    publishKeyboardDiagnostic({
+      reason: 'measure:open',
+      baselineHeight: baseline.viewportHeight,
+      baselineTop: baseline.viewportTop,
+      topInset,
+      bottomInset
+    });
   }
 
   function clearSettleTimers() {

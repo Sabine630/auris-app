@@ -6,9 +6,12 @@ import { initDB } from './services/db.js'
 import { isDemo } from './services/demoMode.js'
 import { seedDemoIfEmpty } from './services/demoData.js'
 import { installGlobalErrorLog, logError } from './services/diag.js'
+import { installKeyboardDiagnostics } from './services/keyboardDiagnostics.js'
 
 // 診斷（P105 M3）：越早掛越好——連 initDB 失敗都要留下紀錄。
 installGlobalErrorLog();
+// P116??????????????????????????????????
+installKeyboardDiagnostics();
 
 initDB().then(async () => {
   // Demo/教學模式：在掛載前把示範資料灌進隔離的 auris-demo DB（若尚未有資料）。

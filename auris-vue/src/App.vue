@@ -154,7 +154,9 @@ function generatePWAIcon() {
       name: 'Auris',
       short_name: 'Auris',
       description: '你說，他在聽',
-      start_url: './',
+      start_url: new URLSearchParams(window.location.search).get('kbdiag') === '1'
+        ? `${window.location.pathname}${window.location.search}`
+        : './',
       display: 'standalone',
       background_color: themeBg,
       theme_color: themeBg,

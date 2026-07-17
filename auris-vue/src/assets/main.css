@@ -202,6 +202,18 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .keyboard-page.kb-active>.keyboard-header,
 .keyboard-page.kb-active>.keyboard-input-bar{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg)}
 
+/* P116 ?????????????????????????????? */
+html.diag-nofx-blur *,html.diag-nofx-blur *::before,html.diag-nofx-blur *::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+html.diag-nofx-caret .keyboard-page .keyboard-input-bar input:focus,
+html.diag-nofx-caret .keyboard-page .keyboard-input-bar textarea:focus{caret-color:transparent!important}
+html.diag-kbiso-paint .keyboard-scroll{contain:layout paint}
+html.diag-kbiso-layer .keyboard-scroll{transform:translateZ(0);backface-visibility:hidden}
+#keyboard-diagnostic-panel{position:fixed;z-index:10000;top:max(6px,env(safe-area-inset-top));right:6px;max-width:min(310px,calc(100vw - 12px));padding:8px;border-radius:8px;background:rgba(0,0,0,.82);color:#fff;font:10px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;pointer-events:none}
+#keyboard-diagnostic-panel a{pointer-events:auto;display:inline-block;margin:5px 4px 0 0;padding:4px 6px;border:1px solid rgba(255,255,255,.4);border-radius:5px;color:#fff;text-decoration:none}
+#keyboard-diagnostic-panel a.active{background:#fff;color:#111}
+#keyboard-diagnostic-panel pre{margin:0;font:inherit;white-space:pre-wrap}
+#keyboard-diagnostic-controls{margin-top:3px}
+
 /* ═══ 頁首 ═══ */
 .ph{position:sticky;top:0;z-index:20;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--nav-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:.5px solid var(--border)}
 .ph-back{color:var(--rose);font-size:15px;font-weight:300;cursor:pointer;display:flex;align-items:center;gap:4px;min-width:60px}

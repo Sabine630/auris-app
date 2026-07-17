@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-16（P115）
+> 最後更新：2026-07-17（P116）
 
 ---
 
@@ -230,6 +230,19 @@ iOS PWA 鍵盤輸入頁的局部 visual viewport controller，供單聊、群聊
 
 blur 不直接還原：輸入列 pointer 操作期間維持 interaction lock，讓送出 click 先完成；viewport 回升後才清除。iOS PWA 偶爾在 resize 當下暫報舊的 `offsetTop/height` 且穩定後不再送事件，故使用三次有限 trailing reconcile，不永久輪詢。
 
+### `services/keyboardDiagnostics.js`（P116）
+
+iOS PWA 鍵盤問題的可證偽實機診斷層。正常網址保持惰性；只有 query 指定時才在 `html` 掛實驗 class，`kbdiag=1` 另建立即時面板。面板顯示 visual viewport、頁面 rect、controller baseline/inset、focus 與 standalone/browser 模式，並以同頁連結切換實驗組合。
+
+| 函式 | 用途 |
+|------|------|
+| `parseKeyboardDiagnostics(search)` | allowlist 解析 `nofx=caret,blur,stream` 與 `kbiso=paint/layer` |
+| `buildKeyboardDiagnosticHref(search, change)` | 保留其他 query，切換單一嫌疑或隔離模式 |
+| `installKeyboardDiagnostics()` | 掛實驗 class；`kbdiag=1` 時建立面板與 viewport/focus 監聽 |
+| `publishKeyboardDiagnostic(snapshot)` | 由 `keyboardViewport.js` 發布 baseline 與量測結果 |
+| `isKeyboardEffectDisabled(effect)` | 聊天頁判斷是否暫停逐 chunk DOM 更新 |
+
+`nofx` 與 `kbiso` 是診斷工具，不是正式 WebKit 修法；單元測試只保證開關接線，不得據此宣稱根因。診斷模式下動態 manifest 的 `start_url` 保留目前 path＋query，方便 standalone PWA 內由面板重載切換。
 ### `services/diag.js`（P105／P114 信任分級）
 診斷匯出——本地錯誤日誌＋一鍵匯出，降低 bug 回報來回成本（P103 教訓）。錯誤存 **localStorage**（同步、不依賴 IndexedDB，連 DB 初始化失敗都記得下來），只存這台裝置。ring buffer 為 **schema 2 結構化欄位**（`code`／`status`／`provider`／`model`／`location`／`localMessage`），兩條 policy：**strict**（預設——LLM／網路／unhandledrejection／來源不明：只留分類與安全 metadata，不保存原始 message）、**trusted-local**（受控 call site 明確指定——同源 window runtime error、`initDB` 失敗：訊息經「刪控制字元 → 遮蔽金鑰成 `[REDACTED]` → 遮蔽 URL 成 `[URL]` → 截 300 字」後保留）。
 
@@ -474,6 +487,13 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 
 ## 12. 版本更新紀錄
 
+### P116（2026-07-17）iOS PWA 鍵盤可證偽診斷版
+
+- 新增 `keyboardDiagnostics.js`：`kbdiag=1` 顯示 viewport／inset／baseline／focus／display-mode，面板可切換 caret、blur、stream、paint、layer 實驗並保留其他 query。
+- `keyboardViewport.js` 發布基準與開關狀態快照；`nofx=stream` 保留網路串流但單聊／群聊不逐 chunk 修改 DOM，完成後才一次顯示。
+- CSS 實驗 class 分別隱藏焦點 caret、停用全站 backdrop filter，或以 contain／獨立 layer 隔離 `.keyboard-scroll`；正常網址不套用。
+- 診斷模式 manifest 保留目前 path＋query，支援 standalone PWA 面板內重載切換。
+- 測試只驗證開關與 controller 回歸，不把任何假設記成根因；iPhone Safari／PWA 對照錄影仍是下一個放行門檻。
 ### P115（2026-07-16）iOS PWA 鍵盤輸入頁穩定化
 
 - **局部 visual viewport（新增 `keyboardViewport.js`）**：focus 前記錄頁面基準框與 resting viewport offset，將 current offset 換成頁面局部座標後才套 `.keyboard-page` 的 `top/bottom inset`，避免 safe-area 原點被重複扣除；double-rAF＋60／240／500ms 有限 trailing reconcile；不動 `.phone`、不用 `window.scrollTo`、不 transform 整個 App。

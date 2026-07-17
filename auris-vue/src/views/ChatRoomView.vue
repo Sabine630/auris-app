@@ -474,7 +474,10 @@ import { addKeepsake } from '../services/keepsakes.js';
 import { renderShareCard, shareCardImage } from '../services/shareCard.js';
 import { localDateKey } from '../services/date.js';
 import { installKeyboardViewport } from '../services/keyboardViewport.js';
+import { isKeyboardEffectDisabled } from '../services/keyboardDiagnostics.js';
 import { globalStore } from '../store/index.js';
+
+const disableStreamDom = isKeyboardEffectDisabled('stream');
 
 const route = useRoute();
 const router = useRouter();
@@ -1130,6 +1133,9 @@ async function streamSegmentedReply(genFn) {
     const { msgs, truncated, refused } = await genFn({
       onChunk(text) {
         buffer += text;
+        // P116 ???????????????? chunk ? DOM???????????????
+        if (disableStreamDom) return;
+
         const segs = splitReply(buffer, maxSeg);
         if (!segs.length) return;
         if (liveCount === 0) isTyping.value = false;

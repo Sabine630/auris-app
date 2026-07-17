@@ -146,7 +146,10 @@ import { dbGet, dbIdx, dbPut, dbAll } from '../services/db.js';
 import { sendGroupMessage, generateGroupAIResponseStream } from '../services/chatEngine.js';
 import { formatContent } from '../services/format.js';
 import { installKeyboardViewport } from '../services/keyboardViewport.js';
+import { isKeyboardEffectDisabled } from '../services/keyboardDiagnostics.js';
 import { globalStore } from '../store/index.js';
+
+const disableStreamDom = isKeyboardEffectDisabled('stream');
 
 const route = useRoute();
 const router = useRouter();
@@ -346,16 +349,20 @@ async function sendMsg() {
       // 重試期間 typingCharId 仍是該成員，畫面持續顯示「正在輸入」，送出鍵也鎖著，杜絕插話打架。
       const MAX_ATTEMPTS = 3;
       let streamIdx = -1;
+      let streamStarted = false;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         try {
           const msg = await generateGroupAIResponseStream(groupId, targetChar.id, messages.value, members.value, {
             onStart() {
+              streamStarted = true;
+              if (disableStreamDom) return;
               messages.value.push({ id: 'streaming_' + Date.now(), groupId, charId: targetChar.id, content: '', createdAt: Date.now(), isStreaming: true });
               streamIdx = messages.value.length - 1;
               typingCharId.value = null;
               scrollToBottom();
             },
             onChunk(text) {
+              if (disableStreamDom) return;
               if (streamIdx !== -1) {
                 messages.value[streamIdx].content += text;
                 if (isNearBottom()) scrollToBottom();
@@ -366,14 +373,15 @@ async function sendMsg() {
             if (msg) messages.value.splice(streamIdx, 1, msg);
             else messages.value.splice(streamIdx, 1);
           } else if (msg) {
+            typingCharId.value = null;
             messages.value.push(msg);
             scrollToBottom();
           }
           break; // 成功，跳出重試迴圈
         } catch (err) {
           console.error(`Group chat error (attempt ${attempt}/${MAX_ATTEMPTS}):`, err);
-          const startedStreaming = streamIdx !== -1;
-          if (startedStreaming) { messages.value.splice(streamIdx, 1); streamIdx = -1; }
+          const startedStreaming = streamStarted;
+          if (streamIdx !== -1) { messages.value.splice(streamIdx, 1); streamIdx = -1; }
           // 還沒開始串流 + 暫時性錯誤 + 還有次數 → 退避後重試（typingCharId 維持「正在輸入」）
           if (!startedStreaming && attempt < MAX_ATTEMPTS && isTransientError(err)) {
             typingCharId.value = targetChar.id;
