@@ -21,6 +21,21 @@ function dedupeRepeats(text) {
   return res.join('');
 }
 
+// 日記必須跟隨角色的「輸出語言」，不能只用一句寬鬆的「用繁體中文」交給模型自由發揮。
+// 例外保留給角色設定明確要求的多語風格、不可翻譯的專有名詞與忠實原文引述；
+// 其餘情況禁止模型為了強調或營造文藝感自行 code-switch。
+export function diaryLanguageRule(lang = 'zh-tw') {
+  const exception = '只有角色設定明確要求多語混用，或必須保留不可翻譯的專有名詞、品牌／作品名稱、程式碼與忠實原文引述時，才可保留其他語言。';
+  const rules = {
+    'zh-tw': `全篇必須使用自然的繁體中文（台灣用語）。${exception}不得為了強調、文藝感、旁白感或內心戲自行插入英文、簡體中文或其他語言的單字、短語與句子。`,
+    'zh-cn': `全篇必須使用自然的簡體中文。${exception}不得為了強調、文藝感、旁白感或內心戲自行插入英文、繁體中文或其他語言的單字、短語與句子。`,
+    ja: `全篇必須使用自然的日文。${exception}不得為了強調或營造風格自行插入中文、英文、韓文或其他語言的單字、短語與句子。`,
+    ko: `全篇必須使用自然的韓文。${exception}不得為了強調或營造風格自行插入中文、英文、日文或其他語言的單字、短語與句子。`,
+    en: `Write the entire diary in natural English. ${exception}Do not insert Chinese, Japanese, Korean, or another language merely for emphasis or style.`,
+  };
+  return rules[lang] || rules['zh-tw'];
+}
+
 // 共用：依角色組貼文 prompt → 生成 → 解析出 { content, tags }（供 generatePost 新建與 regeneratePost 就地重生共用）
 async function buildPostContent(c) {
   const styleMap = {
@@ -226,9 +241,13 @@ export async function generateDiary(charId) {
   const today = localDateKey(n);
 
   const sysPrompt = `你是「${c.name}」。個性：${c.persona || ''}。
+${c.extra ? `補充角色設定：${c.extra}\n` : ''}
 今天是 ${n.getFullYear()}年${n.getMonth() + 1}月${n.getDate()}日，星期${weekdays[n.getDay()]}。
 ${youLine}${recentChat ? `今天和對方的對話內容：\n${recentChat}\n` : ''}
-請以角色的第一人稱，用繁體中文寫今天的日記。
+請以角色的第一人稱寫今天的日記。
+
+【輸出語言】
+${diaryLanguageRule(c.lang)}
 
 【日記品質要求】
 ・要有具體的事件、細節或感受，不能只寫抽象心情
