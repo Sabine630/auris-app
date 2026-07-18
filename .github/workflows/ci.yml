@@ -16,11 +16,13 @@ jobs:
   test-build:
     runs-on: ubuntu-latest
     steps:
+      # 第三方 action 一律釘 commit SHA（防 tag 被改指到惡意 commit 的供應鏈攻擊）；
+      # 註解版號供人讀，Dependabot（github-actions ecosystem）會自動開 PR 更新
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: 'npm'

@@ -1,0 +1,25 @@
+# Dependabot 版本更新設定（2026-07-18，安全基線第 3 批）。
+# 兩個生態系的更新 PR 都開到 dev（照 branch 策略：main 只吃 dev→main 的發布 PR），
+# 走一般 CI（test-build）驗證後再併。Dependabot alerts（CVE 通知）是另一個開關，
+# 在 repo Settings → Security 由 API 啟用，不在本檔。
+version: 2
+updates:
+  # App 依賴（auris-vue/package-lock.json）；CI 另有 npm audit --audit-level=high 擋 high 以上 CVE
+  - package-ecosystem: npm
+    directory: /auris-vue
+    target-branch: dev
+    schedule:
+      interval: weekly
+    # 一般版本更新集中成一包、降低 PR 噪音；安全更新 Dependabot 一律單獨開 PR（不受 groups 影響）
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions：workflow 已釘 commit SHA，靠這裡自動開 PR 滾動更新
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
