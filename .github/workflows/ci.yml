@@ -7,8 +7,11 @@ on:
   push:
     branches:
       - dev
+  # branches 比對的是 PR 的「目標」分支：main＝發布 PR，dev＝Dependabot 更新 PR，
+  # 少列 dev 會讓 Dependabot PR 合併前完全沒有 CI（復查發現的缺口）
   pull_request:
     branches:
+      - dev
       - main
   workflow_dispatch:
 
