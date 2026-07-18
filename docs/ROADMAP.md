@@ -5,7 +5,9 @@
 
 ## 目前優先：安全與維運基線
 
-1. main 已對非管理者禁止 force push／刪除（2026-07-15 GitHub API 復驗：`allow_force_pushes.enabled=false`、`allow_deletions.enabled=false`）；尚未啟用 required status checks，且 `enforce_admins=false`，管理者仍可繞過 branch protection。啟用 required checks 前，需先將正式發布改為 dev → main 的 PR 流程（現行本機 merge 直推 main 會因新 merge commit 無 CI 結果被擋）；之後再評估啟用 `enforce_admins` 與保護 dev。
+1. ~~main required status checks 與 PR 發布流程~~（2026-07-18 完成：發布改為 dev→main PR；main 設 required check `test-build`＋`enforce_admins=true`；dev 禁止 force push／刪除；guard-main-push hook 擴充攔截 PR merge 指令）。
+
+後續工程防禦縱深（未排程）：Actions dependencies 改 commit SHA 固定、Dependabot、CodeQL／SAST、lint／typecheck／coverage gate、正式 E2E 測試套件。
 
 具體證據與驗收條件見 `Auris 專案健檢與資安審查報告 2026-07-15.md`。
 

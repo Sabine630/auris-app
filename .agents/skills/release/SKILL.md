@@ -1,15 +1,15 @@
 ---
 name: release
-description: 發布 Auris 正式版——確認使用者同意、公告版號四處同步、merge dev→main、推送並確認 GitHub Actions 部署。
+description: 發布 Auris 正式版——確認使用者同意、公告版號四處同步、開 dev→main PR、CI 綠燈後合併並確認 GitHub Actions 部署。
 ---
 
 # Auris 發布正式版（/release）
 
-把 `dev` 合進 `main`，由 GitHub Actions（deploy.yml）自動 build `auris-vue/dist` 並部署 GitHub Pages 正式版。
+以 **dev → main 的 Pull Request** 發布（2026-07-18 起；main 已設 required status check `test-build`，本機直推 main 會被遠端拒絕）。合併後由 GitHub Actions（deploy.yml）自動 build `auris-vue/dist` 並部署 GitHub Pages 正式版。
 
 ## 步驟 0：確認授權（不可跳過）
 
-必須在**本次對話中**取得使用者明確同意發布正式版。沒有明確的「確認發布」就中止流程。push main 時 hook 會再跳一次確認，屬正常防線。
+必須在**本次對話中**取得使用者明確同意發布正式版。沒有明確的「確認發布」就中止流程。合併 PR 時 hook 會再跳一次確認，屬正常防線。
 
 ## 步驟 1：公告版號同步（共 4 處，首頁最容易漏）
 
@@ -54,16 +54,39 @@ git log origin/dev -1 --oneline   # 最新改動已推上 dev
    - 依賴、workflow 與分支防線：audit 結果、Actions 權限、main required checks 與部署來源是否符合預期。
    - 對每個發現標出嚴重度、檔案／行號、可利用前提與驗收條件。medium 以上先修復並重跑；確認誤報時向使用者說明證據後才能放行。
 
-## 步驟 4：合併與推送
+## 步驟 4：開 PR 並等 required check 綠燈
+
+本機沒有 `gh` 時用 GitHub REST API（token 取自 git credential helper，**不得 echo**）：
 
 ```bash
-git checkout main && git merge dev
-git push origin main    # hook 會要求使用者確認——這是設計行為
-git checkout dev        # 推完立刻切回開發分支
+TOKEN=$(printf "protocol=https\nhost=github.com\n" | git credential fill | sed -n 's/^password=//p')
+
+# 開 PR（若已有開著的 dev→main PR 就沿用，不要重複開）：
+curl -s -H "Authorization: token $TOKEN" \
+  https://api.github.com/repos/Sabine630/auris-app/pulls?head=Sabine630:dev\&base=main\&state=open
+curl -s -X POST -H "Authorization: token $TOKEN" \
+  https://api.github.com/repos/Sabine630/auris-app/pulls \
+  -d '{"title":"Release P{N}: 摘要","head":"dev","base":"main","body":"（列出本次待發版號範圍與資安檢測結論）"}'
+
+# 等 required check（test-build）綠燈、PR 可合併：
+curl -s -H "Authorization: token $TOKEN" \
+  https://api.github.com/repos/Sabine630/auris-app/pulls/{PR_NUMBER} \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['mergeable_state'])"
+# mergeable_state 應為 clean；blocked＝check 未過或未跑完，不得繞過
 ```
 
-## 步驟 5：確認部署
+## 步驟 5：合併 PR（hook 會要求使用者確認——這是設計行為）
 
-使用 GitHub app／API確認 main 最新 deploy workflow 成功；環境有 `gh` 時可用 `gh run list --branch main -L 1`。再開正式站核對實際版號與 console。
+```bash
+curl -s -X PUT -H "Authorization: token $TOKEN" \
+  https://api.github.com/repos/Sabine630/auris-app/pulls/{PR_NUMBER}/merge \
+  -d '{"merge_method":"merge"}'
+```
+
+**禁止**改用本機 `git checkout main && git merge dev && git push`——required checks 會拒絕沒有 CI 結果的 merge commit，`enforce_admins` 開啟時對管理者同樣生效。
+
+## 步驟 6：確認部署
+
+使用 GitHub app／API 確認 main 最新 deploy workflow 成功；環境有 `gh` 時可用 `gh run list --branch main -L 1`。再開正式站核對實際版號與 console。
 
 完成後正式站更新：https://sabine630.github.io/auris-app
