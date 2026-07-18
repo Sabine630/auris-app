@@ -78,14 +78,27 @@ ${timeLine}${youLine}${recentChat ? `【最近與對方的對話】\n${recentCha
   );
 
   if (!text.trim()) return null;
-  let content = applyNameMacros(text.trim(), youName || '你', c.name);
+  const { content, tags } = extractPostTags(applyNameMacros(text.trim(), youName || '你', c.name));
+  return { content: dedupeRepeats(content), tags };
+}
+
+// 從貼文內容抽出 hashtag，並移除結尾的純 tag 行（含其間空行）。
+// 移除結尾 tag 行不能用單一 regex（舊版 /(?:\n\s*#\w+\s*)+$/ 的重複群組
+// 內外 \s* 有歧義性回溯，惡意 LLM 輸出可造成 ReDoS 卡死主執行緒——CodeQL js/redos），
+// 改為逐行從尾端往前收，每行各自用無回溯疑慮的簡單 regex 判斷。
+export function extractPostTags(content) {
   let tags = [];
   const tagMatch = content.match(/(?:^|\n)\s*#\w+/g);
   if (tagMatch) {
     tags = tagMatch.map(t => t.trim().substring(1));
-    content = content.replace(/(?:\n\s*#\w+\s*)+$/, '').trim();
+    const lines = content.split('\n');
+    while (lines.length > 1) {
+      const last = lines[lines.length - 1].trim();
+      if (last === '' || /^#\w+$/.test(last)) lines.pop();
+      else break;
+    }
+    content = lines.join('\n').trim();
   }
-  content = dedupeRepeats(content);
   return { content, tags };
 }
 
