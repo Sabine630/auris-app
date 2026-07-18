@@ -1,10 +1,15 @@
-name: CI (dev)
+name: CI
 
-# dev 分支的自動測試＋建置檢查。正式版部署是另一條 workflow（deploy.yml，只看 main）。
+# dev 分支與 dev→main PR 的自動測試＋建置檢查。正式版部署是另一條 workflow（deploy.yml，只看 main）。
+# 注意：main 的 branch protection 以本檔的 job id「test-build」為 required status check，
+# 改 job id 前必須同步更新 GitHub 分支保護設定，否則 PR 會永遠卡在 Expected。
 on:
   push:
     branches:
       - dev
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:

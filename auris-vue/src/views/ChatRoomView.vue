@@ -467,6 +467,7 @@
 import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting, stripUnsafeImage } from '../services/db.js';
+import { readImportJsonFile, validateChatImport } from '../services/importValidation.js';
 import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive, BOND_CAP } from '../services/chatEngine.js';
 import { formatContent, splitReply } from '../services/format.js';
 import { estimateTokens } from '../services/tokens.js';
@@ -1435,17 +1436,12 @@ async function importChat(e) {
   e.target.value = '';
   if (!file) return;
   try {
-    const text = await file.text();
-    const json = JSON.parse(text);
-    if (!json || json.aurisChatExportVersion !== 1 || !Array.isArray(json.messages)) {
-      window.toast_('格式錯誤，請選擇正確的聊天記錄備份檔');
-      return;
-    }
+    const json = await readImportJsonFile(file, 'chat');
+    const importedMessages = validateChatImport(json);
     const base = Date.now();
     let count = 0;
-    for (let i = 0; i < json.messages.length; i++) {
-      const m = json.messages[i];
-      if (!m || !m.role || !m.content) continue;
+    for (let i = 0; i < importedMessages.length; i++) {
+      const m = importedMessages[i];
       await dbPut('messages', stripUnsafeImage({ ...m, id: `msg_import_${base}_${i}`, charId }));
       count++;
     }
@@ -1453,8 +1449,8 @@ async function importChat(e) {
     allMsgs.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     messages.value = allMsgs;
     window.toast_(`已匯入 ${count} 則訊息`);
-  } catch {
-    window.toast_('匯入失敗，檔案損毀或格式錯誤');
+  } catch (err) {
+    window.toast_('匯入失敗：' + (err?.message || '檔案損毀或格式錯誤'));
   }
 }
 

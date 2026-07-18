@@ -5,7 +5,7 @@
       <div class="h-name">你的 <em>世界</em></div>
       <div class="h-ann-btn" @click="openAnnouncement">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;flex-shrink:0"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-        P126 更新公告
+        P127 更新公告
       </div>
     </div>
 

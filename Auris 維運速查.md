@@ -24,7 +24,7 @@
 
 ### 機器強制——不用查，做錯會被擋
 
-- **推 main**：畫面**必定**跳出「⚠️ 對外正式版」確認框。沒看到確認框＝main 沒被動過（這是 harness 行為，不是 Claude 的承諾）。
+- **更新 main（發正式版）**：發布走 dev→main PR（2026-07-18 起）。合併 PR 或直推 main 的指令，畫面**必定**跳出「⚠️ 對外正式版」確認框（hook 同時攔 `git push`、GitHub merge API 與 `gh pr merge`）。沒看到確認框＝main 沒被動過（這是 harness 行為，不是 Claude 的承諾）。另有 GitHub 遠端防線：main 的 required status check（`test-build`）沒過就無法合併，`enforce_admins` 開啟後對管理者、對任何工具（含手動網頁操作）一體適用。
 - **版更／金鑰**：commit 當下被 hook 擋下並逼 Claude 先修。畫面偶爾閃過「檢查版更 checklist…」「掃描金鑰外洩…」＝它們在跑。
 - **依賴弱掃**：跑在 GitHub 伺服器上，與 Claude 無關，Actions 頁面公開留底。
 
@@ -50,7 +50,8 @@
 
 ## 四、待辦：GitHub 網頁上要手動確認的項目
 
-- [ ] **main required status checks**：main 已 protected，對非管理者已禁止 force push／刪除（2026-07-15 API 復驗 `allow_force_pushes`／`allow_deletions` 皆 false；`enforce_admins=false`，管理者仍可繞過）。剩：把實際 CI check 設為必過——**前提是先把發版改成 dev → main 的 PR 流程**（直推的 merge commit 沒有 CI 結果會被擋），屆時一併評估 `enforce_admins`。
+- [x] **main required status checks**：✅ 2026-07-18 完成——發版已改為 dev→main PR 流程（見 `/release` skill）；main 設「必須經 PR」（required_pull_request_reviews，0 位 reviewer，作用是封掉直推）＋required status check `test-build`＋`enforce_admins` 開啟（管理者不可繞過，含 fast-forward 直推）；dev 亦已禁止 force push／刪除。查核方式：GitHub → Settings → Branches 看 main／dev 規則，或要求 Claude 用 API 印出 `branches/main/protection` 現值。
+    - 逃生口：若防線設定本身出問題（例如 CI 壞掉導致無法合併），可暫時到 Settings → Branches 關掉 `enforce_admins` 或 required checks，修好後**必須**開回來。
 - [ ] **Dependabot alerts**：repo Settings → Security → 啟用。依賴有新 CVE 會主動通知，比 push 才發現更早。
 - [ ] **CodeQL default setup**：Settings → Security → Code scanning。公開 repo 免費，每次 push 自動跑 JS 靜態掃描。
 
