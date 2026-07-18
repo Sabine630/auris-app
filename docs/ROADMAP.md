@@ -1,12 +1,11 @@
 # Auris Roadmap
 
-> 最後整理：2026-07-15（P114）
+> 最後整理：2026-07-18（P127）
 > 本檔只放尚未完成、待驗證或暫緩項目；已上線內容見 `product_feature_list.md`，逐版成果見 `Auris 完整開發進度總覽.md`。
 
 ## 目前優先：安全與維運基線
 
 1. main 已對非管理者禁止 force push／刪除（2026-07-15 GitHub API 復驗：`allow_force_pushes.enabled=false`、`allow_deletions.enabled=false`）；尚未啟用 required status checks，且 `enforce_admins=false`，管理者仍可繞過 branch protection。啟用 required checks 前，需先將正式發布改為 dev → main 的 PR 流程（現行本機 merge 直推 main 會因新 merge commit 無 CI 結果被擋）；之後再評估啟用 `enforce_admins` 與保護 dev。
-2. 補匯入圖片 MIME／base64／容量限制、JSON 資源限制與備份 schema validator。
 
 具體證據與驗收條件見 `Auris 專案健檢與資安審查報告 2026-07-15.md`。
 

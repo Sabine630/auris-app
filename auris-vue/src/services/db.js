@@ -1,4 +1,11 @@
 import { isDemo } from './demoMode.js';
+import {
+  isSafeRasterDataUrl,
+  validateCharacterImport,
+  validateImportResources,
+  validateRecordBudget,
+  validateStoreRows,
+} from './importValidation.js';
 
 let db = null;
 
@@ -92,10 +99,11 @@ const REQUIRED_STORES = ['characters', 'messages', 'memories', 'moments', 'diary
 // api_base，攻擊者可把端點指向自己的伺服器，本機保留的金鑰之後就會送往該端點。
 const LOCAL_ONLY_SETTINGS = ['api_key', 'api_provider', 'api_base', 'api_model'];
 
-// 訊息圖片只接受 data:image/ 內嵌圖。匯入的 JSON 若夾帶外部 URL，聊天室一開啟
-// 瀏覽器就會對該網址發請求（追蹤像素），洩漏 IP 與上線時間。
+// 訊息圖片只接受 JPEG／PNG／WebP 的 base64 data URL，並核對檔頭與解碼後大小。
+// 匯入的 JSON 若夾帶外部 URL，聊天室一開啟就會對該網址發請求（追蹤像素），
+// 洩漏 IP 與上線時間；SVG、偽造 MIME、非 base64 與超限圖片也一律移除。
 export function stripUnsafeImage(rec) {
-  if (rec && typeof rec.image === 'string' && !rec.image.startsWith('data:image/')) {
+  if (rec && rec.image !== undefined && !isSafeRasterDataUrl(rec.image)) {
     const { image, ...rest } = rec;
     return rest;
   }
@@ -124,8 +132,11 @@ export async function importAllData(jsonData) {
     throw new Error('無效的備份檔案格式');
   }
 
-  // 先完整驗證整份備份，全部通過才動資料庫。
+  // 先完整驗證整份備份的巢狀深度、文字／圖片總量與圖片真實檔頭，
+  // 全部通過才動資料庫。View 另會在讀檔前擋 64 MB，避免先把超大 JSON 載入記憶體。
+  validateImportResources(jsonData, 'backup');
   const plan = [];
+  let totalRecords = 0;
   for (const s of ALL_STORES) {
     const rows = jsonData.data[s];
     if (rows == null) {
@@ -134,18 +145,13 @@ export async function importAllData(jsonData) {
       }
       continue;                              // 備份功能上線後才新增的 store 允許缺席（視為空）
     }
-    if (!Array.isArray(rows)) throw new Error(`備份檔「${s}」格式錯誤`);
-    const keyPath = s === 'settings' ? 'key' : 'id';
-    for (const rec of rows) {
-      if (!rec || typeof rec !== 'object' || rec[keyPath] === undefined) {
-        throw new Error(`備份檔「${s}」內含無效資料`);
-      }
-    }
+    totalRecords += validateStoreRows(s, rows);
     let cleaned = rows;
     if (s === 'settings') cleaned = rows.filter(r => !LOCAL_ONLY_SETTINGS.includes(r.key));
     if (s === 'messages') cleaned = rows.map(stripUnsafeImage);
     plan.push([s, cleaned]);
   }
+  validateRecordBudget(totalRecords, 'backup');
 
   // API 設定屬本機專屬：備份內的一律忽略（見 LOCAL_ONLY_SETTINGS 註解），
   // 本機原有的先讀出、在同一 transaction 內寫回，還原後不需重新貼金鑰。
@@ -209,9 +215,7 @@ export async function exportCharacterData(charId) {
 
 // ── 單角色匯入（以新 ID 寫入，不覆蓋現有角色）─────────────────────────────
 export async function importCharacterData(jsonData) {
-  if (!jsonData || jsonData.aurisCharExportVersion !== 1 || !jsonData.character) {
-    throw new Error('無效的角色備份格式');
-  }
+  validateCharacterImport(jsonData);
   const base = Date.now();
   const newCharId = 'char_' + base;
 

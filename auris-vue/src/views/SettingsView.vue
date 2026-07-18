@@ -149,6 +149,7 @@ import { globalStore } from '../store/index.js';
 import { APP_VERSION, VERSION_NOTE } from '../version.js';
 import { getSetting, setSetting, importAllData } from '../services/db.js';
 import { doBackup, markBackedUp } from '../services/backup.js';
+import { readImportJsonFile } from '../services/importValidation.js';
 import { exportDiag } from '../services/diag.js';
 import { geocodeCity, reverseGeocode } from '../services/weather.js';
 import { demoEntryUrl } from '../services/demoMode.js';
@@ -297,6 +298,15 @@ function importData() {
     const file = e.target.files[0];
     if (!file) return;
 
+    let json;
+    try {
+      // 在任何確認、FileReader／file.text() 與資料庫操作之前先擋超大檔案。
+      json = await readImportJsonFile(file, 'backup');
+    } catch (err) {
+      window.toast_('匯入失敗：' + (err?.message || '檔案格式錯誤或損毀'));
+      return;
+    }
+
     const confirmMsg = '【嚴重警告】\n\n這將會清除您目前所有的聊天紀錄與角色，並完全替換為備份檔的內容。\n\n這個動作無法復原，確定要繼續嗎？';
     if (!await window.confirm_(confirmMsg)) {
       input.value = '';
@@ -304,21 +314,16 @@ function importData() {
     }
 
     window.toast_('正在匯入資料...');
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      try {
-        const json = JSON.parse(ev.target.result);
-        await importAllData(json);
-        await markBackedUp(); // 匯入成功＝手上有新鮮備份檔，重置備份提醒計時
-        window.toast_('匯入成功，即將重新載入...');
-        setTimeout(() => window.location.reload(), 1500);
-      } catch (err) {
-        // importAllData 為單一 transaction：失敗時資料庫已整批回滾、維持原狀
-        const reason = err instanceof SyntaxError ? '檔案格式錯誤或損毀' : (err?.message || '檔案格式錯誤或損毀');
-        window.toast_(`匯入失敗：${reason}（原有資料未受影響）`);
-      }
-    };
-    reader.readAsText(file);
+    try {
+      await importAllData(json);
+      await markBackedUp(); // 匯入成功＝手上有新鮮備份檔，重置備份提醒計時
+      window.toast_('匯入成功，即將重新載入...');
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err) {
+      // importAllData 為單一 transaction：失敗時資料庫已整批回滾、維持原狀
+      const reason = err?.message || '檔案格式錯誤或損毀';
+      window.toast_(`匯入失敗：${reason}（原有資料未受影響）`);
+    }
   };
   input.click();
 }

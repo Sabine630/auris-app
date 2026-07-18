@@ -11,8 +11,10 @@ import {
   initDB, dbPut, dbAll, getSetting, setSetting,
   exportAllData, importAllData, importCharacterData, stripUnsafeImage,
 } from '../db.js';
+import { seedDemoIfEmpty } from '../demoData.js';
 
 const REQUIRED_STORES = ['characters', 'messages', 'memories', 'moments', 'diary', 'dreams', 'worlds', 'groups', 'group_messages', 'notifications', 'settings'];
+const PNG_DATA = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
 // 產生一份合法的空備份（含全部必填 store）
 function makeBackup(overrides = {}) {
@@ -83,7 +85,7 @@ describe('importAllData — 格式驗證', () => {
     await dbPut('characters', { id: 'c1', name: '既有角色' });
     const backup = makeBackup({ characters: [{ name: '沒有 id' }] });
 
-    await expect(importAllData(backup)).rejects.toThrow(/無效資料/);
+    await expect(importAllData(backup)).rejects.toThrow(/缺少有效的「id」/);
     expect(await dbAll('characters')).toHaveLength(1);
   });
 
@@ -129,10 +131,10 @@ describe('importAllData — 原子性（單一 transaction）', () => {
     await dbPut('messages', { id: 'm1', charId: 'c1', content: '既有訊息' });
     await setSetting('api_key', 'local-key');
 
-    // id 為物件 → 不是合法 IndexedDB key，通過格式驗證但 put 時失敗
+    // Promise 無法被 IndexedDB structured-clone；核心欄位格式合法，讓錯誤確實發生在 transaction 內。
     const backup = makeBackup({
       characters: [{ id: 'c_new', name: '新角色' }],
-      messages: [{ id: {}, charId: 'c_new', content: '壞訊息' }],
+      messages: [{ id: 'm_new', charId: 'c_new', role: 'assistant', content: '壞訊息', uncloneable: Promise.resolve('x') }],
     });
 
     await expect(importAllData(backup)).rejects.toThrow();
@@ -153,8 +155,8 @@ describe('importAllData — 原子性（單一 transaction）', () => {
     const backup = makeBackup({
       characters: [{ id: 'c_new', name: '新角色' }],
       messages: [
-        { id: 'm_new', charId: 'c_new', content: '新訊息' },
-        { id: 'm_img', charId: 'c_new', content: '圖', image: 'https://tracker.example/p.gif' },
+        { id: 'm_new', charId: 'c_new', role: 'assistant', content: '新訊息' },
+        { id: 'm_img', charId: 'c_new', role: 'user', content: '圖', image: 'https://tracker.example/p.gif' },
       ],
     });
 
@@ -171,7 +173,7 @@ describe('importAllData — 原子性（單一 transaction）', () => {
 describe('匯出 → 匯入 round-trip', () => {
   it('資料完整還原，API 設定不進備份也不丟失', async () => {
     await dbPut('characters', { id: 'c1', name: '小奧' });
-    await dbPut('messages', { id: 'm1', charId: 'c1', content: '哈囉', image: 'data:image/png;base64,AAA' });
+    await dbPut('messages', { id: 'm1', charId: 'c1', role: 'assistant', content: '哈囉', image: PNG_DATA });
     await dbPut('worlds', { id: 'w1', name: '世界' });
     await setSetting('theme', 'cream');
     await setSetting('api_key', 'sk-demo-key');
@@ -183,11 +185,22 @@ describe('匯出 → 匯入 round-trip', () => {
 
     const msgs = await dbAll('messages');
     expect(msgs.map(m => m.id)).toEqual(['m1']);           // 還原到備份快照
-    expect(msgs[0].image).toBe('data:image/png;base64,AAA'); // 合法內嵌圖保留
+    expect(msgs[0].image).toBe(PNG_DATA); // 合法內嵌圖保留
     expect((await dbAll('characters'))[0].name).toBe('小奧');
     expect((await dbAll('worlds'))[0].name).toBe('世界');
     expect(await getSetting('theme')).toBe('cream');
     expect(await getSetting('api_key')).toBe('sk-demo-key'); // 本機 key 沿用
+  });
+
+  it('目前教學沙盒的完整資料形狀可通過 P127 schema 並整包還原', async () => {
+    await seedDemoIfEmpty();
+    const backup = await exportAllData();
+
+    await expect(importAllData(backup)).resolves.toBeUndefined();
+    expect((await dbAll('characters')).map(c => c.name)).toContain('夜雨');
+    expect(await dbAll('messages')).not.toHaveLength(0);
+    expect(await dbAll('moments')).not.toHaveLength(0);
+    expect(await getSetting('me_settings')).toMatchObject({ name: '小晴' });
   });
 });
 
@@ -197,15 +210,15 @@ describe('importCharacterData — 單角色匯入', () => {
       aurisCharExportVersion: 1,
       character: { id: 'c_src', name: '分享角色' },
       messages: [
-        { id: 'm1', charId: 'c_src', content: '安全圖', image: 'data:image/png;base64,BBB' },
-        { id: 'm2', charId: 'c_src', content: '追蹤圖', image: 'https://evil.example/pixel' },
+        { id: 'm1', charId: 'c_src', role: 'assistant', content: '安全圖', image: PNG_DATA },
+        { id: 'm2', charId: 'c_src', role: 'user', content: '追蹤圖', image: 'https://evil.example/pixel' },
       ],
     });
 
     const msgs = (await dbAll('messages')).sort((a, b) => a.content.localeCompare(b.content));
     expect(msgs).toHaveLength(2);
     for (const m of msgs) expect(m.charId).toBe(newId);
-    expect(msgs.find(m => m.content === '安全圖').image).toBe('data:image/png;base64,BBB');
+    expect(msgs.find(m => m.content === '安全圖').image).toBe(PNG_DATA);
     expect(msgs.find(m => m.content === '追蹤圖').image).toBeUndefined();
   });
 });

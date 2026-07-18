@@ -85,6 +85,7 @@
 import { ref } from 'vue';
 import { globalStore } from '../store/index.js';
 import { dbDel, dbIdx, exportCharacterData, importCharacterData } from '../services/db.js';
+import { readImportJsonFile } from '../services/importValidation.js';
 
 const showDeleteConfirm = ref(false);
 const deleteTarget = ref(null);
@@ -161,8 +162,7 @@ async function importChar(e) {
   if (!file) return;
   try {
     window.toast_('正在匯入角色…');
-    const text = await file.text();
-    const json = JSON.parse(text);
+    const json = await readImportJsonFile(file, 'character');
     await importCharacterData(json);
     await globalStore.loadCharacters();
     window.toast_('角色匯入成功！名稱後已加「（匯入）」以便區分');
