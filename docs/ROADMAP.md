@@ -1,13 +1,15 @@
 # Auris Roadmap
 
-> 最後整理：2026-07-18（P127）
+> 最後整理：2026-07-18（P128）
 > 本檔只放尚未完成、待驗證或暫緩項目；已上線內容見 `product_feature_list.md`，逐版成果見 `Auris 完整開發進度總覽.md`。
 
 ## 目前優先：安全與維運基線
 
 1. ~~main required status checks 與 PR 發布流程~~（2026-07-18 完成：發布改為 dev→main PR；main 設「必須經 PR」＋required check `test-build`＋`enforce_admins=true`，直推與 fast-forward 均被封；dev 禁止 force push／刪除；guard-main-push hook 擴充攔截 PR merge 指令——含變數 PR 編號與 gh 全域參數繞過形式，並補 hook 測試）。
 
-後續工程防禦縱深（未排程）：Actions dependencies 改 commit SHA 固定、Dependabot、CodeQL／SAST、lint／typecheck／coverage gate、正式 E2E 測試套件。
+2. ~~Actions 依賴 SHA 固定、Dependabot、CodeQL~~（2026-07-18 完成：ci.yml／deploy.yml 全數釘 commit SHA；`.github/dependabot.yml` npm＋github-actions 每週更新開 PR 到 dev；Dependabot alerts 與 CodeQL default setup 由 API 啟用並驗證）。
+
+後續工程防禦縱深（未排程）：lint／typecheck／coverage gate、正式 E2E 測試套件。
 
 具體證據與驗收條件見 `Auris 專案健檢與資安審查報告 2026-07-15.md`。
 

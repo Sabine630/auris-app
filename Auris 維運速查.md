@@ -52,7 +52,8 @@
 
 - [x] **main required status checks**：✅ 2026-07-18 完成——發版已改為 dev→main PR 流程（見 `/release` skill）；main 設「必須經 PR」（required_pull_request_reviews，0 位 reviewer，作用是封掉直推）＋required status check `test-build`＋`enforce_admins` 開啟（管理者不可繞過，含 fast-forward 直推）；dev 亦已禁止 force push／刪除。查核方式：GitHub → Settings → Branches 看 main／dev 規則，或要求 Claude 用 API 印出 `branches/main/protection` 現值。
     - 逃生口：若防線設定本身出問題（例如 CI 壞掉導致無法合併），可暫時到 Settings → Branches 關掉 `enforce_admins` 或 required checks，修好後**必須**開回來。
-- [ ] **Dependabot alerts**：repo Settings → Security → 啟用。依賴有新 CVE 會主動通知，比 push 才發現更早。
-- [ ] **CodeQL default setup**：Settings → Security → Code scanning。公開 repo 免費，每次 push 自動跑 JS 靜態掃描。
+- [x] **Dependabot alerts**：✅ 2026-07-18 由 API 啟用（`GET /repos/…/vulnerability-alerts` 回 204＝開啟）。另有 `.github/dependabot.yml`：npm（auris-vue）與 github-actions 每週檢查更新，PR 一律開到 dev、走 CI 驗證（ci.yml 的 `pull_request` 監聽含 dev）。「security updates」（CVE 自動修復 PR）**刻意不開**——它只會對 default branch（main）開 PR、與 dev→main 發布流程相衝；CVE 靠 alerts＋CI 的 `npm audit` 把關、手動走 dev 修。查核：Settings → Security，或 repo 的 Dependabot alerts 頁。
+- [x] **CodeQL default setup**：✅ 2026-07-18 由 API 啟用（`state: configured`）。掃 default branch（main）與開往 main 的 PR——發布走 PR 流程後，每次發正式版前都會被掃到。查核：Security → Code scanning alerts。
+- [x] **Actions 釘 commit SHA**：✅ 2026-07-18——ci.yml／deploy.yml 的第三方 action 全數改釘 commit SHA（防 tag 被改指的供應鏈攻擊），註解保留版號，Dependabot 自動滾動更新。
 
-開完可把這節勾掉或刪除。
+三項皆完成；此節保留作為「已開防線與查核方式」備忘。尚未做：lint／coverage gate、正式 E2E 測試套件（見 ROADMAP）。

@@ -30,7 +30,7 @@ vi.mock('../chatEngine.js', () => ({
   timeAnchorLine: () => '7/17（星期五）下午 17:56',
 }));
 
-import { diaryLanguageRule, generateDiary } from '../contentEngine.js';
+import { diaryLanguageRule, extractPostTags, generateDiary } from '../contentEngine.js';
 
 beforeEach(() => {
   state.settings = {
@@ -94,5 +94,34 @@ describe('generateDiary 語言接線', () => {
 
     expect(systemPrompt).toContain('補充角色設定：習慣自然地中英夾雜。');
     expect(systemPrompt).toContain('只有角色設定明確要求多語混用');
+  });
+});
+
+describe('extractPostTags（P128 ReDoS 修復）', () => {
+  // 注意：\w 只含 ASCII——中文 hashtag 從舊版起就不會被抽出或刪除，此為既有行為
+  it('抽出 hashtag 並移除結尾 tag 行（含其間空行）', () => {
+    expect(extractPostTags('今天的天空很好看。\n#daily \n\n#rain')).toEqual({
+      content: '今天的天空很好看。',
+      tags: ['daily', 'rain'],
+    });
+  });
+
+  it('內文中間的 tag 行會被抽 tag 但不刪內容；同一行多 tag 只抽行首那個、行保留（沿用舊行為）', () => {
+    expect(extractPostTags('#head\n中間內容\n#tag1 #tag2')).toEqual({
+      content: '#head\n中間內容\n#tag1 #tag2',
+      tags: ['head', 'tag1'],
+    });
+  });
+
+  it('沒有 tag／只有中文 hashtag 時內容原樣返回', () => {
+    expect(extractPostTags('純內容，沒有標籤。')).toEqual({ content: '純內容，沒有標籤。', tags: [] });
+    expect(extractPostTags('內容\n#日常')).toEqual({ content: '內容\n#日常', tags: [] });
+  });
+
+  it('惡意構造的長輸入必須在毫秒級完成（舊 regex 在此輸入上會歧義性回溯卡死）', () => {
+    const evil = '內文\n' + '#a'.padEnd(3, 'a') + ' \n'.repeat(2) + '#b \n' + ' '.repeat(50000) + '#c' + '!'.repeat(10);
+    const start = performance.now();
+    extractPostTags(evil);
+    expect(performance.now() - start).toBeLessThan(200);
   });
 });

@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-18（P127）
+> 最後更新：2026-07-18（P128）
 
 ---
 
@@ -513,6 +513,12 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P128（2026-07-18）CodeQL 首掃修復——貼文 hashtag ReDoS 與 CI 權限收斂
+
+- `contentEngine.js` 貼文 hashtag 收尾邏輯抽成 `extractPostTags()`：捨棄跨行 regex `/(?:\n\s*#\w+\s*)+$/`（重複群組內外 `\s*` 歧義性回溯，CodeQL js/redos high），改逐行從尾端往前收；行為與舊版一致，新增 4 個測試（含惡意長輸入毫秒級完成防回歸）。
+- ci.yml 補 `permissions: contents: read`（CodeQL actions/missing-workflow-permissions medium）。
+- 同批（無版號 chore）：Actions 全數釘 commit SHA、`.github/dependabot.yml`（npm＋github-actions 週更開 PR 到 dev）、Dependabot alerts 與 CodeQL default setup 由 API 啟用。
 
 ### P127（2026-07-18）匯入圖片、JSON 資源與備份 Schema 安全強化
 
