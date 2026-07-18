@@ -20,10 +20,11 @@
         <div class="rel-type">{{ relationLabel }}</div>
       </div>
 
-      <!-- 在一起天數（最醒目） -->
+      <!-- 在一起天數（最醒目）；里程碑當天加 🎉 badge（P129） -->
       <div v-if="char.togetherDate" class="rel-together">
         <div class="rel-together-num">{{ togetherDays }}</div>
         <div class="rel-together-label">天</div>
+        <div v-if="milestone?.isToday" class="rel-together-badge">🎉 {{ milestone.days }} 天里程碑</div>
         <div class="rel-together-sub">在一起・從 {{ char.togetherDate }} 起</div>
       </div>
 
@@ -87,7 +88,8 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, getSetting } from '../services/db.js';
-import { localDateKey } from '../services/date.js';
+import { calendarDaysSince, localDateKey } from '../services/date.js';
+import { getMilestoneInfo } from '../services/milestones.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -118,14 +120,16 @@ onMounted(async () => {
 
 const me = ref({});
 
+// P129 起改用 date.js 的 calendarDaysSince（本地日曆日）：舊版 new Date('YYYY-MM-DD')
+// 相減是 UTC 午夜基準，凌晨 0–8 點天數會少 1，與里程碑判定差一天
 function daysSince(dateStr) {
-  if (!dateStr) return 0;
-  const diff = Date.now() - new Date(dateStr).getTime();
-  return Math.max(0, Math.floor(diff / 86400000));
+  const d = calendarDaysSince(dateStr);
+  return d === null ? 0 : Math.max(0, d);
 }
 
 const togetherDays = computed(() => daysSince(char.value?.togetherDate));
 const meetDays = computed(() => daysSince(char.value?.meetDate));
+const milestone = computed(() => getMilestoneInfo(char.value?.togetherDate));
 
 const relationLabel = computed(() => {
   const map = { lover: '戀人', childhood: '青梅竹馬', friend: '好友', online: '網友', colleague: '同事', stranger: '陌生人' };
@@ -162,6 +166,13 @@ const upcoming = computed(() => {
   if (c.togetherDate) {
     const d = daysUntilAnnual(c.togetherDate.slice(5));
     if (d !== null && d <= 90) items.push({ icon: '❤️', label: '在一起紀念日', date: c.togetherDate.slice(5), daysLeft: d });
+    // 下一個天數里程碑（P129）：90 天內開始倒數；當天顯示在 hero badge，不在此重複
+    const mi = getMilestoneInfo(c.togetherDate);
+    if (mi?.next && mi.next.daysLeft <= 90) {
+      const t = new Date();
+      const targetDate = new Date(t.getFullYear(), t.getMonth(), t.getDate() + mi.next.daysLeft);
+      items.push({ icon: '🎉', label: `在一起 ${mi.next.target} 天`, date: localDateKey(targetDate).slice(5), daysLeft: mi.next.daysLeft });
+    }
   }
   if (c.meetDate) {
     const d = daysUntilAnnual(c.meetDate.slice(5));
@@ -218,6 +229,16 @@ const upcoming = computed(() => {
 }
 .rel-together-num { font-size: 56px; font-weight: 700; line-height: 1; letter-spacing: -.02em; }
 .rel-together-label { font-size: 18px; font-weight: 400; opacity: .85; margin-top: 4px; }
+.rel-together-badge {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .22);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: .02em;
+}
 .rel-together-sub { font-size: 12px; opacity: .7; margin-top: 8px; font-weight: 300; letter-spacing: .03em; }
 
 .rel-grid {

@@ -6,7 +6,8 @@ import { splitReply, applyNameMacros } from './format.js';
 import { estimateTokens } from './tokens.js';
 import { getWeatherCtx } from './weather.js';
 import { getTodayMood, moodContext } from './mood.js';
-import { localDateKey } from './date.js';
+import { calendarDaysSince, localDateKey } from './date.js';
+import { getMilestoneInfo } from './milestones.js';
 
 // 長期記憶注入的 token 上限：記憶越多越稀釋、越燒錢，超量時依相關性截斷（保留最相關的）。
 const MEM_TOKEN_BUDGET = 1500;
@@ -122,9 +123,13 @@ function getPersonalDateCtx(char, me) {
   if (mmdd(me && me.birthday) === today) parts.push('今天是「對方」的生日🎂，請特別祝福、表達心意');
   if (mmdd(char.meetDate) === today) parts.push('今天是你們的相識紀念日🌸');
   if (mmdd(char.togetherDate) === today) {
-    const start = new Date(char.togetherDate);
-    const days = Math.floor((n - start) / 86400000);
+    const days = calendarDaysSince(char.togetherDate, n);
     parts.push('今天是你們在一起的紀念日❤️（第 ' + days + ' 天）');
+  }
+  // 天數里程碑（P129）：與年度紀念日兩軌互補；天數計算與關係頁共用 milestones.js
+  const mi = getMilestoneInfo(char.togetherDate, n);
+  if (mi?.isToday) {
+    parts.push('今天是你們在一起的第 ' + mi.days + ' 天🎉，是重要的里程碑，請在對話中自然地提起並一起慶祝，不要像在念公告');
   }
 
   return parts.length ? ('\n【紀念日】' + parts.join('；')) : '';

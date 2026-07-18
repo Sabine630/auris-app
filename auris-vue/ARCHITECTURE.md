@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-18（P128）
+> 最後更新：2026-07-19（P129）
 
 ---
 
@@ -189,6 +189,9 @@ API 請求的底層工具（供 `llm.js` 引用）。
 
 ### `services/tokens.js`（P88）
 `estimateTokens(text)`：token 粗估（CJK≈0.6、英數≈0.25 tok/字）。前端無各家真實 tokenizer，採保守啟發式（寧可高估），供記憶用量顯示與注入預算控管（如 `MEM_TOKEN_BUDGET`）。
+
+### `services/milestones.js`（P129）
+關係里程碑：`MILESTONE_DAYS = [100, 200, 300, 520, 1000]`（A1 定案，只慶「在一起」，週年由年度紀念日機制涵蓋）。`getMilestoneInfo(togetherDate, now)` 回 `{ days, isToday, next: { target, daysLeft } | null }`；無效或未來日期回 `null`。天數基準＝`date.js` 的 `calendarDaysSince()`（本地日曆日、交往日當天為第 0 天）——RelationView 與 chatEngine 的 `getPersonalDateCtx` **必須共用此模組**，不得各算一套（舊版 `new Date('YYYY-MM-DD')` 相減是 UTC 午夜基準，凌晨會差一天，P129 已修）。
 
 ### `services/cycle.js`（P59）
 生理期週期計算，全本地、不上傳。
@@ -513,6 +516,11 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P129（2026-07-19）關係里程碑慶祝
+
+- 新增 `services/milestones.js`（`MILESTONE_DAYS`／`getMilestoneInfo`）與 `date.js` 的 `calendarDaysSince()`；RelationView（hero 🎉 badge＋「即將到來」倒數，90 天窗口）與 chatEngine（紀念日注入加里程碑條目）共用同一天數計算。
+- 修掉舊 `new Date('YYYY-MM-DD')` 相減的 UTC 隱患（UTC+8 凌晨天數少 1）。零 schema 變更；`milestones.test.js` 9 項邊界測試。
 
 ### P128（2026-07-18）CodeQL 首掃修復——貼文 hashtag ReDoS 與 CI 權限收斂
 
