@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P126 更新公告</div>
+      <div class="ann-badge">P127 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
@@ -40,7 +40,7 @@
                 </div>
                 <div class="ann-item">
                   <div class="ann-item-title">備份還原更安全 🛟</div>
-                  <div class="ann-item-desc">匯入若中途失敗，原有資料會完整保留；API key、provider 與模型設定不會寫進備份檔，也不會被別人的備份改掉。換裝置時仍需重新輸入 API key。</div>
+                  <div class="ann-item-desc">匯入前會檢查檔案大小、資料筆數、文字長度、圖片格式與備份欄位，異常檔案會直接拒絕、不會開始寫入；API key 也不會寫進備份檔或被匯入覆蓋。</div>
                 </div>
                 <div class="ann-item">
                   <div class="ann-item-title">診斷資訊更重視隱私 🔒</div>
@@ -82,7 +82,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P126</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P127</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
