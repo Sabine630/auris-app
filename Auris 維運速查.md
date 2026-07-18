@@ -50,7 +50,7 @@
 
 ## 四、待辦：GitHub 網頁上要手動確認的項目
 
-- [x] **main required status checks**：✅ 2026-07-18 完成——發版已改為 dev→main PR 流程（見 `/release` skill）；main 設 required status check `test-build`＋`enforce_admins` 開啟（管理者不可繞過）；dev 亦已禁止 force push／刪除。查核方式：GitHub → Settings → Branches 看 main／dev 規則，或要求 Claude 用 API 印出 `branches/main/protection` 現值。
+- [x] **main required status checks**：✅ 2026-07-18 完成——發版已改為 dev→main PR 流程（見 `/release` skill）；main 設「必須經 PR」（required_pull_request_reviews，0 位 reviewer，作用是封掉直推）＋required status check `test-build`＋`enforce_admins` 開啟（管理者不可繞過，含 fast-forward 直推）；dev 亦已禁止 force push／刪除。查核方式：GitHub → Settings → Branches 看 main／dev 規則，或要求 Claude 用 API 印出 `branches/main/protection` 現值。
     - 逃生口：若防線設定本身出問題（例如 CI 壞掉導致無法合併），可暫時到 Settings → Branches 關掉 `enforce_admins` 或 required checks，修好後**必須**開回來。
 - [ ] **Dependabot alerts**：repo Settings → Security → 啟用。依賴有新 CVE 會主動通知，比 push 才發現更早。
 - [ ] **CodeQL default setup**：Settings → Security → Code scanning。公開 repo 免費，每次 push 自動跑 JS 靜態掃描。

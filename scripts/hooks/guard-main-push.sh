@@ -12,8 +12,12 @@ ask_confirm() {
 EOF
 }
 
-# PR 合併：GitHub REST（PUT …/pulls/{n}/merge）或 gh pr merge
-if printf '%s' "$cmd" | grep -qE 'pulls/[0-9]+/merge|gh[[:space:]]+pr[[:space:]]+merge'; then
+# PR 合併：GitHub REST（PUT …/pulls/{n}/merge）或 gh pr merge。
+# PR 編號可能是變數（pulls/$PR_NUMBER/merge），gh 的 pr merge 前可能插全域參數
+# （gh -R owner/repo pr merge），兩種形式復查實測都曾繞過舊 pattern，一律要攔；
+# [^;&|] 防止跨越指令邊界誤串，其餘誤判方向偏保守（多問一次無害）。
+if printf '%s' "$cmd" | grep -qE 'pulls/[^/[:space:]]+/merge' \
+  || printf '%s' "$cmd" | grep -qE '(^|[;&|[:space:](])gh[[:space:]]([^;&|]*[[:space:]])?pr[[:space:]]+merge([[:space:]]|$|;|&|\|)'; then
   ask_confirm
   exit 0
 fi

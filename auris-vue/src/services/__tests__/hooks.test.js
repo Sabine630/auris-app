@@ -73,6 +73,26 @@ describe('guard-main-push', () => {
     expect(runHook('guard-main-push.sh', 'npm run build', devRepo)).toBe('');
     expect(runHook('guard-main-push.sh', 'echo git pushover', devRepo)).toBe('');
   });
+
+  // PR 流程（2026-07-18 起）：合併 dev→main PR＝發正式版，merge 指令同樣要攔
+  it('GitHub merge API：數字與變數 PR 編號 → 都要求確認（變數形式為復查繞過案例）', () => {
+    expect(runHook('guard-main-push.sh', 'curl -X PUT https://api.github.com/repos/Sabine630/auris-app/pulls/1/merge', devRepo)).toContain('"permissionDecision":"ask"');
+    expect(runHook('guard-main-push.sh', 'curl -X PUT https://api.github.com/repos/Sabine630/auris-app/pulls/$PR_NUMBER/merge', devRepo)).toContain('"permissionDecision":"ask"');
+    expect(runHook('guard-main-push.sh', 'curl -X PUT "https://api.github.com/repos/Sabine630/auris-app/pulls/${N}/merge"', devRepo)).toContain('"permissionDecision":"ask"');
+  });
+
+  it('gh pr merge：含 -R／--repo 全域參數 → 都要求確認（全域參數形式為復查繞過案例）', () => {
+    expect(runHook('guard-main-push.sh', 'gh pr merge 1 --merge', devRepo)).toContain('"permissionDecision":"ask"');
+    expect(runHook('guard-main-push.sh', 'gh -R Sabine630/auris-app pr merge 1', devRepo)).toContain('"permissionDecision":"ask"');
+    expect(runHook('guard-main-push.sh', 'gh --repo Sabine630/auris-app pr merge 1 --merge', devRepo)).toContain('"permissionDecision":"ask"');
+  });
+
+  it('gh 唯讀指令／查看 PR 的 API → 放行', () => {
+    expect(runHook('guard-main-push.sh', 'gh pr view 1', devRepo)).toBe('');
+    expect(runHook('guard-main-push.sh', 'gh pr list', devRepo)).toBe('');
+    expect(runHook('guard-main-push.sh', 'gh run list --branch dev -L 3', devRepo)).toBe('');
+    expect(runHook('guard-main-push.sh', 'curl https://api.github.com/repos/Sabine630/auris-app/pulls/1', devRepo)).toBe('');
+  });
 });
 
 describe('check-version-bump', () => {

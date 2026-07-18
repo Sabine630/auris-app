@@ -5,7 +5,7 @@
 
 ## 目前優先：安全與維運基線
 
-1. ~~main required status checks 與 PR 發布流程~~（2026-07-18 完成：發布改為 dev→main PR；main 設 required check `test-build`＋`enforce_admins=true`；dev 禁止 force push／刪除；guard-main-push hook 擴充攔截 PR merge 指令）。
+1. ~~main required status checks 與 PR 發布流程~~（2026-07-18 完成：發布改為 dev→main PR；main 設「必須經 PR」＋required check `test-build`＋`enforce_admins=true`，直推與 fast-forward 均被封；dev 禁止 force push／刪除；guard-main-push hook 擴充攔截 PR merge 指令——含變數 PR 編號與 gh 全域參數繞過形式，並補 hook 測試）。
 
 後續工程防禦縱深（未排程）：Actions dependencies 改 commit SHA 固定、Dependabot、CodeQL／SAST、lint／typecheck／coverage gate、正式 E2E 測試套件。
 
