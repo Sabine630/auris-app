@@ -11,7 +11,7 @@
       </div>
       <div class="chat-hd-info">
         <div class="chat-hd-name" id="chat-name">{{ cName }}</div>
-        <div class="chat-hd-status" id="chat-status">在線</div>
+        <div class="chat-hd-status" id="chat-status">{{ sleepActive ? '睡前模式 🌙' : '在線' }}</div>
       </div>
       <div class="chat-hd-mem" @click="openMemDrawer" :title="enabledMemCount ? `${enabledMemCount} 筆記憶已開啟` : '記憶抽屜'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -153,6 +153,9 @@
       </button>
     </div>
 
+    <!-- 睡前模式 dim 遮罩（P130）：低刺激濾光，pointer-events:none 不擋任何操作 -->
+    <div class="sleep-dim" v-if="sleepActive"></div>
+
     <!-- Options Menu -->
     <div class="menu-overlay" v-if="showMenu" @click="showMenu = false"></div>
     <div class="bottom-menu" :style="{ display: showMenu ? 'block' : 'none' }">
@@ -187,6 +190,12 @@
             <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
           </svg>
           <span>我們的願望・備忘</span>
+        </div>
+        <div class="menu-item" @click="toggleSleepMode">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/><path d="M19 3l.4 1.2L20.6 4.6l-1.2.4L19 6.2l-.4-1.2-1.2-.4 1.2-.4z"/>
+          </svg>
+          <span>{{ sleepActive ? '結束睡前模式' : '睡前模式' }}</span>
         </div>
         <div class="menu-item" @click="openDataMenu">
           <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
@@ -468,7 +477,7 @@ import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting, stripUnsafeImage } from '../services/db.js';
 import { readImportJsonFile, validateChatImport } from '../services/importValidation.js';
-import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive, BOND_CAP } from '../services/chatEngine.js';
+import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, generateSleepClosingStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive, isGoodnightText, BOND_CAP } from '../services/chatEngine.js';
 import { formatContent, splitReply } from '../services/format.js';
 import { estimateTokens } from '../services/tokens.js';
 import { addKeepsake } from '../services/keepsakes.js';
@@ -606,6 +615,7 @@ async function doTouchAction(action) {
     window.toast_('錯誤：' + err.message);
   } finally {
     isTyping.value = false;
+    if (sleepActive.value) armSleepTimer(); // 睡前模式：輕觸也算有動靜，重置閒置收尾計時
     if (pendingProactiveReload) reloadAfterProactive();
     scheduleProactive();
   }
@@ -685,6 +695,71 @@ const enabledTokenEstimate = computed(() =>
   chatMems.value.filter(m => m.enabled).reduce((acc, m) => acc + estimateTokens(m.content), 0)
 );
 
+// ── 睡前模式（P130 E2）───────────────────────────────────────────────────
+// 聊天室模式開關：進行中介面 dim、prompt 注入睡前指示（chatEngine 依 c.sleepModeAt 判斷）。
+// 說晚安（回覆完）或閒置 15 分鐘（自動收尾一句晚安）→ 記 sleepEndedAt flag、結束模式，
+// 隔天首次互動由 chatEngine 注入「昨晚睡前」呼應。手動關閉＝取消，不記 flag。
+const sleepActive = ref(false);
+let sleepTimer = null;
+const SLEEP_IDLE_MS = 15 * 60 * 1000;
+
+async function patchCharSleep(patch) {
+  const fresh = await dbGet('characters', charId);
+  if (!fresh) return;
+  Object.assign(fresh, patch);
+  await dbPut('characters', fresh);
+  character.value = fresh;
+}
+
+async function toggleSleepMode() {
+  showMenu.value = false;
+  if (sleepActive.value) {
+    clearTimeout(sleepTimer);
+    sleepActive.value = false;
+    await patchCharSleep({ sleepModeAt: null });
+    window.toast_('已結束睡前模式');
+  } else {
+    sleepActive.value = true;
+    await patchCharSleep({ sleepModeAt: Date.now(), sleepEndedAt: null });
+    armSleepTimer();
+    window.toast_('已進入睡前模式 🌙');
+  }
+}
+
+function armSleepTimer() {
+  clearTimeout(sleepTimer);
+  sleepTimer = setTimeout(fireSleepClosing, SLEEP_IDLE_MS);
+}
+
+// 閒置到點：角色輕聲道晚安收尾（生成期間 sleepModeAt 仍在，收尾語氣才有睡前情境），
+// 完成後才記 flag 結束模式。生成中則 30 秒後重試（等當輪回覆結束重新計時反而更晚收尾）。
+async function fireSleepClosing() {
+  if (!sleepActive.value) return;
+  if (isTyping.value || isProactiveGenerating.value) {
+    sleepTimer = setTimeout(fireSleepClosing, 30000);
+    return;
+  }
+  isTyping.value = true;
+  try {
+    const rawMsgs = messages.value.filter(m => m.type !== 'hv');
+    await streamSegmentedReply((handlers) => generateSleepClosingStream(charId, rawMsgs, handlers));
+  } catch (err) {
+    console.error('Sleep closing error:', err);
+  } finally {
+    isTyping.value = false;
+    sleepActive.value = false;
+    await patchCharSleep({ sleepModeAt: null, sleepEndedAt: Date.now() });
+    if (pendingProactiveReload) reloadAfterProactive();
+  }
+}
+
+// 說晚安收尾：AI 回完（未被拒絕）才落 flag，避免模式提早結束讓收尾回覆失去睡前語氣。
+async function endSleepAfterGoodnight() {
+  clearTimeout(sleepTimer);
+  sleepActive.value = false;
+  await patchCharSleep({ sleepModeAt: null, sleepEndedAt: Date.now() });
+}
+
 // ── Proactive Timer State (P49) ──
 let proactiveTimer = null;
 let proactiveController = null;
@@ -716,6 +791,20 @@ onMounted(async () => {
 
   await loadMessages();
   await loadChatMems();
+
+  // 睡前模式續上（P130）：上次模式開著就離開／關 app——閒置未滿 15 分鐘視為還在睡前時光，
+  // 恢復模式與計時；已超過則視為當晚已睡著，靜默收尾記 flag（不補生成訊息——事後才冒出一句
+  // 「晚安」時間戳會是現在，隔天中午看到很出戲；呼應的溫度交給隔天首次互動）。
+  if (c.sleepModeAt) {
+    const lastAt = messages.value.length ? messages.value[messages.value.length - 1].createdAt : 0;
+    const idleSince = Math.max(c.sleepModeAt, lastAt);
+    if (Date.now() - idleSince > SLEEP_IDLE_MS) {
+      await patchCharSleep({ sleepModeAt: null, sleepEndedAt: idleSince });
+    } else {
+      sleepActive.value = true;
+      armSleepTimer();
+    }
+  }
   // 由通知帶 ?msg=訊息id 進來 → 捲到該則並高亮（無則維持 loadMessages 的捲到底）
   if (route.query.msg) scrollToMessage(route.query.msg);
   scheduleProactive();
@@ -737,6 +826,7 @@ onMounted(async () => {
 onUnmounted(() => {
   stopKeyboardViewport?.();
   clearTimeout(proactiveTimer);
+  clearTimeout(sleepTimer); // sleepModeAt 留在角色欄位，下次進房恢復或靜默收尾
   clearTimeout(busyTimer); // pending key 留在 settings，由下次進房或 App.vue 背景派發接手
   proactiveController?.abort();
   window.removeEventListener('new-heart-voice', onHeartVoice);
@@ -1247,8 +1337,11 @@ async function sendMsg() {
   autoResize();
   scrollToBottom();
 
-  // 已讀不回擲骰（P96）：帶圖／編輯重傳／已有 pending 時不觸發，維持既有即回體驗
-  if (!imgToSend && !wasEditing && !hadBusyPending && shouldBusyRead(character.value)) {
+  // 睡前模式中使用者有動靜 → 重置閒置收尾計時
+  if (sleepActive.value) armSleepTimer();
+
+  // 已讀不回擲骰（P96）：帶圖／編輯重傳／已有 pending／睡前模式（陪睡不該人間蒸發）不觸發
+  if (!imgToSend && !wasEditing && !hadBusyPending && !sleepActive.value && shouldBusyRead(character.value)) {
     await queueBusyReply(userMsg);
     return;
   }
@@ -1273,6 +1366,12 @@ async function sendMsg() {
       window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
     } else if (truncated) {
       window.toast_('⚠ 回覆可能被截斷，可長按訊息「重新生成回覆」');
+    }
+    // 睡前模式：這則是道晚安且角色已回完收尾 → 記 flag 結束模式（隔天呼應接手）
+    if (sleepActive.value && !refused && msgs.length && isGoodnightText(content)) {
+      await endSleepAfterGoodnight();
+    } else if (sleepActive.value) {
+      armSleepTimer(); // 回覆完才起算 15 分鐘閒置
     }
   } catch (err) {
     console.error('Chat error:', err);
@@ -1742,6 +1841,21 @@ async function retryAfterRefusal() {
   padding: 12px 0 4px;
   letter-spacing: .04em;
 }
+
+/* ── 睡前模式 dim 遮罩（P130）── */
+/* 低刺激濾光：整頁罩一層暗色＋暖色調降藍光，pointer-events:none 完全不擋操作；
+   z-index 低於 .menu-overlay(999)，選單／抽屜彈出時仍維持正常亮度可讀 */
+.sleep-dim {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 500;
+  background:
+    radial-gradient(ellipse 120% 90% at 50% 20%, rgba(24, 18, 48, .22), rgba(10, 7, 26, .5) 90%),
+    rgba(64, 40, 8, .1);
+  animation: sleepDimIn .8s ease;
+}
+@keyframes sleepDimIn { from { opacity: 0 } to { opacity: 1 } }
 
 /* ── 輕觸互動（P96）── */
 /* 頭像要接長按手勢：擋掉 iOS 長按 <img> 的原生圖片預覽（touch-callout）與選取/拖曳，

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { dayPeriod, timeAnchorLine, shouldBusyRead } from '../chatEngine.js';
+import { dayPeriod, timeAnchorLine, shouldBusyRead, isGoodnightText, sleepRecallState, SLEEP_RECALL_MIN_MS, SLEEP_RECALL_MAX_MS } from '../chatEngine.js';
 
 describe('dayPeriod — 時段分界', () => {
   it('4→深夜、5→清晨（清晨下界）', () => {
@@ -132,5 +132,59 @@ describe('mergeBonds — 新梗合併', () => {
 
   it('existing 非陣列（舊資料無此欄位）視同空陣列', () => {
     expect(mergeBonds(undefined, ['梗'])).toHaveLength(1);
+  });
+});
+
+describe('isGoodnightText — 晚安收尾語偵測（P130 睡前模式）', () => {
+  it('常見道晚安句型為 true', () => {
+    expect(isGoodnightText('晚安')).toBe(true);
+    expect(isGoodnightText('那我要睡了，明天見')).toBe(true);
+    expect(isGoodnightText('我先去睡囉')).toBe(true);
+    expect(isGoodnightText('該睡了')).toBe(true);
+    expect(isGoodnightText('祝你好夢')).toBe(true);
+    expect(isGoodnightText('good night')).toBe(true);
+  });
+
+  it('失眠求陪聊、問對方睡沒不是道晚安', () => {
+    expect(isGoodnightText('我睡不著')).toBe(false);
+    expect(isGoodnightText('你睡了嗎')).toBe(false);
+    expect(isGoodnightText('今天好累')).toBe(false);
+    expect(isGoodnightText('')).toBe(false);
+    expect(isGoodnightText(null)).toBe(false);
+  });
+});
+
+describe('sleepRecallState — 隔天「昨晚睡前」呼應判定（P130）', () => {
+  const at = (y, mo, d, h, mi = 0) => new Date(y, mo - 1, d, h, mi);
+
+  it('無 flag → 不注入不清除', () => {
+    expect(sleepRecallState(null, at(2026, 7, 19, 9))).toEqual({ inject: false, clear: false });
+    expect(sleepRecallState(undefined, at(2026, 7, 19, 9))).toEqual({ inject: false, clear: false });
+  });
+
+  it('昨晚 23 點收尾、今早 8 點 → 注入並清 flag', () => {
+    const ended = at(2026, 7, 18, 23).getTime();
+    expect(sleepRecallState(ended, at(2026, 7, 19, 8))).toEqual({ inject: true, clear: true });
+  });
+
+  it('23:50 收尾、00:10 又來聊 → 跨日但未滿 3 小時，不注入也不清（flag 留到早上）', () => {
+    const ended = at(2026, 7, 18, 23, 50).getTime();
+    expect(sleepRecallState(ended, at(2026, 7, 19, 0, 10))).toEqual({ inject: false, clear: false });
+  });
+
+  it('同一天內（沒跨日）→ 不注入不清', () => {
+    const ended = at(2026, 7, 19, 1).getTime();
+    expect(sleepRecallState(ended, at(2026, 7, 19, 9))).toEqual({ inject: false, clear: false });
+  });
+
+  it('超過 36 小時 → 過期只清 flag 不呼應', () => {
+    const ended = at(2026, 7, 17, 22).getTime();
+    expect(sleepRecallState(ended, at(2026, 7, 19, 12))).toEqual({ inject: false, clear: true });
+    expect(sleepRecallState(1000, new Date(1000 + SLEEP_RECALL_MAX_MS))).toEqual({ inject: false, clear: true });
+  });
+
+  it('門檻常數健全性：3 小時 / 36 小時', () => {
+    expect(SLEEP_RECALL_MIN_MS).toBe(3 * 3600 * 1000);
+    expect(SLEEP_RECALL_MAX_MS).toBe(36 * 3600 * 1000);
   });
 });

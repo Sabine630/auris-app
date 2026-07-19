@@ -137,6 +137,28 @@ function getPersonalDateCtx(char, me) {
 
 const CLEAN_END_RE = /[。！？！?.…」』）)」”'”]/;
 
+// ── 睡前模式（P130 E2）────────────────────────────────────────────────────
+// 「晚安」類收尾語偵測：睡前模式中使用者道晚安 → 該輪回覆加收尾指令，回完記 flag 結束模式。
+// 刻意排除「睡不著」（睡 後面接 了/囉/覺 才算），避免把失眠求陪聊當成道晚安。
+export const GOODNIGHT_RE = /(晚安|好夢|我(先|要|想|得|該)?去?睡(了|囉|覺)|該睡了|先睡了|要睡著了|good\s*night)/i;
+export function isGoodnightText(text) {
+  return GOODNIGHT_RE.test((text || '').trim());
+}
+
+// 隔天呼應判定（純函式供測試）：睡前收尾 flag（sleepEndedAt 時間戳）是否該注入
+// 「昨晚睡前」呼應、是否該清除。跨日且至少隔 3 小時才算「睡了一晚」（23:50 收尾、
+// 00:10 又來聊不該被問「睡得好嗎」）；超過 36 小時視為過期，只清 flag 不呼應。
+export const SLEEP_RECALL_MIN_MS = 3 * 60 * 60 * 1000;
+export const SLEEP_RECALL_MAX_MS = 36 * 60 * 60 * 1000;
+export function sleepRecallState(sleepEndedAt, now = new Date()) {
+  if (!sleepEndedAt) return { inject: false, clear: false };
+  const age = now.getTime() - sleepEndedAt;
+  if (age >= SLEEP_RECALL_MAX_MS) return { inject: false, clear: true };
+  const crossedDay = localDateKey(new Date(sleepEndedAt)) !== localDateKey(now);
+  if (crossedDay && age >= SLEEP_RECALL_MIN_MS) return { inject: true, clear: true };
+  return { inject: false, clear: false };
+}
+
 // ── 1-on-1 Chat Setup ─────────────────────────────────────────────────────
 async function buildAIChatSetup(charId, allMsgs) {
   const { provider, model, base, apiKey } = await resolveLLMConfig();
@@ -272,6 +294,26 @@ async function buildAIChatSetup(charId, allMsgs) {
     }
   } catch (_) {}
 
+  // 睡前模式（P130 E2）：模式中注入低刺激指示；使用者這則若是道晚安，加收尾指令。
+  // 模式外若留有收尾 flag（sleepEndedAt）且跨了一晚 → 注入「昨晚睡前」呼應並銷 flag（一次性）。
+  // 呼應不限一般回覆——背景主動訊息也走這裡，早上角色主動傳「睡得好嗎」正是想要的效果。
+  let sleepCtx = '';
+  if (c.sleepModeAt) {
+    sleepCtx = '\n【睡前模式】對方已準備入睡，現在是睡前的安靜時光。請放慢節奏、放輕語氣：句子短、溫柔低聲，不開新的刺激話題、不問需要動腦的問題；可以輕聲陪聊、說些安心的話，或在對方想聽時說一小段平靜的睡前故事，陪對方慢慢放鬆。';
+    const lastUser = [...allMsgs].reverse().find(m => m.role === 'user' && m.type !== 'touch');
+    if (lastUser && isGoodnightText(lastUser.content)) {
+      sleepCtx += '\n對方剛道了晚安：這是今晚最後一輪回覆，請溫柔地道晚安收尾（1～2 句），不要再拋出問題或開新話題。';
+    }
+  } else if (c.sleepEndedAt) {
+    const recall = sleepRecallState(c.sleepEndedAt);
+    if (recall.inject) {
+      sleepCtx = '\n【睡前呼應】昨晚你們一起度過了睡前時光，最後對方道了晚安（或安靜睡著了）。這是那之後你們第一次互動，請自然呼應昨晚——例如關心睡得好不好、有沒有做夢，一兩句就好，不要像在執行任務。';
+    }
+    if (recall.clear) {
+      try { await dbPut('characters', { ...c, sleepEndedAt: null }); } catch (_) {}
+    }
+  }
+
   const storyCtx = c.stories?.filter(s => s.content).map(s => `【${s.title}】${s.content}`).join('\n') || '';
 
   // 範例對話（few-shot）：抓住角色「說話聲音」最強的槓桿。放在 system prompt 內當標註過的範例，
@@ -366,7 +408,7 @@ ${lengthGuide}
   // 角色卡欄位（個性/背景故事/關係背景/補充指令/範例對話…）常見 SillyTavern 式 {{user}}/{{char}}
   // 佔位符，組完 prompt 後整段換成真名，模型才不會照抄佔位符進輸出。
   const systemStable = applyNameMacros(systemPrompt, youName, c.name);
-  const systemVolatile = applyNameMacros(`${timeCtx}${weatherCtx}${worldCtx}${memCtx}${moodCtx}${capsuleCtx}${longFormNote}`, youName, c.name);
+  const systemVolatile = applyNameMacros(`${timeCtx}${weatherCtx}${worldCtx}${memCtx}${moodCtx}${capsuleCtx}${sleepCtx}${longFormNote}`, youName, c.name);
 
   return { c, provider, model, base, apiKey, history, systemStable, systemVolatile, dynamicMaxTokens };
 }
@@ -633,6 +675,35 @@ export async function generateBusyReplyStream(charId, allMsgs, { onChunk }) {
   let msgs = [];
   if (fullText.trim()) {
     msgs = await persistReplySegments(charId, fullText, { maxSegments: setup.c.maxMsg || 2 });
+  }
+  return { msgs, truncated };
+}
+
+// ── 1-on-1 睡前模式自動收尾：Streaming（P130 E2）──────────────────────────
+// 睡前模式中對方閒置 15 分鐘（大概睡著了）→ 角色輕聲道晚安收尾。
+// 指令以 user turn 併入（同主動訊息作法），維持 provider 的 role 交替要求。
+export async function generateSleepClosingStream(charId, allMsgs, { onChunk }) {
+  const setup = await buildAIChatSetup(charId, allMsgs);
+
+  const instr = '（這不是對方傳來的訊息，而是給你的系統提示：對方安靜了好一陣子，可能已經睡著或快睡著了。'
+    + '請輕聲說一句道晚安的話收尾，1～2 句，語氣像怕吵醒對方一樣輕，不要問問題、不要期待回覆，'
+    + '也不要把這段提示原文寫進訊息。）';
+  const history = setup.history.slice();
+  const last = history[history.length - 1];
+  if (last && last.role === 'user') {
+    history[history.length - 1] = { ...last, content: last.content + '\n\n' + instr };
+  } else {
+    history.push({ role: 'user', content: instr });
+  }
+
+  const closingTail = '\n\n【睡前收尾】對方可能已經睡著了。輕聲道晚安收尾，1～2 句，不要問問題。' + PROACTIVE_NO_NARRATION;
+  const closingSystem = cacheSystem(setup.systemStable, setup.systemVolatile, closingTail);
+
+  const { fullText, truncated } = await streamWithSystem(setup, closingSystem, history, { onChunk, maxTokens: 600 });
+
+  let msgs = [];
+  if (fullText.trim()) {
+    msgs = await persistReplySegments(charId, fullText, { maxSegments: 2, kind: 'sleepEnd' });
   }
   return { msgs, truncated };
 }

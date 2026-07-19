@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-19（P129）
+> 最後更新：2026-07-19（P130）
 
 ---
 
@@ -77,8 +77,8 @@ graph TD
 
 | 資料表 | keyPath | 索引 | 說明 |
 |--------|---------|------|------|
-| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80、`examples` 範例對話 few-shot P88、`weatherAware` 天氣感開關 P95、`busyRead` 已讀不回開關 P96、`bonds` 專屬默契 P112） |
-| `messages` | `id` | `charId`, `createdAt`, `charId_createdAt`（複合，P98） | 單人聊天訊息（軟欄位：`image` 圖片 base64 P65、`reaction` 表情 P62、`readAt` 已讀時間戳 P96、`type:'touch'`＋`touchAction` 輕觸動作訊息 P96、`kind:'touch'` 輕觸回應 P96）。複合索引 `charId_createdAt`（v7）供背景派發用 cursor 取「某角色最新 N 則」與計數，取代全量 getAll |
+| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80、`examples` 範例對話 few-shot P88、`weatherAware` 天氣感開關 P95、`busyRead` 已讀不回開關 P96、`bonds` 專屬默契 P112、`sleepModeAt`/`sleepEndedAt` 睡前模式 P130） |
+| `messages` | `id` | `charId`, `createdAt`, `charId_createdAt`（複合，P98） | 單人聊天訊息（軟欄位：`image` 圖片 base64 P65、`reaction` 表情 P62、`readAt` 已讀時間戳 P96、`type:'touch'`＋`touchAction` 輕觸動作訊息 P96、`kind:'touch'` 輕觸回應 P96、`kind:'sleepEnd'` 睡前收尾 P130）。複合索引 `charId_createdAt`（v7）供背景派發用 cursor 取「某角色最新 N 則」與計數，取代全量 getAll |
 | `memories` | `id` | `charId` | Heart Voice 心聲記錄 |
 | `moments` | `id` | `charId`, `createdAt` | 貼文（含 likes/comments） |
 | `diary` | `id` | `charId`, `date` | 日記（`date` 格式：YYYY-MM-DD） |
@@ -348,6 +348,7 @@ AI 內容與對話生成邏輯：
   - `generateMissYouMessage`（P74）／`generateDailyQuestion`（P74）— 「我想你」短訊與「每日一問」，非串流，由 `App.vue` `runProactiveDispatch` 觸發
   - `generateTouchResponseStream`（P96）— 輕觸互動回應：動作訊息已入 history，追加「對動作本身反應、1～2 句」指示串流生成，落庫 `kind:'touch'`
   - `generateBusyReplyStream`（P96）／`shouldBusyRead(c)`（P96）／`processDueBusyReply(charId)`（P96）— 已讀不回三件組：補回生成（追加「稍早在忙、已讀沒回，現在補回」指示）；觸發擲骰（基礎 15%、`workTime` 解析出 HH:MM–HH:MM 且命中提至 40%、深夜不觸發）；背景補發（到期的 pending 非串流補生成＋未讀＋通知＋`new-proactive-msg` 廣播）。三者共用新抽出的 `streamWithSystem()` 串流 helper
+  - `generateSleepClosingStream`（P130）／`isGoodnightText`／`sleepRecallState`（P130）— 睡前模式三件組：閒置收尾生成（「對方可能睡著了，輕聲道晚安」指令以 user turn 併入，落庫 `kind:'sleepEnd'`）；晚安偵測（排除「睡不著」）；隔天呼應判定（跨日＋3 小時起注入、36 小時過期，注入即銷 `sleepEndedAt` flag）。模式注入與呼應皆在 `buildAIChatSetup` 易變段（依 `characters.sleepModeAt`/`sleepEndedAt` 軟欄位）
   - **主動訊息共用層**（P79–P81）：`isRecentlyActive(allMsgs)`（最後一則非 hv 距今 < 5 分鐘＝熱聊）、`buildProactiveHistory(history, task, active)`（指令放對話最尾端＋熱聊/冷場分支）、`PROACTIVE_KINDS`／`hasUnrepliedProactive(charId)`（防堆疊閘門）、`proactiveTimeAnchor()`（P81，**不依賴 `timeAware`**，強制注入當下時段，杜絕「早上問午餐」）、`PROACTIVE_NO_NARRATION`（P81，禁止主動訊息寫場景旁白）；5 個主動生成函式皆套用。4 個背景生成器寫入訊息後 `dispatchEvent('new-proactive-msg')`，供開著的 `ChatRoomView` 即時 `loadMessages`（P81）
   - **世界書注入**（P65）：`buildAIChatSetup` 掃描近 10 則訊息，命中詞條名稱／別名才把對應 `worlds` 詞條注入 system prompt（`worldCtx`），不觸發不佔 token
   - **圖片識別**（P65）：`sendUserMessage` 加 `image` 參數、`generateAIResponseStream` 加 `imageBase64`，`buildImgHistory()` 依 provider 轉成 Anthropic／OpenAI／Vertex 各自的圖片 content 格式
@@ -516,6 +517,12 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P130（2026-07-19）睡前模式——低刺激陪伴與隔天呼應
+
+- `characters` 新增軟欄位 `sleepModeAt`（模式進行中時間戳）／`sleepEndedAt`（收尾 flag，供隔天呼應），零 schema 變更。ChatRoomView 選單開關：模式中 `.sleep-dim` 濾光遮罩（`pointer-events:none`、z-index 低於選單）、header 狀態「睡前模式 🌙」、停用已讀不回擲骰。
+- `chatEngine.buildAIChatSetup` 依 `sleepModeAt` 於易變段注入睡前指示；末則使用者訊息命中 `isGoodnightText`（排除「睡不著」）再加收尾指令，回完由 View 記 flag 結束模式。閒置 15 分鐘由房內計時器呼叫新增的 `generateSleepClosingStream`（kind `sleepEnd`、指令以 user turn 併入維持 role 交替）自動道晚安；中途關 app 下次進房恢復或靜默收尾。
+- 隔天呼應：`sleepRecallState(sleepEndedAt)` 純函式判定（跨日＋至少 3 小時才注入、36 小時過期只清）——注入即銷 flag，一次性；主動訊息共用此路徑。`chatEngine.test.js` 新增 13 項測試（250/250）。
 
 ### P129（2026-07-19）關係里程碑慶祝
 
