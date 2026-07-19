@@ -522,7 +522,7 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 
 - `characters` 新增軟欄位 `sleepModeAt`（模式進行中時間戳）／`sleepEndedAt`（收尾 flag，供隔天呼應），零 schema 變更。ChatRoomView 選單開關：模式中 `.sleep-dim` 濾光遮罩（`pointer-events:none`、z-index 低於選單）、header 狀態「睡前模式 🌙」、停用已讀不回擲骰。
 - `chatEngine.buildAIChatSetup` 依 `sleepModeAt` 於易變段注入睡前指示；末則使用者訊息命中 `isGoodnightText`（排除「睡不著」）再加收尾指令，回完由 View 記 flag 結束模式。閒置 15 分鐘由房內計時器呼叫新增的 `generateSleepClosingStream`（kind `sleepEnd`、指令以 user turn 併入維持 role 交替）自動道晚安；中途關 app 下次進房恢復或靜默收尾。
-- 隔天呼應：`sleepRecallState(sleepEndedAt)` 純函式判定（跨日＋至少 3 小時才注入、36 小時過期只清）；flag 由 `consumeSleepRecall` 在訊息**成功落庫後**才銷毀（API 失敗／拒絕／空回應不消耗），所有可見訊息生成器（一般／主動／輕觸／補回＋cycleCare／schedule／missYou／dailyQuestion／capsuleDue）統一接線，避免背景訊息呼應後一般回覆再呼應第二次。進房恢復模式續算剩餘閒置時間（不重算 15 分鐘）。空白回應不消耗 flag（`fullText.trim()`＋`msgs.length` 雙 gate）；demo 的 `demoReply` 攤平 system blocks 陣列再判斷關鍵字（新增 `demoData.test.js`）。`chatEngine.test.js` 新增 8 項測試（全套 256/256）。
+- 隔天呼應：`sleepRecallState(sleepEndedAt)` 純函式判定（跨日＋至少 3 小時才注入、36 小時過期只清）；flag 由 `consumeSleepRecall` 在訊息**成功落庫後**才銷毀（API 失敗／拒絕／空回應不消耗），所有可見訊息生成器（一般／主動／輕觸／補回＋cycleCare／schedule／missYou／dailyQuestion／capsuleDue）統一接線，避免背景訊息呼應後一般回覆再呼應第二次。進房恢復模式續算剩餘閒置時間（不重算 15 分鐘）。空白回應不消耗 flag（`fullText.trim()`＋`msgs.length` 雙 gate）；demo 的 `demoReply` 攤平 system blocks 陣列再判斷關鍵字，且【睡前…】明確標記排最前、總結分支改「對話分析助手」精確匹配（聊天 prompt 的【長期記憶】段含「重要摘要」，寬鬆觸發字會誤攔），新增 `demoData.test.js` 10 項測試。`chatEngine.test.js` 新增 8 項測試（全套 260/260）。
 
 ### P129（2026-07-19）關係里程碑慶祝
 
