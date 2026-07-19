@@ -295,9 +295,12 @@ async function buildAIChatSetup(charId, allMsgs) {
   } catch (_) {}
 
   // 睡前模式（P130 E2）：模式中注入低刺激指示；使用者這則若是道晚安，加收尾指令。
-  // 模式外若留有收尾 flag（sleepEndedAt）且跨了一晚 → 注入「昨晚睡前」呼應並銷 flag（一次性）。
-  // 呼應不限一般回覆——背景主動訊息也走這裡，早上角色主動傳「睡得好嗎」正是想要的效果。
+  // 模式外若留有收尾 flag（sleepEndedAt）且跨了一晚 → 注入「昨晚睡前」呼應。flag 不在這裡銷——
+  // 這時 API 還沒發出，失敗／拒絕／空回應會白白消耗呼應；由各生成函式在回覆落庫後呼叫
+  // consumeSleepRecall 才銷（一次性）。呼應不限一般回覆——背景主動訊息也走這裡，
+  // 早上角色主動傳「睡得好嗎」正是想要的效果。
   let sleepCtx = '';
+  let usedSleepRecall = false;
   if (c.sleepModeAt) {
     sleepCtx = '\n【睡前模式】對方已準備入睡，現在是睡前的安靜時光。請放慢節奏、放輕語氣：句子短、溫柔低聲，不開新的刺激話題、不問需要動腦的問題；可以輕聲陪聊、說些安心的話，或在對方想聽時說一小段平靜的睡前故事，陪對方慢慢放鬆。';
     const lastUser = [...allMsgs].reverse().find(m => m.role === 'user' && m.type !== 'touch');
@@ -308,8 +311,9 @@ async function buildAIChatSetup(charId, allMsgs) {
     const recall = sleepRecallState(c.sleepEndedAt);
     if (recall.inject) {
       sleepCtx = '\n【睡前呼應】昨晚你們一起度過了睡前時光，最後對方道了晚安（或安靜睡著了）。這是那之後你們第一次互動，請自然呼應昨晚——例如關心睡得好不好、有沒有做夢，一兩句就好，不要像在執行任務。';
-    }
-    if (recall.clear) {
+      usedSleepRecall = true;
+    } else if (recall.clear) {
+      // 逾期（>36h）未用：沒有任何回覆依賴它，直接清
       try { await dbPut('characters', { ...c, sleepEndedAt: null }); } catch (_) {}
     }
   }
@@ -410,7 +414,22 @@ ${lengthGuide}
   const systemStable = applyNameMacros(systemPrompt, youName, c.name);
   const systemVolatile = applyNameMacros(`${timeCtx}${weatherCtx}${worldCtx}${memCtx}${moodCtx}${capsuleCtx}${sleepCtx}${longFormNote}`, youName, c.name);
 
-  return { c, provider, model, base, apiKey, history, systemStable, systemVolatile, dynamicMaxTokens };
+  return { c, provider, model, base, apiKey, history, systemStable, systemVolatile, dynamicMaxTokens, usedSleepRecall };
+}
+
+// 隔天呼應 flag 的延後銷毀（P130）：這輪 setup 有注入【睡前呼應】且訊息已成功落庫才呼叫——
+// 所有會產出使用者可見訊息的生成函式（一般回覆、主動、輕觸、補回、五個背景生成器）都要接，
+// 否則背景訊息呼應過一次後，下一輪一般回覆會再呼應第二次。
+// 重讀最新角色資料、只動 sleepEndedAt 欄位——生成期間使用者可能改了角色設定，不能拿舊物件整包蓋回。
+async function consumeSleepRecall(charId, usedSleepRecall) {
+  if (!usedSleepRecall) return;
+  try {
+    const fresh = await dbGet('characters', charId);
+    if (fresh && fresh.sleepEndedAt) {
+      fresh.sleepEndedAt = null;
+      await dbPut('characters', fresh);
+    }
+  } catch (_) {}
 }
 
 // ── 1-on-1 User Message ───────────────────────────────────────────────────
@@ -438,7 +457,7 @@ function isRefusalReply(text) {
 
 // ── 1-on-1 Chat: Streaming ────────────────────────────────────────────────
 export async function generateAIResponseStream(charId, allMsgs, { onChunk }, imageBase64 = null) {
-  const { c, provider, model, base, apiKey, history, systemStable, systemVolatile, dynamicMaxTokens } = await buildAIChatSetup(charId, allMsgs);
+  const { c, provider, model, base, apiKey, history, systemStable, systemVolatile, dynamicMaxTokens, usedSleepRecall } = await buildAIChatSetup(charId, allMsgs);
 
   if (c.delay > 0) await new Promise(r => setTimeout(r, c.delay * 1000));
 
@@ -470,6 +489,7 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
   let msgs = [];
   if (fullText && !refused) {
     msgs = await persistReplySegments(charId, fullText, { maxSegments: c.maxMsg || 2 });
+    await consumeSleepRecall(charId, usedSleepRecall);
     if (c.heartVoice) generateHeartVoice(c, allMsgs, fullText).catch(() => {});
   }
   return { msgs, truncated, refused };
@@ -596,7 +616,7 @@ function cacheSystem(systemStable, systemVolatile, tail = '') {
 }
 
 export async function generateProactiveMessageStream(charId, allMsgs, { onChunk, signal }) {
-  const { c, provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
+  const { c, provider, model, base, apiKey, history, systemStable, systemVolatile, usedSleepRecall } = await buildAIChatSetup(charId, allMsgs);
 
   const active = isRecentlyActive(allMsgs);
   // #12：任務核心抽成單一 const（history 與 inactive system 尾段共用）。
@@ -624,6 +644,7 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
   let msgs = [];
   if (fullText.trim()) {
     msgs = await persistReplySegments(charId, fullText, { maxSegments: c.maxMsg || 2, kind: 'proactive' });
+    await consumeSleepRecall(charId, usedSleepRecall);
     // 聊天室即時主動也計入「上一則主動訊息時間」，讓背景派發的 3h min-gap 不會在你在場時又疊一則
     try { await setSetting('last_proactive_' + charId, Date.now()); } catch (_) {}
   }
@@ -658,6 +679,7 @@ export async function generateTouchResponseStream(charId, allMsgs, { onChunk }, 
   let msgs = [];
   if (fullText.trim()) {
     msgs = await persistReplySegments(charId, fullText, { maxSegments: 2, kind: 'touch' });
+    await consumeSleepRecall(charId, setup.usedSleepRecall);
   }
   return { msgs, truncated };
 }
@@ -675,6 +697,7 @@ export async function generateBusyReplyStream(charId, allMsgs, { onChunk }) {
   let msgs = [];
   if (fullText.trim()) {
     msgs = await persistReplySegments(charId, fullText, { maxSegments: setup.c.maxMsg || 2 });
+    await consumeSleepRecall(charId, setup.usedSleepRecall);
   }
   return { msgs, truncated };
 }
@@ -767,7 +790,7 @@ export async function generateCycleCareMessage(charId, trigger) {
 
   const allMsgs = await dbIdx('messages', 'charId', charId);
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const { provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
+  const { provider, model, base, apiKey, history, systemStable, systemVolatile, usedSleepRecall } = await buildAIChatSetup(charId, allMsgs);
 
   const active = isRecentlyActive(allMsgs);
   // #12：careGoal 即任務核心（含期相變數），已被 system 尾段與 history 兩處以 ${careGoal} 共用，
@@ -798,7 +821,9 @@ export async function generateCycleCareMessage(charId, trigger) {
   }
   if (!text || !text.trim()) return null;
 
-  return await persistProactive(charId, text, { kind: 'cycleCare', notifPrefix: 'notif_care_', notifText: '傳了一則訊息關心你' });
+  const sent = await persistProactive(charId, text, { kind: 'cycleCare', notifPrefix: 'notif_care_', notifText: '傳了一則訊息關心你' });
+  if (sent) await consumeSleepRecall(charId, usedSleepRecall);
+  return sent;
 }
 
 // ── 作息時段主動訊息（背景生成，非串流）──────────────────────────────────────
@@ -806,7 +831,7 @@ export async function generateCycleCareMessage(charId, trigger) {
 export async function generateScheduleMessage(charId, triggerDesc) {
   const allMsgs = await dbIdx('messages', 'charId', charId);
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const { provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
+  const { provider, model, base, apiKey, history, systemStable, systemVolatile, usedSleepRecall } = await buildAIChatSetup(charId, allMsgs);
 
   const active = isRecentlyActive(allMsgs);
   // #12：任務核心（含 triggerDesc 與「時間到了」）抽成單一 const，system 尾段與 history 共用。
@@ -834,7 +859,9 @@ export async function generateScheduleMessage(charId, triggerDesc) {
   }
   if (!text || !text.trim()) return null;
 
-  return await persistProactive(charId, text, { kind: 'schedule', notifPrefix: 'notif_sched_', notifText: '傳了一則訊息給你' });
+  const sent = await persistProactive(charId, text, { kind: 'schedule', notifPrefix: 'notif_sched_', notifText: '傳了一則訊息給你' });
+  if (sent) await consumeSleepRecall(charId, usedSleepRecall);
+  return sent;
 }
 
 // ── Heart Voice Logic ─────────────────────────────────────────────────────
@@ -1164,7 +1191,7 @@ export async function summarizeToMemory(charId, recentMsgs, count = 20) {
 export async function generateMissYouMessage(charId) {
   const allMsgs = await dbIdx('messages', 'charId', charId);
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const { provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
+  const { provider, model, base, apiKey, history, systemStable, systemVolatile, usedSleepRecall } = await buildAIChatSetup(charId, allMsgs);
 
   const active = isRecentlyActive(allMsgs);
   // #12：任務核心抽成單一 const（history 與 inactive system 尾段共用）。active 尾段為「接續對話」框，保留。
@@ -1195,7 +1222,9 @@ export async function generateMissYouMessage(charId) {
   }
   if (!text || !text.trim()) return null;
 
-  return await persistProactive(charId, text, { kind: 'missYou', notifPrefix: 'notif_miss_', notifText: '突然想到你了' });
+  const sent = await persistProactive(charId, text, { kind: 'missYou', notifPrefix: 'notif_miss_', notifText: '突然想到你了' });
+  if (sent) await consumeSleepRecall(charId, usedSleepRecall);
+  return sent;
 }
 
 // ── 每日一問（背景生成，非串流）──────────────────────────────────────────
@@ -1204,7 +1233,7 @@ export async function generateMissYouMessage(charId) {
 export async function generateDailyQuestion(charId) {
   const allMsgs = await dbIdx('messages', 'charId', charId);
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const { provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
+  const { provider, model, base, apiKey, history, systemStable, systemVolatile, usedSleepRecall } = await buildAIChatSetup(charId, allMsgs);
 
   const active = isRecentlyActive(allMsgs);
   // #12：任務核心描述抽成單一 const，system 尾段與 history 引用同一份，避免兩處手打 drift。
@@ -1232,7 +1261,9 @@ export async function generateDailyQuestion(charId) {
   }
   if (!text || !text.trim()) return null;
 
-  return await persistProactive(charId, text, { kind: 'dailyQuestion', notifPrefix: 'notif_dq_', notifText: '今天想問你一個問題' });
+  const sent = await persistProactive(charId, text, { kind: 'dailyQuestion', notifPrefix: 'notif_dq_', notifText: '今天想問你一個問題' });
+  if (sent) await consumeSleepRecall(charId, usedSleepRecall);
+  return sent;
 }
 
 // ── 時間膠囊（P111 D3）────────────────────────────────────────────────────
@@ -1281,7 +1312,7 @@ export async function generateCapsuleLetter(charId, openAt) {
 export async function generateCapsuleDueMessage(charId, capsule) {
   const allMsgs = await dbIdx('messages', 'charId', charId);
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const { provider, model, base, apiKey, history, systemStable, systemVolatile } = await buildAIChatSetup(charId, allMsgs);
+  const { provider, model, base, apiKey, history, systemStable, systemVolatile, usedSleepRecall } = await buildAIChatSetup(charId, allMsgs);
 
   const b = new Date(capsule.buriedAt);
   const buriedStr = `${b.getFullYear()} 年 ${b.getMonth() + 1} 月 ${b.getDate()} 日`;
@@ -1309,5 +1340,7 @@ export async function generateCapsuleDueMessage(charId, capsule) {
   }
   if (!text || !text.trim()) return null;
 
-  return await persistProactive(charId, text, { kind: 'capsule', notifPrefix: 'notif_cap_', notifText: '你們的時間膠囊到期了' });
+  const sent = await persistProactive(charId, text, { kind: 'capsule', notifPrefix: 'notif_cap_', notifText: '你們的時間膠囊到期了' });
+  if (sent) await consumeSleepRecall(charId, usedSleepRecall);
+  return sent;
 }

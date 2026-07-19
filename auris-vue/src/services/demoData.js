@@ -218,6 +218,13 @@ const CHAT_POOL = [
   '你願意告訴我這些，我覺得很珍惜。真的。',
 ];
 
+// 睡前模式（P130）低刺激陪伴句：短、輕、不拋問題
+const SLEEP_POOL = [
+  '嗯，我在。不用說話也沒關係，聽聽雨聲就好。',
+  '今天辛苦了。被子蓋好，剩下的交給我和這場雨。',
+  '想聽個短短的故事也可以，或者就這樣安安靜靜待一會兒。',
+];
+
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // 回傳一段假文字。system/messages 供判斷用途；聊天走人物語氣，內容生成走對應題材。
@@ -245,6 +252,17 @@ export function demoReply({ system = '', messages = [] } = {}) {
   }
   if (s.includes('總結') || s.includes('摘要')) {
     return '小晴近日為期末考焦慮，重視成績、容易緊張；在深夜與夜雨的對話中逐漸放下防備，兩人關係趨於親近。';
+  }
+  // 睡前模式（P130）：收尾（道晚安／閒置自動收尾）→ 輕聲晚安；模式中 → 低聲陪伴句；隔天 → 呼應。
+  // 睡前指示文字本身含「問題」二字，必須排在下面「每日一問」的寬鬆判斷之前。
+  if (s.includes('睡前收尾') || s.includes('道晚安收尾')) {
+    return '嗯…晚安。閉上眼睛吧，雨聲我幫你留著。\n\n做個好夢，明天見。';
+  }
+  if (s.includes('睡前呼應')) {
+    return '早安。昨晚睡得還好嗎？你安靜下來之後，我把節目的尾聲放得很輕，怕吵到你。';
+  }
+  if (s.includes('睡前模式')) {
+    return pick(SLEEP_POOL);
   }
   // 每日一問
   if (s.includes('每日一問') || s.includes('問題')) {

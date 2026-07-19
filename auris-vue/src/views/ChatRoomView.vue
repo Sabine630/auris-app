@@ -726,9 +726,9 @@ async function toggleSleepMode() {
   }
 }
 
-function armSleepTimer() {
+function armSleepTimer(delayMs = SLEEP_IDLE_MS) {
   clearTimeout(sleepTimer);
-  sleepTimer = setTimeout(fireSleepClosing, SLEEP_IDLE_MS);
+  sleepTimer = setTimeout(fireSleepClosing, delayMs);
 }
 
 // 閒置到點：角色輕聲道晚安收尾（生成期間 sleepModeAt 仍在，收尾語氣才有睡前情境），
@@ -798,11 +798,12 @@ onMounted(async () => {
   if (c.sleepModeAt) {
     const lastAt = messages.value.length ? messages.value[messages.value.length - 1].createdAt : 0;
     const idleSince = Math.max(c.sleepModeAt, lastAt);
-    if (Date.now() - idleSince > SLEEP_IDLE_MS) {
+    const idleMs = Date.now() - idleSince;
+    if (idleMs >= SLEEP_IDLE_MS) {
       await patchCharSleep({ sleepModeAt: null, sleepEndedAt: idleSince });
     } else {
       sleepActive.value = true;
-      armSleepTimer();
+      armSleepTimer(SLEEP_IDLE_MS - idleMs); // 續算剩餘時間——已閒置 14 分鐘只再等 1 分鐘，不是重來 15 分鐘
     }
   }
   // 由通知帶 ?msg=訊息id 進來 → 捲到該則並高亮（無則維持 loadMessages 的捲到底）
