@@ -234,46 +234,63 @@ export function demoReply({ system = '', messages = [] } = {}) {
   const s = Array.isArray(system)
     ? system.map(b => (b && typeof b === 'object' ? b.text || '' : String(b ?? ''))).join('\n')
     : String(system ?? '');
-  // ⚠️ 分支順序原則：完整聊天 prompt 的易變段常含【長期記憶】「重要摘要」、拆封日的【時間膠囊】
-  // 等字樣——睡前模式的【睡前…】明確任務標記必須排最前，寬鬆關鍵字分支放後面，否則睡前
-  // 陪伴／收尾會被「摘要」等字樣攔走、回成不相干的內容。
+  // 心聲等少數 prompt 走純 messages（不帶 system）——只有 system 為空時才改掃 messages，
+  // 避免使用者聊天內容裡的題材名詞誤觸內容分支（聊天一定帶完整 system prompt）。
+  const scan = s.trim()
+    ? s
+    : messages.map(m => (typeof m?.content === 'string' ? m.content : '')).join('\n');
+  // ⚠️ 分支匹配原則：完整聊天 prompt 的易變段常混入題材字樣（【長期記憶】的「重要摘要」、
+  // 記憶提到「夢」、拆封日的【時間膠囊】段落）——內容生成分支一律匹配該 prompt 的「獨有
+  // 任務指令句」（改 prompt 措辭時記得同步），不可用題材名詞；睡前明確標記排最前。
   // 睡前模式（P130）：收尾（道晚安／閒置自動收尾）→ 輕聲晚安；隔天 → 呼應；模式中 → 低聲陪伴句
-  if (s.includes('睡前收尾') || s.includes('道晚安收尾')) {
+  if (scan.includes('睡前收尾') || scan.includes('道晚安收尾')) {
     return '嗯…晚安。閉上眼睛吧，雨聲我幫你留著。\n\n做個好夢，明天見。';
   }
-  if (s.includes('睡前呼應')) {
+  if (scan.includes('睡前呼應')) {
     return '早安。昨晚睡得還好嗎？你安靜下來之後，我把節目的尾聲放得很輕，怕吵到你。';
   }
-  if (s.includes('睡前模式')) {
+  if (scan.includes('睡前模式')) {
     return pick(SLEEP_POOL);
   }
-  // 時間膠囊信件（demo 裡勾「他也寫一封」時走到）：膠囊 tail 一定含【時間膠囊】
-  if (s.includes('時間膠囊')) {
+  // 時間膠囊信件（勾「他也寫一封」）：generateCapsuleLetter tail 的獨有指令。
+  // 拆封日聊天的【時間膠囊】易變段沒有這句，會正常落到聊天池
+  if (scan.includes('請寫下你這封信')) {
     return '給拆開這封信的你：寫下這些字的今晚，雨還在下，你剛埋好你那封信。我不知道到那天我們聊到了哪裡，但我希望你過得比現在更安穩一點。如果那天也下雨，就當作是我先替你把背景音準備好了。到時見。';
   }
+  // 時間膠囊到期主動訊息（generateCapsuleDueMessage 的【時間膠囊到期】）
+  if (scan.includes('時間膠囊到期')) {
+    return '欸，還記得嗎？你之前埋的那顆時間膠囊，今天到期了。去「我們的回憶」拆開看看吧——我當時也偷偷放了一封進去。';
+  }
   // 回憶月報的回顧短信
-  if (s.includes('回顧短信')) {
+  if (scan.includes('回顧短信')) {
     return '這個月你在深夜出現的次數變多了。有幾晚你沒說話，只是待著，我也就陪著。印象最深的是你說「跟你說完就好多了」的那天——那句話我留到現在。下個月，希望你能多睡一點。想聊的話，我都在，雨也在。';
   }
-  if (s.includes('日記')) {
+  // 日記（contentEngine「請以角色的第一人稱寫今天的日記」）
+  if (scan.includes('第一人稱寫今天的日記')) {
     return '雨一直下到後半夜。錄音室很安靜，只有我和麥克風的呼吸聲。\n\n今天想起了小晴白天說的話，忽然覺得，能被人記著，是一件很暖的事。\n\n我把這份暖，也寫進今晚的節目裡了。';
   }
-  if (s.includes('夢')) {
+  // 夢境（contentEngine「寫一段完整、飄渺、詩意的夢境敘述」）——記憶裡出現「夢」不會誤中
+  if (scan.includes('夢境敘述')) {
     return '夢見自己站在一片沒有盡頭的月台，廣播聲一遍遍響起，卻聽不清內容。\n\n遠處有個熟悉的身影朝我揮手，我想跑過去，腳卻像陷進雨水裡。\n\n醒來時，枕邊還留著雨的味道。';
   }
-  if (s.includes('貼文') || s.includes('動態')) {
+  // 貼文（contentEngine「寫一則短篇社群貼文」）與貼文留言回覆（「請以貼文作者的身分」）
+  if (scan.includes('寫一則短篇社群貼文')) {
     return '深夜的城市總是特別誠實。收工路上買了杯熱豆漿，蒸氣模糊了眼鏡，也模糊了一整天的疲憊。晚安，還醒著的你。';
   }
-  if (s.includes('心聲')) {
+  if (scan.includes('請以貼文作者的身分')) {
+    return '謝謝你的留言。今晚的雨聲，也想放給你聽。';
+  }
+  // 心聲（hvPrompt「寫一句極短的內心話」，走純 messages、無 system → 靠上面的 scan fallback）
+  if (scan.includes('極短的內心話')) {
     return '其實我很想問她今天過得好不好，但話到嘴邊又嚥了回去。怕太黏，也怕她覺得我多管閒事。';
   }
-  // 記憶總結：用 summarizeToMemory system 開場的「對話分析助手」精確匹配——
+  // 記憶總結：summarizeToMemory system 開場的「對話分析助手」精確匹配——
   // 聊天 prompt 的【長期記憶】段含「重要摘要」，不能拿寬鬆的「總結／摘要」當觸發字
-  if (s.includes('對話分析助手')) {
+  if (scan.includes('對話分析助手')) {
     return '小晴近日為期末考焦慮，重視成績、容易緊張；在深夜與夜雨的對話中逐漸放下防備，兩人關係趨於親近。';
   }
-  // 每日一問：dqTail 一定含【每日一問】；原本寬鬆的「問題」會被聊天／記憶內容誤中，移除
-  if (s.includes('每日一問')) {
+  // 每日一問：dqTail 一定含【每日一問】；寬鬆的「問題」會被聊天／記憶內容誤中，不可用
+  if (scan.includes('每日一問')) {
     return '如果今晚可以睡得很好，你最想夢見什麼？';
   }
   // 預設：聊天回覆

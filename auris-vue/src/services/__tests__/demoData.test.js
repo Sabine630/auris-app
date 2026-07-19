@@ -38,8 +38,8 @@ describe('demoReply — system blocks 陣列攤平（P130）', () => {
     expect(SLEEP_LINES).toContain(r);
   });
 
-  it('字串 system 行為不變（日記分支）', () => {
-    expect(demoReply({ system: '請以角色身分寫一篇日記' })).toContain('雨');
+  it('字串 system 行為不變（日記分支，配真實指令句）', () => {
+    expect(demoReply({ system: '……\n請以角色的第一人稱寫今天的日記。\n【日記品質要求】…' })).toContain('錄音室');
   });
 
   it('一般聊天 blocks（無睡前字樣）→ 正常回聊天句，不會拼出 [object Object]', () => {
@@ -79,5 +79,47 @@ describe('demoReply — 帶【長期記憶】的真實 prompt 不誤入摘要分
   it('記憶總結（sendLLMRequest 抽出的 system 字串含「對話分析助手」）→ 仍回摘要', () => {
     const r = demoReply({ system: '你是一個對話分析助手。請將以下聊天記錄濃縮成一段 100～200 字的重點摘要，用第三人稱描述。' });
     expect(r).toBe(SUMMARY_TEXT);
+  });
+});
+
+// 內容分支改「獨有任務指令」匹配的回歸（P130 後 demo 補強）：
+// 題材名詞出現在聊天 prompt 裡（拆封日的【時間膠囊】段、記憶提到「夢」）不得誤觸內容分支。
+describe('demoReply — 題材名詞不誤觸內容生成分支', () => {
+  const stable = { text: '你是「夜雨」，請完全扮演這個角色與使用者對話。', cache: true };
+  const LETTER_OPEN = '給拆開這封信的你';
+
+  it('拆封日聊天（volatile 含【時間膠囊】拆開段落）→ 聊天句，不是信件', () => {
+    const capsuleCtx = '\n【時間膠囊】今天你們一起拆開了在 2026 年 4 月 19 日埋下的時間膠囊。對方當時寫給未來的信：「希望那時的我們還在聊」。請把這件事放在心上。';
+    const r = demoReply({ system: [stable, { text: capsuleCtx }] });
+    expect(r).not.toContain(LETTER_OPEN);
+  });
+
+  it('記憶含「夢」的聊天 → 聊天句，不是夢境腳本', () => {
+    const memCtx = '\n【長期記憶】以下是過去對話的重要摘要，請在回覆時參考：\n1. 小晴說她昨晚做了一個夢，夢到考試遲到。';
+    const r = demoReply({ system: [stable, { text: memCtx }] });
+    expect(r).not.toContain('月台');
+  });
+
+  it('膠囊信件生成（含「請寫下你這封信」）→ 信件；到期訊息（【時間膠囊到期】）→ 到期通知', () => {
+    expect(demoReply({ system: [stable, { text: '\n\n【時間膠囊】…請寫下你這封信——收信人是「那天的對方」。' }] })).toContain(LETTER_OPEN);
+    expect(demoReply({ system: [stable, { text: '\n\n【時間膠囊到期】…請主動傳訊息告訴對方膠囊到期了。' }] })).toContain('到期');
+  });
+
+  it('夢境生成（含「夢境敘述」指令）→ 夢境腳本', () => {
+    expect(demoReply({ system: '……請用第一人稱，寫一段完整、飄渺、詩意的夢境敘述。' })).toContain('月台');
+  });
+
+  it('心聲（純 messages、無 system）→ 靠 messages fallback 命中「極短的內心話」', () => {
+    const hv = '你是「夜雨」。\n\n任務：寫一句**極短的內心話**——就是「沒說出口的那一句感受」。';
+    const r = demoReply({ system: '', messages: [{ role: 'user', content: hv }] });
+    expect(r).toContain('話到嘴邊');
+  });
+
+  it('有 system 的聊天不掃 messages（使用者訊息提到「日記」不誤觸）', () => {
+    const r = demoReply({
+      system: [stable, { text: '\n現在時間：…' }],
+      messages: [{ role: 'user', content: '幫我用第一人稱寫今天的日記好不好' }],
+    });
+    expect(r).not.toContain('錄音室');
   });
 });
