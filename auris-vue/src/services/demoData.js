@@ -228,8 +228,12 @@ const SLEEP_POOL = [
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // 回傳一段假文字。system/messages 供判斷用途；聊天走人物語氣，內容生成走對應題材。
+// system 可能是字串，也可能是 prompt cache 的 blocks 陣列（[{ text, cache? }, …]，聊天與
+// 所有主動生成都走這格式）——直接 String() 只會得到 [object Object]，必須先把 text 攤平。
 export function demoReply({ system = '', messages = [] } = {}) {
-  const s = String(system);
+  const s = Array.isArray(system)
+    ? system.map(b => (b && typeof b === 'object' ? b.text || '' : String(b ?? ''))).join('\n')
+    : String(system ?? '');
   // 時間膠囊信件（demo 裡勾「他也寫一封」時走到）：膠囊 tail 一定含【時間膠囊】，須排在聊天判斷之前
   if (s.includes('時間膠囊')) {
     return '給拆開這封信的你：寫下這些字的今晚，雨還在下，你剛埋好你那封信。我不知道到那天我們聊到了哪裡，但我希望你過得比現在更安穩一點。如果那天也下雨，就當作是我先替你把背景音準備好了。到時見。';

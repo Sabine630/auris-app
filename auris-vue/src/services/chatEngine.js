@@ -487,9 +487,10 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
   const refused = isRefusalReply(fullText);
 
   let msgs = [];
-  if (fullText && !refused) {
+  if (fullText?.trim() && !refused) {
     msgs = await persistReplySegments(charId, fullText, { maxSegments: c.maxMsg || 2 });
-    await consumeSleepRecall(charId, usedSleepRecall);
+    // 呼應 flag 只在真的有訊息落庫時才消耗（空白回應 persist 出空陣列，不算送達）
+    if (msgs.length) await consumeSleepRecall(charId, usedSleepRecall);
     if (c.heartVoice) generateHeartVoice(c, allMsgs, fullText).catch(() => {});
   }
   return { msgs, truncated, refused };
@@ -644,7 +645,7 @@ export async function generateProactiveMessageStream(charId, allMsgs, { onChunk,
   let msgs = [];
   if (fullText.trim()) {
     msgs = await persistReplySegments(charId, fullText, { maxSegments: c.maxMsg || 2, kind: 'proactive' });
-    await consumeSleepRecall(charId, usedSleepRecall);
+    if (msgs.length) await consumeSleepRecall(charId, usedSleepRecall);
     // 聊天室即時主動也計入「上一則主動訊息時間」，讓背景派發的 3h min-gap 不會在你在場時又疊一則
     try { await setSetting('last_proactive_' + charId, Date.now()); } catch (_) {}
   }
@@ -679,7 +680,7 @@ export async function generateTouchResponseStream(charId, allMsgs, { onChunk }, 
   let msgs = [];
   if (fullText.trim()) {
     msgs = await persistReplySegments(charId, fullText, { maxSegments: 2, kind: 'touch' });
-    await consumeSleepRecall(charId, setup.usedSleepRecall);
+    if (msgs.length) await consumeSleepRecall(charId, setup.usedSleepRecall);
   }
   return { msgs, truncated };
 }
@@ -697,7 +698,7 @@ export async function generateBusyReplyStream(charId, allMsgs, { onChunk }) {
   let msgs = [];
   if (fullText.trim()) {
     msgs = await persistReplySegments(charId, fullText, { maxSegments: setup.c.maxMsg || 2 });
-    await consumeSleepRecall(charId, setup.usedSleepRecall);
+    if (msgs.length) await consumeSleepRecall(charId, setup.usedSleepRecall);
   }
   return { msgs, truncated };
 }
