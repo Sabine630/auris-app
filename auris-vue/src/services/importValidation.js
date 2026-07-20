@@ -45,7 +45,34 @@ export const STORE_RECORD_LIMITS = Object.freeze({
   chat_memories: 20000,
   wishes: 20000,
   notes: 20000,
+  continuity_threads: 20000,
 });
+
+// P131 待續事件：狀態機與列舉由本地決定，匯入的值必須落在白名單內，
+// 否則一筆被竄改的 status 會讓 thread 永遠選不到、也永遠清不掉。
+const THREAD_KINDS = new Set(['event', 'promise', 'open_question']);
+const THREAD_OWNERS = new Set(['user', 'shared']);
+const THREAD_STATUSES = new Set(['planned', 'waiting_result', 'resolved', 'cancelled', 'expired']);
+const THREAD_PRECISIONS = new Set(['date', 'time', 'unknown']);
+const MAX_THREAD_KEYWORDS = 3;
+const MAX_THREAD_KEYWORD_CHARS = 8;
+
+// 只接受本地日曆 YYYY-MM-DD，且必須 round-trip 回同一組年月日：
+// 2026-02-30 會被 Date 自動滾成 3 月 2 日，這裡要判為無效。
+// 一律分開解析後用 new Date(y, m-1, d)，不得用 new Date('YYYY-MM-DD')（UTC 午夜會偏移日期）。
+function isValidLocalDateString(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const dt = new Date(y, mo - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d;
+}
+
+function isValidLocalTimeString(value) {
+  const m = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!m) return false;
+  return Number(m[1]) <= 23 && Number(m[2]) <= 59;
+}
 
 const REQUIRED_STRING_FIELDS = Object.freeze({
   characters: ['name'],
@@ -61,6 +88,7 @@ const REQUIRED_STRING_FIELDS = Object.freeze({
   chat_memories: ['charId', 'content'],
   wishes: ['charId', 'text'],
   notes: ['charId', 'text'],
+  continuity_threads: ['charId', 'title'],
 });
 
 const IMAGE_KEYS = new Set(['image', 'avatar']);
@@ -216,6 +244,38 @@ function requireString(rec, store, field, index) {
   }
 }
 
+function validateThreadRow(rec, index) {
+  const bad = (field) => new Error(`匯入資料「continuity_threads」第 ${index + 1} 筆的「${field}」格式錯誤`);
+
+  if (!THREAD_KINDS.has(rec.kind)) throw bad('kind');
+  if (!THREAD_OWNERS.has(rec.owner)) throw bad('owner');
+  if (!THREAD_STATUSES.has(rec.status)) throw bad('status');
+  if (rec.datePrecision !== undefined && !THREAD_PRECISIONS.has(rec.datePrecision)) throw bad('datePrecision');
+
+  // 日期／時間可為 null（無日期事件），有值就必須是合法的本地日曆值。
+  if (rec.eventDate != null && !isValidLocalDateString(rec.eventDate)) throw bad('eventDate');
+  if (rec.eventTime != null && !isValidLocalTimeString(rec.eventTime)) throw bad('eventTime');
+
+  for (const field of ['followUpAfter', 'lastPromptedAt', 'closedAt', 'cooldownUntil']) {
+    if (rec[field] != null && !Number.isFinite(rec[field])) throw bad(field);
+  }
+  for (const field of ['promptedCount', 'offeredCount']) {
+    if (rec[field] !== undefined && !Number.isFinite(rec[field])) throw bad(field);
+  }
+  for (const field of ['detail', 'sourcePreview', 'result']) {
+    if (rec[field] != null && typeof rec[field] !== 'string') throw bad(field);
+  }
+  if (rec.sourceMsgId != null && typeof rec.sourceMsgId !== 'string') throw bad('sourceMsgId');
+  if (rec.enabled !== undefined && typeof rec.enabled !== 'boolean') throw bad('enabled');
+
+  if (rec.matchKeywords !== undefined) {
+    if (!Array.isArray(rec.matchKeywords) || rec.matchKeywords.length > MAX_THREAD_KEYWORDS) throw bad('matchKeywords');
+    for (const kw of rec.matchKeywords) {
+      if (typeof kw !== 'string' || !kw || kw.length > MAX_THREAD_KEYWORD_CHARS) throw bad('matchKeywords');
+    }
+  }
+}
+
 export function validateStoreRows(store, rows) {
   if (!Array.isArray(rows)) throw new Error(`備份檔「${store}」格式錯誤`);
   const rowLimit = STORE_RECORD_LIMITS[store] || 20000;
@@ -242,6 +302,7 @@ export function validateStoreRows(store, rows) {
       && (!Array.isArray(rec.charIds) || rec.charIds.some(id => typeof id !== 'string'))) {
       throw new Error(`匯入資料「groups」第 ${i + 1} 筆的「charIds」格式錯誤`);
     }
+    if (store === 'continuity_threads') validateThreadRow(rec, i);
   }
   return rows.length;
 }
@@ -269,6 +330,7 @@ export function validateCharacterImport(jsonData) {
     ['dreams', 'dreams'],
     ['wishes', 'wishes'],
     ['notes', 'notes'],
+    ['threads', 'continuity_threads'],
   ];
   let total = 1;
   for (const [field, store] of sections) {

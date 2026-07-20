@@ -12,7 +12,10 @@ let db = null;
 export function initDB() {
   return new Promise((res, rej) => {
     // Demo/教學模式走完全獨立的資料庫，碰不到使用者真實的 'auris' 資料。
-    const r = indexedDB.open(isDemo() ? 'auris-demo' : 'auris', 7);
+    // 版號只能往上加，不得下修：使用者資料庫升到 v8 後若載入只認 v7 的程式，
+    // 瀏覽器會丟 VersionError → 下方 onerror reject → main.js 把整頁換成錯誤字串，
+    // 結果是 App 完全打不開。P131 回退時只能停用功能、保留 v8（見計畫書 §23.1）。
+    const r = indexedDB.open(isDemo() ? 'auris-demo' : 'auris', 8);
     r.onupgradeneeded = (e) => {
       const d = e.target.result;
       [
@@ -29,6 +32,7 @@ export function initDB() {
         ['chat_memories', [['charId', 'charId']]],
         ['wishes', [['charId', 'charId']]],
         ['notes', [['charId', 'charId']]],
+        ['continuity_threads', [['charId', 'charId'], ['followUpAfter', 'followUpAfter']]],
       ].forEach(([name, idx]) => {
         if (!d.objectStoreNames.contains(name)) {
           const os = d.createObjectStore(name, { keyPath: 'id' });
@@ -44,6 +48,14 @@ export function initDB() {
       const ms = e.target.transaction.objectStore('messages');
       if (!ms.indexNames.contains('charId_createdAt')) {
         ms.createIndex('charId_createdAt', ['charId', 'createdAt'], { unique: false });
+      }
+
+      // v8（P131）：continuity_threads 的複合 index（charId + status），供「某角色未完成的
+      // 待續事件」查詢，不必全量 getAll 後再過濾。上面的 loop 已確保 store 存在
+      // （全新安裝與 v7 升 v8 兩條路徑皆是新建），這裡只補 array keyPath 的複合 index。
+      const cts = e.target.transaction.objectStore('continuity_threads');
+      if (!cts.indexNames.contains('charId_status')) {
+        cts.createIndex('charId_status', ['charId', 'status'], { unique: false });
       }
     };
     r.onsuccess = (e) => {
@@ -87,12 +99,12 @@ export const dbClear = (s) => new Promise((r, j) => { const tx = db.transaction(
 export const getSetting = async (k) => { const r = await dbGet('settings', k); return r ? r.value : null; };
 export const setSetting = (k, v) => dbPut('settings', { key: k, value: v });
 
-const ALL_STORES = ['characters', 'messages', 'memories', 'moments', 'diary', 'dreams', 'worlds', 'groups', 'group_messages', 'notifications', 'chat_memories', 'wishes', 'notes', 'settings'];
+const ALL_STORES = ['characters', 'messages', 'memories', 'moments', 'diary', 'dreams', 'worlds', 'groups', 'group_messages', 'notifications', 'chat_memories', 'wishes', 'notes', 'continuity_threads', 'settings'];
 
 // v1 備份格式（aurisExportVersion: 1）自誕生起必含的 store——缺任何一個代表備份檔
 // 損毀或被改過，必須拒絕匯入（否則「清空 → 還原」會把該 store 的資料靜默清光）。
-// chat_memories / wishes / notes 是備份功能上線後才新增的 store，舊備份可能沒有，
-// 缺少時視為空（還原＝回到備份當下的快照）。
+// chat_memories / wishes / notes / continuity_threads 是備份功能上線後才新增的 store，
+// 舊備份可能沒有，缺少時視為空（還原＝回到備份當下的快照）。
 const REQUIRED_STORES = ['characters', 'messages', 'memories', 'moments', 'diary', 'dreams', 'worlds', 'groups', 'group_messages', 'notifications', 'settings'];
 
 // API 連線設定屬本機專屬，不隨備份移動。備份檔可被分享／竄改：若匯入時接受
@@ -184,11 +196,56 @@ export async function importAllData(jsonData) {
   });
 }
 
+// ── 角色衍生資料的刪除與清除（單一事實來源）──────────────────────────────
+// 這兩個 helper 之前散在 CharEditView／CharManageView／ChatListView／ChatRoomView，
+// 各自複製一份 store 清單；新增 store 時只要漏改一處就留下孤兒資料。P131 起集中在這裡，
+// continuity_threads 只在此檔出現一次。
+
+// 以 charId index 綁定角色的所有 store。新增這類 store 時「只」需要改這個陣列。
+const CHAR_OWNED_STORES = ['messages', 'memories', 'chat_memories', 'moments', 'diary', 'dreams', 'notifications', 'wishes', 'notes', 'continuity_threads'];
+
+// 刪除角色與其全部衍生資料。先刪衍生再刪角色本體：中途失敗時角色還在，
+// 使用者看得到、可重試；反過來則會留下看不見也刪不掉的孤兒資料。
+export async function deleteCharacterCascade(charId) {
+  for (const store of CHAR_OWNED_STORES) {
+    const items = await dbIdx(store, 'charId', charId);
+    for (const item of items) await dbDel(store, item.id);
+  }
+  await dbDel('characters', charId);
+}
+
+// 清空聊天。兩個入口的預設刪除範圍本來就不同，用旗標保留各自現況，不在 P131 內偷改：
+//   聊天室（ChatRoomView）：只刪 messages          → includeMemories: false
+//   聊天列表（ChatListView）：刪 messages + memories → includeMemories: true
+// 心聲（hv）存在 memories，所以 hv 通知只在確實刪 memories 時才一併清除。
+export async function clearChatData(charIds, { includeMemories = false, alsoContent = false, alsoThreads = false } = {}) {
+  const stores = ['messages'];
+  if (includeMemories) stores.push('memories');
+  if (alsoContent) stores.push('diary', 'dreams', 'moments');
+  if (alsoThreads) stores.push('continuity_threads');
+
+  // 清掉某個 store 時，指向該 store 的通知也要一併清掉，否則點進去會連到已不存在的內容。
+  const notifTypes = ['chat'];
+  if (includeMemories) notifTypes.push('hv');
+  if (alsoContent) notifTypes.push('post', 'diary', 'dream');
+
+  for (const charId of charIds) {
+    for (const store of stores) {
+      const items = await dbIdx(store, 'charId', charId);
+      for (const item of items) await dbDel(store, item.id);
+    }
+    const notifs = await dbIdx('notifications', 'charId', charId);
+    for (const n of notifs) {
+      if (notifTypes.includes(n.type)) await dbDel('notifications', n.id);
+    }
+  }
+}
+
 // ── 單角色匯出（含聊天記錄、記憶、日記、夢境、貼文）────────────────────────
 export async function exportCharacterData(charId) {
   const char = await dbGet('characters', charId);
   if (!char) throw new Error('找不到角色');
-  const [messages, memories, chatMems, moments, diary, dreams, wishes, notes] = await Promise.all([
+  const [messages, memories, chatMems, moments, diary, dreams, wishes, notes, threads] = await Promise.all([
     dbIdx('messages', 'charId', charId),
     dbIdx('memories', 'charId', charId),
     dbIdx('chat_memories', 'charId', charId),
@@ -197,6 +254,7 @@ export async function exportCharacterData(charId) {
     dbIdx('dreams', 'charId', charId),
     dbIdx('wishes', 'charId', charId),
     dbIdx('notes', 'charId', charId),
+    dbIdx('continuity_threads', 'charId', charId),
   ]);
   return {
     aurisCharExportVersion: 1,
@@ -210,6 +268,7 @@ export async function exportCharacterData(charId) {
     dreams,
     wishes,
     notes,
+    threads,
   };
 }
 
@@ -224,10 +283,12 @@ export async function importCharacterData(jsonData) {
   await dbPut('characters', char);
 
   // 重新對應 charId 並賦予新 ID，用 index 確保同毫秒不衝突；圖片欄位過濾外部 URL
-  const remapAndInsert = async (records, store, prefix) => {
+  const remapAndInsert = async (records, store, prefix, transform = null) => {
     if (!Array.isArray(records)) return;
     for (let i = 0; i < records.length; i++) {
-      await dbPut(store, stripUnsafeImage({ ...records[i], id: `${prefix}_${base}_${i}`, charId: newCharId }));
+      let rec = { ...records[i], id: `${prefix}_${base}_${i}`, charId: newCharId };
+      if (transform) rec = transform(rec, records[i]);
+      await dbPut(store, stripUnsafeImage(rec));
     }
   };
 
@@ -239,6 +300,21 @@ export async function importCharacterData(jsonData) {
   await remapAndInsert(jsonData.dreams,    'dreams',        'dream');
   await remapAndInsert(jsonData.wishes,    'wishes',        'wish');
   await remapAndInsert(jsonData.notes,     'notes',         'note');
+
+  // P131 待續事件：sourceMsgId 指向 messages，訊息已在上面換過 ID，這裡照同一條
+  // 命名規則（msg_<base>_<i>）建舊→新對照表重新指向。若該備份沒帶 messages、
+  // 或來源訊息不在這批裡（使用者曾清空聊天但保留待續事件），對照不到就設 null，
+  // 卡片改用 sourcePreview 顯示、UI 隱藏「回到來源訊息」，不拋錯也不丟掉整筆。
+  const msgIdMap = new Map();
+  if (Array.isArray(jsonData.messages)) {
+    jsonData.messages.forEach((m, i) => {
+      if (m && typeof m.id === 'string') msgIdMap.set(m.id, `msg_${base}_${i}`);
+    });
+  }
+  await remapAndInsert(jsonData.threads, 'continuity_threads', 'thread', (rec) => ({
+    ...rec,
+    sourceMsgId: msgIdMap.get(rec.sourceMsgId) ?? null,
+  }));
 
   return newCharId;
 }

@@ -84,7 +84,7 @@
 <script setup>
 import { ref } from 'vue';
 import { globalStore } from '../store/index.js';
-import { dbDel, dbIdx, exportCharacterData, importCharacterData } from '../services/db.js';
+import { deleteCharacterCascade, exportCharacterData, importCharacterData } from '../services/db.js';
 import { readImportJsonFile } from '../services/importValidation.js';
 
 const showDeleteConfirm = ref(false);
@@ -103,26 +103,8 @@ async function confirmDelete() {
   const charId = deleteTarget.value.id;
 
   try {
-    const stores = [
-      { name: 'messages', index: 'charId' },
-      { name: 'memories', index: 'charId' },
-      { name: 'chat_memories', index: 'charId' },
-      { name: 'moments', index: 'charId' },
-      { name: 'diary', index: 'charId' },
-      { name: 'dreams', index: 'charId' },
-      { name: 'notifications', index: 'charId' },
-      { name: 'wishes', index: 'charId' },
-      { name: 'notes', index: 'charId' },
-    ];
-
-    for (const store of stores) {
-      const items = await dbIdx(store.name, store.index, charId);
-      for (const item of items) {
-        await dbDel(store.name, item.id);
-      }
-    }
-
-    await dbDel('characters', charId);
+    // store 清單集中在 db.js 的 CHAR_OWNED_STORES，新增綁角色的 store 時只需改那一處
+    await deleteCharacterCascade(charId);
     await globalStore.loadCharacters();
 
     showDeleteConfirm.value = false;

@@ -521,7 +521,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbPut, dbDel, dbIdx } from '../services/db.js';
+import { dbGet, dbPut, deleteCharacterCascade } from '../services/db.js';
 import { globalStore } from '../store/index.js';
 
 const route = useRoute();
@@ -737,13 +737,8 @@ async function saveChar() {
 
 async function doDeleteChar() {
   confirmDeletePrompt.value = false;
-  await dbDel('characters', charId.value);
-  // 連同角色所有衍生資料一併清除（與 CharManageView 一致），含 notifications，避免孤兒資料與死通知。
-  const stores = ['messages', 'memories', 'chat_memories', 'moments', 'diary', 'dreams', 'notifications', 'wishes', 'notes'];
-  for (const store of stores) {
-    const items = await dbIdx(store, 'charId', charId.value);
-    for (const item of items) await dbDel(store, item.id);
-  }
+  // 連同角色所有衍生資料一併清除（store 清單集中在 db.js，避免各處漏改留下孤兒資料）
+  await deleteCharacterCascade(charId.value);
   await globalStore.loadCharacters();
   router.push('/char-manage');
 }
