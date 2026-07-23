@@ -9,6 +9,7 @@
 import {
   THREAD_KINDS, THREAD_OWNERS, THREAD_STATUSES, THREAD_PRECISIONS,
   MAX_THREAD_KEYWORDS, MAX_THREAD_KEYWORD_CHARS,
+  MAX_THREAD_TITLE_CHARS, MAX_THREAD_TEXT_CHARS,
   THREAD_KEYWORD_STOPWORDS as STOPWORDS,
   isValidLocalDateString, isValidLocalTimeString,
 } from './importValidation.js';
@@ -91,6 +92,31 @@ export function evaluateCandidateTurn({ newUserText = '', prevCharText = '', pre
   return { candidate: false, reason: 'no-signal', text: '' };
 }
 
+// 最近 n 則非 hv 訊息的小窗口（§7）：只留擷取器需要的欄位（role／msgId／createdAt／content）。
+// 時間格式化交給呼叫端（需本地時區）。
+export function buildRecentThreadWindow(msgs, n = 4) {
+  return (msgs || [])
+    .filter((m) => m && m.type !== 'hv')
+    .slice(-n)
+    .map((m) => ({ role: m.role, msgId: m.id, createdAt: m.createdAt, content: m.content || '' }));
+}
+
+// 由已排序訊息取「本輪判定」所需的三段文字（§8 錨定規則）：
+//   - newUserText：最後一則（必須是 user，否則本輪非新 user 訊息，回空）
+//   - prevCharText／prevUserText：緊鄰的上一則（嚴格相鄰，才符合「緊鄰上一則」語意）
+// 供 evaluateCandidateTurn 使用。呼叫端傳入的 msgs 應已濾 hv 並依 createdAt 升冪。
+export function deriveTurnTexts(msgs) {
+  const arr = msgs || [];
+  const last = arr[arr.length - 1];
+  if (!last || last.role !== 'user') return { newUserText: '', prevCharText: '', prevUserText: '' };
+  const prev = arr[arr.length - 2];
+  return {
+    newUserText: last.content || '',
+    prevCharText: prev && prev.role === 'assistant' ? (prev.content || '') : '',
+    prevUserText: prev && prev.role === 'user' ? (prev.content || '') : '',
+  };
+}
+
 // ── 2. 本地日期建構與 round-trip 驗證（§10）──────────────────────────────────
 // 分開解析年月日，一律 new Date(y, m-1, d)，禁止 new Date('YYYY-MM-DD')（UTC 午夜偏移）。
 export function parseLocalDateParts(dateStr) {
@@ -119,6 +145,18 @@ export function isEventDateWithinWindow(dateStr, sourceCreatedAt) {
   const days = calendarDaysSince(dateStr, new Date(sourceCreatedAt));
   if (days == null) return false;
   return days <= MAX_DAYS_BEFORE_SOURCE && days >= -MAX_DAYS_AFTER_SOURCE;
+}
+
+// 事件日是否落在「來源時間範圍」的合理窗口內（§10.3）。即時擷取只有單點（earliest==latest），
+// 總結補漏的 transcript 橫跨多天，需以「最早訊息日」判過去界、「最晚訊息日」判未來界，
+// 否則 7/1 說的「明天(7/2)」在 7/20 總結時會被誤判成距最後訊息 18 天而降為無日期。
+// 有效 iff (最早日 - 事件日) ≤ 14  且  (最晚日 - 事件日) ≥ -366。
+export function isEventDateWithinRange(dateStr, earliestMs, latestMs) {
+  if (dateStr == null) return true;
+  const beforeDays = calendarDaysSince(dateStr, new Date(earliestMs)); // 最早日 - 事件日
+  const afterDays = calendarDaysSince(dateStr, new Date(latestMs));    // 最晚日 - 事件日
+  if (beforeDays == null || afterDays == null) return false;
+  return beforeDays <= MAX_DAYS_BEFORE_SOURCE && afterDays >= -MAX_DAYS_AFTER_SOURCE;
 }
 
 // ── 3. followUpAfter 本地計算（§10.4）────────────────────────────────────────
@@ -186,11 +224,33 @@ export function threadFingerprint({ charId, kind, owner, title, eventDate }) {
   ].join('|');
 }
 
-// 防復活：候選 ADD 的 fingerprint 是否已存在於（未完成 or 最近關閉的）既有 threads。
-// 命中即不得重複 ADD（§12.2）。
+// 同日期事件的輕微措辭差異比對：兩邊必須有共同主題詞，且不能「各自」都有互斥的
+// 額外主題詞。例：「週一參加面試」與「下週一要去面試」都只剩「面試」→ 相同；
+// 「Google 面試」與「Apple 面試」兩邊各有不同公司詞 → 不在本地強行合併。
+function hasEquivalentTopic(a, b) {
+  const ak = deriveMatchKeywords({ title: a.title, detail: a.detail, provided: a.matchKeywords });
+  const bk = deriveMatchKeywords({ title: b.title, detail: b.detail, provided: b.matchKeywords });
+  if (!ak.length || !bk.length) return false;
+  const as = new Set(ak), bs = new Set(bk);
+  const shared = ak.some((k) => bs.has(k));
+  if (!shared) return false;
+  const aHasUnique = ak.some((k) => !bs.has(k));
+  const bHasUnique = bk.some((k) => !as.has(k));
+  return !(aHasUnique && bHasUnique);
+}
+
+// 防復活：先比完整 fingerprint；若標題只是輕微改寫，再以「同角色／類型／owner／非空日期
+// ＋相同主題」補一道去重。無日期事件不做模糊合併，避免兩場不同但同主題的事件被誤吃掉。
 export function isDuplicateThread(candidate, existingThreads) {
   const fp = threadFingerprint(candidate);
-  return (existingThreads || []).some((t) => threadFingerprint(t) === fp);
+  return (existingThreads || []).some((t) => {
+    if (threadFingerprint(t) === fp) return true;
+    if (!candidate.eventDate || candidate.eventDate !== t.eventDate) return false;
+    if ((candidate.charId || '') !== (t.charId || '')) return false;
+    if (normalizeForFingerprint(candidate.kind) !== normalizeForFingerprint(t.kind)) return false;
+    if (normalizeForFingerprint(candidate.owner) !== normalizeForFingerprint(t.owner)) return false;
+    return hasEquivalentTopic(candidate, t);
+  });
 }
 
 // ── 6. matchKeywords 停用詞過濾與提及判定（§13.4）───────────────────────────
@@ -363,4 +423,249 @@ export function expirePatch(nowMs = Date.now()) {
 // 反映當初關閉時點、purge 判定不受影響。
 export function backfillClosedAtPatch(thread, nowMs = Date.now()) {
   return { closedAt: thread.updatedAt || thread.createdAt || nowMs };
+}
+
+// ── 9. Operation parse / normalize（§9.3、§11.4、§18）─────────────────────────
+export const MAX_THREAD_OPS = 3; // 每次最多套用 3 個 operations（§18.3）
+
+// 從第一個 `[` 起做括號配對取出完整 JSON 陣列字串（容忍字串內的括號與跳脫、以及巢狀
+// matchKeywords 陣列，故不可用貪婪/非貪婪 regex）。找不到平衡陣列回 null。
+function extractFirstJsonArray(s) {
+  const start = s.indexOf('[');
+  if (start < 0) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+    } else if (ch === '"') inStr = true;
+    else if (ch === '[') depth++;
+    else if (ch === ']') { depth--; if (depth === 0) return s.slice(start, i + 1); }
+  }
+  return null;
+}
+
+// 從模型輸出擷取 operations 原始陣列。相容兩種來源：
+//   - 即時擷取器：整段輸出就是 JSON 陣列（可能含 ```json 圍欄或前後贅字）
+//   - 總結補漏：尾端 `THREAD_OPS: [...]` 行（比照 BONDS）
+// 壞格式一律回 []（§18 安全放棄：不影響聊天／摘要本體）。回傳未正規化的物件陣列。
+export function parseThreadOps(text) {
+  const s = text || '';
+  if (!s.trim()) return [];
+  const mk = s.match(/THREAD_OPS[:：]/i);
+  const scope = mk ? s.slice(mk.index + mk[0].length) : s;
+  const jsonStr = extractFirstJsonArray(scope);
+  if (!jsonStr) return [];
+  let arr;
+  try { arr = JSON.parse(jsonStr); } catch (_) { return []; }
+  return Array.isArray(arr) ? arr : [];
+}
+
+// 字串欄位正規化：去頭尾空白、空字串回 null、超長截斷到上限（§18.3）。
+function clampText(v, max) {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  if (!t) return null;
+  return t.length > max ? t.slice(0, max) : t;
+}
+
+// 填入 ADD／UPDATE 共用的可編輯欄位。title 一併帶入（缺席不設，ADD 由呼叫端驗必填）。
+// eventDate 三態：字串合法 → 設；明確 null → 設 null（清除舊日期）；缺席／非法字串 → 不動。
+// datePrecision 缺省依有無時間推定。sourcePreview／時間戳／status 一律不收模型值（本地決定）。
+function fillEditableFields(out, raw) {
+  const title = clampText(raw.title, MAX_THREAD_TITLE_CHARS);
+  if (title) out.title = title;
+  const detail = clampText(raw.detail, MAX_THREAD_TEXT_CHARS);
+  if (detail) out.detail = detail;
+  if (raw.eventDate === null) {
+    out.eventDate = null; // 明確清除日期（無日期更新）
+  } else if (typeof raw.eventDate === 'string' && isValidLocalDateString(raw.eventDate)) {
+    out.eventDate = raw.eventDate;
+    out.eventTime = (typeof raw.eventTime === 'string' && isValidLocalTimeString(raw.eventTime)) ? raw.eventTime : null;
+    out.datePrecision = THREAD_PRECISIONS.has(raw.datePrecision) ? raw.datePrecision : (out.eventTime ? 'time' : 'date');
+  }
+  if (Array.isArray(raw.matchKeywords)) out.matchKeywords = raw.matchKeywords; // 交給 deriveMatchKeywords 過濾
+  if (THREAD_KINDS.has(raw.kind)) out.kind = raw.kind;
+  if (THREAD_OWNERS.has(raw.owner)) out.owner = raw.owner;
+}
+
+// 把單一 raw op 正規化＋驗證為安全 op；不合規回 null（§18 安全放棄）。
+export function normalizeThreadOp(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const op = typeof raw.op === 'string' ? raw.op.trim().toUpperCase() : '';
+  if (!THREAD_OPS.has(op)) return null;
+  if (op === 'NONE') return { op: 'NONE' };
+
+  if (op === 'ADD') {
+    const out = { op };
+    fillEditableFields(out, raw);
+    if (!out.title) return null; // ADD 必須有標題
+    return out;
+  }
+  // UPDATE / RESOLVE / CANCEL 必須帶 id
+  const id = typeof raw.id === 'string' ? raw.id.trim() : '';
+  if (!id) return null;
+  const out = { op, id };
+  if (op === 'UPDATE') fillEditableFields(out, raw);
+  else { // RESOLVE / CANCEL 可附結果文字
+    const result = clampText(raw.result, MAX_THREAD_TEXT_CHARS);
+    if (result) out.result = result;
+  }
+  return out;
+}
+
+// 正規化整批 ops：濾掉不合規與 NONE，至多保留 MAX_THREAD_OPS 個。
+export function normalizeThreadOps(rawArray) {
+  const out = [];
+  for (const raw of Array.isArray(rawArray) ? rawArray : []) {
+    if (out.length >= MAX_THREAD_OPS) break;
+    const op = normalizeThreadOp(raw);
+    if (op && op.op !== 'NONE') out.push(op);
+  }
+  return out;
+}
+
+// ── 10. 寫前重讀後的原子套用計畫（§12.3）─────────────────────────────────────
+function defaultGenId(now, seq) {
+  return `thread_${now.toString(36)}_${seq}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+// 純函式：吃「目前 threads 快照（含最近關閉者，供防復活）＋ 已正規化 ops ＋ 來源脈絡」，
+// 回傳要寫回 DB 的 thread 陣列（puts）與略過原因（skipped）。呼叫端負責重讀與 dbPut。
+// ops 依序處理且後續 op 看得到前面 op 的結果（同一 queue 內一致）。idempotent：ADD 靠
+// fingerprint 去重（第二次重跑會看到第一次已寫入的 thread → 略過），UPDATE/RESOLVE/CANCEL
+// 天生冪等；per-character queue 保證同角色不會並發套用（見 enqueueThreadTask）。
+// sourceCreatedAtEnd：總結補漏傳「transcript 最晚訊息時間」，即時擷取不傳（單點＝earliest==latest）。
+// 事件日以 [最早, 最晚] 範圍驗證，避免橫跨多天的總結把早期正確日期誤降為無日期（§10.3）。
+export function planThreadApply({
+  operations = [], existingThreads = [], charId,
+  sourceMsgId = null, sourceCreatedAt = Date.now(), sourceCreatedAtEnd = null, sourcePreview = null,
+  now = Date.now(), genId = defaultGenId,
+} = {}) {
+  const endMs = sourceCreatedAtEnd == null ? sourceCreatedAt : sourceCreatedAtEnd;
+  const srcEarliest = Math.min(sourceCreatedAt, endMs);
+  const srcLatest = Math.max(sourceCreatedAt, endMs);
+  const dateInRange = (d) => d != null && isEventDateWithinRange(d, srcEarliest, srcLatest);
+
+  const working = (existingThreads || []).map((t) => ({ ...t }));
+  const byId = new Map(working.map((t) => [t.id, t]));
+  const puts = [];
+  const skipped = [];
+  let addSeq = 0;
+
+  const record = (thread) => {
+    byId.set(thread.id, thread);
+    const wi = working.findIndex((t) => t.id === thread.id);
+    if (wi >= 0) working[wi] = thread; else working.push(thread);
+    const pi = puts.findIndex((t) => t.id === thread.id);
+    if (pi >= 0) puts[pi] = thread; else puts.push(thread);
+  };
+
+  for (const op of operations) {
+    if (op.op === 'ADD') {
+      const kind = op.kind || 'event';
+      const owner = op.owner || 'user';
+      // 事件日超出來源日合理範圍 → 視為無日期（不信任離譜時間，§10.3）
+      const finalDate = dateInRange(op.eventDate) ? op.eventDate : null;
+      const eventTime = finalDate ? (op.eventTime || null) : null;
+      const datePrecision = finalDate ? (op.datePrecision || (eventTime ? 'time' : 'date')) : 'unknown';
+      const matchKeywords = deriveMatchKeywords({
+        title: op.title, detail: op.detail || '', provided: op.matchKeywords || null,
+      });
+      // 可用 thread 必須至少有一個可判定提及的主題詞；否則永遠無法被消耗，只會反覆注入後冷卻。
+      if (!matchKeywords.length) { skipped.push({ op: 'ADD', reason: 'no-keywords', title: op.title }); continue; }
+      const candidate = {
+        charId, kind, owner, title: op.title, detail: op.detail || '',
+        eventDate: finalDate, matchKeywords,
+      };
+      if (isDuplicateThread(candidate, working)) { skipped.push({ op: 'ADD', reason: 'duplicate', title: op.title }); continue; }
+      const thread = {
+        id: genId(now, addSeq++), charId, kind, owner,
+        title: op.title, detail: op.detail || '',
+        matchKeywords,
+        eventDate: finalDate, eventTime, datePrecision,
+        followUpAfter: computeFollowUpAfter({ eventDate: finalDate, eventTime, datePrecision }),
+        status: 'planned', result: null,
+        sourceMsgId, sourcePreview,
+        enabled: true, lastPromptedAt: null, promptedCount: 0, offeredCount: 0, cooldownUntil: null,
+        createdAt: now, updatedAt: now, closedAt: null,
+      };
+      record(thread);
+      continue;
+    }
+
+    // UPDATE / RESOLVE / CANCEL
+    const cur = byId.get(op.id);
+    if (!cur) { skipped.push({ op: op.op, reason: 'not-found', id: op.id }); continue; }
+    if (cur.charId !== charId) { skipped.push({ op: op.op, reason: 'char-mismatch', id: op.id }); continue; }
+    if (!canApplyOp(op.op, cur.status)) { skipped.push({ op: op.op, reason: 'terminal', id: op.id }); continue; }
+
+    const next = { ...cur, updatedAt: now };
+    if (op.op === 'UPDATE') {
+      let topicChanged = false, scheduleChanged = false, kwChanged = false; // topic＝title/detail；schedule＝日期/時間/精度
+      if (op.title && op.title !== cur.title) { next.title = op.title; topicChanged = true; }
+      if (op.detail != null && op.detail !== cur.detail) { next.detail = op.detail; topicChanged = true; }
+      if (op.eventDate !== undefined) {
+        const finalDate = dateInRange(op.eventDate) ? op.eventDate : null;
+        const finalTime = finalDate ? (op.eventTime || null) : null;
+        const finalPrec = finalDate ? (op.datePrecision || (finalTime ? 'time' : 'date')) : 'unknown';
+        // 同日改時間、改精度都算改期（followUpAfter 依三者算），不能只比日期
+        if (finalDate !== cur.eventDate || finalTime !== (cur.eventTime ?? null) || finalPrec !== cur.datePrecision) scheduleChanged = true;
+        next.eventDate = finalDate;
+        next.eventTime = finalTime;
+        next.datePrecision = finalPrec;
+      }
+      if (scheduleChanged) {
+        next.followUpAfter = computeFollowUpAfter({ eventDate: next.eventDate, eventTime: next.eventTime, datePrecision: next.datePrecision });
+        next.lastPromptedAt = null; // 改期＝可重新關心一次
+      }
+      if (topicChanged) {
+        const refresh = computeKeywordRefreshPatch({
+          title: next.title, detail: next.detail, provided: op.matchKeywords || null,
+        }, now);
+        if (!refresh.matchKeywords.length) {
+          skipped.push({ op: 'UPDATE', reason: 'no-keywords', id: op.id });
+          continue;
+        }
+        Object.assign(next, refresh);
+      } else if (Array.isArray(op.matchKeywords)) {
+        const newKw = deriveMatchKeywords({ title: next.title, detail: next.detail, provided: op.matchKeywords });
+        // 只在推導出非空且與現值不同時才更新：keywords-only 的 UPDATE 絕不能把主題詞清空
+        // （與 ADD／改標題的 no-keywords 防線一致——清空＝事件永遠判「未提及」、無法消耗）。
+        if (newKw.length && JSON.stringify(newKw) !== JSON.stringify(cur.matchKeywords || [])) { next.matchKeywords = newKw; kwChanged = true; }
+      }
+      // 空 UPDATE（無任何實際變更）不寫入、不刷新 updatedAt——否則無日期事件會一直逃過 90 天清理，
+      // 且重跑同一 UPDATE 不再冪等（§21.4）。
+      if (!topicChanged && !scheduleChanged && !kwChanged) { skipped.push({ op: 'UPDATE', reason: 'no-op', id: op.id }); continue; }
+      // §5.3：只有改期才把 waiting_result 拉回 planned、重新開放追問；純補充/改標題維持原狀態。
+      next.status = scheduleChanged ? nextStatusForOp('UPDATE', cur.status) : cur.status;
+    } else {
+      next.status = op.op === 'RESOLVE' ? 'resolved' : 'cancelled';
+      if (op.result) next.result = op.result;
+      next.closedAt = now;
+    }
+    record(next);
+  }
+  return { puts, skipped };
+}
+
+// ── 11. Per-character 序列化 queue（§12.3）───────────────────────────────────
+// 即時擷取與總結補漏對「同一角色」的套用必須串接，避免兩者同時讀到舊狀態後重複新增。
+// 每角色維持一條 Promise 鏈；任一 task 失敗只斷開自己、不影響後續（回傳會 reject 供呼叫端
+// 自行處理，但鏈本身以吞錯的 tail 續接）。
+const threadQueues = new Map();
+
+export function enqueueThreadTask(charId, task) {
+  const prev = threadQueues.get(charId) || Promise.resolve();
+  const run = prev.then(() => task());
+  threadQueues.set(charId, run.catch(() => {}));
+  return run;
+}
+
+// 測試用：清掉某角色（或全部）的 queue 狀態。
+export function _resetThreadQueues(charId = null) {
+  if (charId == null) threadQueues.clear();
+  else threadQueues.delete(charId);
 }

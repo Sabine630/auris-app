@@ -272,6 +272,9 @@ function requireString(rec, store, field, index) {
 function validateThreadRow(rec, index) {
   const bad = (field) => new Error(`匯入資料「continuity_threads」第 ${index + 1} 筆的「${field}」格式錯誤`);
 
+  // continuity thread 沒有角色或可見標題就無法管理；只檢查 typeof 會放過空字串／純空白。
+  if (!rec.charId.trim()) throw bad('charId');
+  if (!rec.title.trim()) throw bad('title');
   if (!THREAD_KINDS.has(rec.kind)) throw bad('kind');
   if (!THREAD_OWNERS.has(rec.owner)) throw bad('owner');
   if (!THREAD_STATUSES.has(rec.status)) throw bad('status');
@@ -301,17 +304,18 @@ function validateThreadRow(rec, index) {
   if (rec.sourceMsgId != null && typeof rec.sourceMsgId !== 'string') throw bad('sourceMsgId');
   if (rec.enabled !== undefined && typeof rec.enabled !== 'boolean') throw bad('enabled');
 
-  if (rec.matchKeywords !== undefined) {
-    if (!Array.isArray(rec.matchKeywords) || rec.matchKeywords.length > MAX_THREAD_KEYWORDS) throw bad('matchKeywords');
-    for (const kw of rec.matchKeywords) {
-      if (typeof kw !== 'string') throw bad('matchKeywords');
-      // runtime 提及判定會去空白後比對，帶空白的關鍵詞永遠命不中——直接拒絕（含前後與內部空白），
-      // 逼匯入資料與 runtime 正規化一致；再套相同的 2–8 字與停用詞規則。
-      const t = kw.replace(/\s+/g, '');
-      if (t !== kw) throw bad('matchKeywords');
-      if (t.length < MIN_THREAD_KEYWORD_CHARS || t.length > MAX_THREAD_KEYWORD_CHARS) throw bad('matchKeywords');
-      if (THREAD_KEYWORD_STOPWORDS.has(t)) throw bad('matchKeywords');
-    }
+  // matchKeywords 是消耗判定的必要衍生資料；缺少或空陣列會讓事件永遠判定「未提及」。
+  if (!Array.isArray(rec.matchKeywords)
+    || rec.matchKeywords.length === 0
+    || rec.matchKeywords.length > MAX_THREAD_KEYWORDS) throw bad('matchKeywords');
+  for (const kw of rec.matchKeywords) {
+    if (typeof kw !== 'string') throw bad('matchKeywords');
+    // runtime 提及判定會去空白後比對，帶空白的關鍵詞永遠命不中——直接拒絕（含前後與內部空白），
+    // 逼匯入資料與 runtime 正規化一致；再套相同的 2–8 字與停用詞規則。
+    const t = kw.replace(/\s+/g, '');
+    if (t !== kw) throw bad('matchKeywords');
+    if (t.length < MIN_THREAD_KEYWORD_CHARS || t.length > MAX_THREAD_KEYWORD_CHARS) throw bad('matchKeywords');
+    if (THREAD_KEYWORD_STOPWORDS.has(t)) throw bad('matchKeywords');
   }
 }
 

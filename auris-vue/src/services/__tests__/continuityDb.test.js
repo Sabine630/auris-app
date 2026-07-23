@@ -10,7 +10,7 @@ import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 vi.mock('../demoMode.js', () => ({ isDemo: () => false }));
 
 import {
-  initDB, dbPut, dbAll, dbGet,
+  initDB, dbPut, dbPutAll, dbAll, dbGet,
   exportAllData, importAllData,
   exportCharacterData, importCharacterData,
   deleteCharacterCascade, clearChatData,
@@ -136,6 +136,27 @@ describe('DB v8 upgrade', () => {
     expect(msgs[0].content).toBe('舊訊息');
     // 新 store 是空的，不是「不存在」
     expect(await dbAll('continuity_threads')).toEqual([]);
+  });
+});
+
+describe('dbPutAll — 多筆原子寫入', () => {
+  beforeEach(async () => { await initDB(); });
+
+  it('全部合法 → 一次交易寫入全部', async () => {
+    await dbPutAll('continuity_threads', [makeThread({ id: 'a' }), makeThread({ id: 'b' })]);
+    expect((await dbAll('continuity_threads')).map(t => t.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('第二筆同步拋錯（不可結構化複製）→ 整批 rollback，第一筆也不留', async () => {
+    const good = makeThread({ id: 'a' });
+    const bad = makeThread({ id: 'b', broken: () => {} }); // 含函式 → put() 同步 DataCloneError
+    await expect(dbPutAll('continuity_threads', [good, bad])).rejects.toBeTruthy();
+    // 關鍵：第一筆不得被提交（若沒 tx.abort() 就會殘留）
+    expect(await dbAll('continuity_threads')).toEqual([]);
+  });
+
+  it('空陣列 → 直接回 0，不開交易', async () => {
+    expect(await dbPutAll('continuity_threads', [])).toBe(0);
   });
 });
 

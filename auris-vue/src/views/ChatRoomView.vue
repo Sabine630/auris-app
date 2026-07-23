@@ -486,7 +486,7 @@ import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting, stripUnsafeImage, clearChatData } from '../services/db.js';
 import { readImportJsonFile, validateChatImport } from '../services/importValidation.js';
-import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, generateSleepClosingStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive, isGoodnightText, BOND_CAP } from '../services/chatEngine.js';
+import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, generateSleepClosingStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive, isGoodnightText, extractContinuityThreads, BOND_CAP } from '../services/chatEngine.js';
 import { formatContent, splitReply } from '../services/format.js';
 import { estimateTokens } from '../services/tokens.js';
 import { addKeepsake } from '../services/keepsakes.js';
@@ -1347,6 +1347,10 @@ async function sendMsg() {
   pendingImage.value = null;
   autoResize();
   scrollToBottom();
+
+  // P131：待續事件擷取——背景 fire-and-forget，窗口以本輪剛落庫的 user 訊息為錨點。
+  // 不 await、不進送出/回覆鏈；本地閘門未命中則零額外 API 呼叫。失敗自行吞掉。
+  extractContinuityThreads(charId, messages.value.filter(m => m.type !== 'hv')).catch(() => {});
 
   // 睡前模式中使用者有動靜 → 重置閒置收尾計時
   if (sleepActive.value) armSleepTimer();

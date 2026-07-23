@@ -81,15 +81,27 @@ describe('JSON 資源與 v1 schema 驗證', () => {
 });
 
 describe('continuity_threads 匯入領域規則', () => {
-  const good = { id: 't1', charId: 'c1', title: '面試', kind: 'event', owner: 'user', status: 'planned' };
+  const good = {
+    id: 't1', charId: 'c1', title: '面試', kind: 'event',
+    owner: 'user', status: 'planned', matchKeywords: ['面試'],
+  };
   it('合法列通過', () => {
     expect(validateStoreRows('continuity_threads', [good])).toBe(1);
+  });
+  it('charId／title 不得為空字串或純空白', () => {
+    expect(() => validateStoreRows('continuity_threads', [{ ...good, charId: '' }])).toThrow(/charId/);
+    expect(() => validateStoreRows('continuity_threads', [{ ...good, charId: '   ' }])).toThrow(/charId/);
+    expect(() => validateStoreRows('continuity_threads', [{ ...good, title: '' }])).toThrow(/title/);
+    expect(() => validateStoreRows('continuity_threads', [{ ...good, title: '   ' }])).toThrow(/title/);
   });
   it('updatedAt 非數字（如 "never"）被拒——否則無日期清理永不過期', () => {
     expect(() => validateStoreRows('continuity_threads', [{ ...good, updatedAt: 'never' }])).toThrow(/updatedAt/);
     expect(() => validateStoreRows('continuity_threads', [{ ...good, updatedAt: 123 }])).not.toThrow();
   });
   it('matchKeywords 必須 2–8 字、非停用詞、不含任何空白', () => {
+    const { matchKeywords: _omitted, ...missing } = good;
+    expect(() => validateStoreRows('continuity_threads', [missing])).toThrow(/matchKeywords/);
+    expect(() => validateStoreRows('continuity_threads', [{ ...good, matchKeywords: [] }])).toThrow(/matchKeywords/);
     expect(() => validateStoreRows('continuity_threads', [{ ...good, matchKeywords: ['我'] }])).toThrow(/matchKeywords/);
     expect(() => validateStoreRows('continuity_threads', [{ ...good, matchKeywords: ['工作'] }])).toThrow(/matchKeywords/); // 停用泛詞
     expect(() => validateStoreRows('continuity_threads', [{ ...good, matchKeywords: ['  '] }])).toThrow(/matchKeywords/); // 純空白

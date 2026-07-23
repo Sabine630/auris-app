@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { dayPeriod, timeAnchorLine, shouldBusyRead, isGoodnightText, sleepRecallState, SLEEP_RECALL_MIN_MS, SLEEP_RECALL_MAX_MS } from '../chatEngine.js';
+import {
+  dayPeriod, timeAnchorLine, shouldBusyRead, isGoodnightText, sleepRecallState,
+  SLEEP_RECALL_MIN_MS, SLEEP_RECALL_MAX_MS,
+  buildSummaryThreadInstr, buildThreadExtractSystem, THREAD_FINAL_STATE_RULE,
+} from '../chatEngine.js';
 
 describe('dayPeriod — 時段分界', () => {
   it('4→深夜、5→清晨（清晨下界）', () => {
@@ -83,7 +87,7 @@ describe('shouldBusyRead', () => {
 });
 
 // ── 專屬默契（P112 D4）──────────────────────────────────────────────────────
-import { parseSummaryBonds, mergeBonds, BOND_CAP } from '../chatEngine.js';
+import { parseSummaryBonds, mergeBonds, stripThreadOpsTail, BOND_CAP } from '../chatEngine.js';
 
 describe('parseSummaryBonds — 總結尾端 BONDS 行解析', () => {
   it('正常解析：摘要與新梗分離、BONDS 行不進摘要', () => {
@@ -109,6 +113,36 @@ describe('parseSummaryBonds — 總結尾端 BONDS 行解析', () => {
     const r2 = parseSummaryBonds('摘要。\nBONDS: [{"x":1}]'); // 元素非字串 → 過濾光
     expect(r2.bonds).toEqual([]);
     expect(r2.summary).toBe('摘要。');
+  });
+});
+
+describe('stripThreadOpsTail — 移除尾端 THREAD_OPS（P131，避免打斷 BONDS 錨定）', () => {
+  it('切掉 THREAD_OPS 後，BONDS 仍能被錨定句尾的 parser 解析', () => {
+    const raw = '兩人聊了面試。\nBONDS: ["互道晚安"]\nTHREAD_OPS: [{"op":"ADD","title":"面試","matchKeywords":["面試"]}]';
+    const body = stripThreadOpsTail(raw);
+    expect(body).toBe('兩人聊了面試。\nBONDS: ["互道晚安"]');
+    const { summary, bonds } = parseSummaryBonds(body);
+    expect(summary).toBe('兩人聊了面試。');
+    expect(bonds).toEqual(['互道晚安']);
+  });
+  it('沒有 THREAD_OPS 時原樣返回', () => {
+    expect(stripThreadOpsTail('只有摘要。')).toBe('只有摘要。');
+  });
+});
+
+describe('待續擷取 prompt — 同批對話以最後狀態為準', () => {
+  const open = [{ id: 't1', title: '週一面試', eventDate: '2026-07-27', status: 'planned' }];
+  const closed = [];
+
+  it.each([
+    ['即時擷取', () => buildThreadExtractSystem(open, closed)],
+    ['總結補漏', () => buildSummaryThreadInstr(open, closed)],
+  ])('%s 共用明確規則：無既有 thread 不得先 ADD，已有才終止', (_label, build) => {
+    const prompt = build();
+    expect(prompt).toContain(THREAD_FINAL_STATE_RULE);
+    expect(prompt).toContain('沒有既有 thread 時回 NONE、不得 ADD');
+    expect(prompt).toContain('已有既有 thread 時，才用該 id 回 CANCEL 或 RESOLVE');
+    expect(prompt).toContain('id=t1');
   });
 });
 

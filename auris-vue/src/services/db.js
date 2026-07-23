@@ -70,6 +70,23 @@ export function initDB() {
 }
 
 export const dbPut = (s, v) => new Promise((r, j) => { const tx = db.transaction(s, 'readwrite'); tx.objectStore(s).put(v).onsuccess = e => r(e.target.result); tx.onerror = j; });
+// 多筆原子寫入：同一 transaction 內全部 put，任一失敗整批 rollback，避免部分寫入。
+// 兩種失敗都要涵蓋：(1) 非同步 request error → 預設會自動 abort 交易；(2) store.put() 同步拋錯
+// （如 DataCloneError）→ 已入列的前幾筆仍會自動提交，必須主動 tx.abort() 才會回滾。
+export const dbPutAll = (s, values) => new Promise((r, j) => {
+  if (!values || !values.length) { r(0); return; }
+  const tx = db.transaction(s, 'readwrite');
+  const store = tx.objectStore(s);
+  tx.oncomplete = () => r(values.length);
+  tx.onerror = () => j(tx.error || new Error('dbPutAll failed'));
+  tx.onabort = () => j(tx.error || new Error('dbPutAll aborted'));
+  try {
+    for (const v of values) store.put(v);
+  } catch (e) {
+    try { tx.abort(); } catch (_) { /* 交易可能已結束 */ }
+    j(e); // 以真正的同步錯誤（如 DataCloneError）reject，先於 onabort 生效
+  }
+});
 export const dbGet = (s, k) => new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); tx.objectStore(s).get(k).onsuccess = e => r(e.target.result); tx.onerror = j; });
 export const dbAll = (s) => new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); tx.objectStore(s).getAll().onsuccess = e => r(e.target.result); tx.onerror = j; });
 export const dbIdx = (s, i, v) => new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); tx.objectStore(s).index(i).getAll(v).onsuccess = e => r(e.target.result); tx.onerror = j; });

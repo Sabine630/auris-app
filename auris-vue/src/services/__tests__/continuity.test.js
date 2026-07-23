@@ -3,12 +3,14 @@
 import { describe, it, expect } from 'vitest';
 import {
   looksLikeThreadCandidate, isConfirmationText, evaluateCandidateTurn,
-  parseLocalDateParts, buildLocalDate, isEventDateWithinWindow, computeFollowUpAfter,
+  parseLocalDateParts, buildLocalDate, isEventDateWithinWindow, isEventDateWithinRange, computeFollowUpAfter,
   canApplyOp, nextStatusForOp, THREAD_OPS, TERMINAL_STATUSES,
   normalizeForFingerprint, threadFingerprint, isDuplicateThread,
   deriveMatchKeywords, didMentionContinuityThread, hasCareSignal,
   computeMentionPatch, computeKeywordRefreshPatch, isActionEligible,
   classifyThreadCleanup, expirePatch, backfillClosedAtPatch,
+  parseThreadOps, normalizeThreadOp, normalizeThreadOps, planThreadApply,
+  enqueueThreadTask, _resetThreadQueues, MAX_THREAD_OPS,
   OFFER_MISS_LIMIT, COOLDOWN_DAYS,
 } from '../continuity.js';
 
@@ -175,6 +177,26 @@ describe('isEventDateWithinWindow — §10.3 相對來源日的範圍', () => {
   });
 });
 
+describe('isEventDateWithinRange — 橫跨多天以最早/最晚界判定（§10.3 總結補漏）', () => {
+  const early = new Date(2026, 6, 1, 12, 0).getTime();  // 7/1
+  const late = new Date(2026, 6, 20, 12, 0).getTime();  // 7/20
+  it('相對最早日的近未來（7/1 的明天 7/2）接受', () => {
+    expect(isEventDateWithinRange('2026-07-02', early, late)).toBe(true);
+  });
+  it('早於最早日超過 14 天拒絕', () => {
+    expect(isEventDateWithinRange('2026-06-10', early, late)).toBe(false); // 早 21 天
+  });
+  it('晚於最晚日超過 366 天拒絕', () => {
+    expect(isEventDateWithinRange('2027-08-01', early, late)).toBe(false);
+  });
+  it('單點退化＝與 isEventDateWithinWindow 一致', () => {
+    expect(isEventDateWithinRange('2026-07-02', late, late)).toBe(isEventDateWithinWindow('2026-07-02', late));
+  });
+  it('無日期不受限', () => {
+    expect(isEventDateWithinRange(null, early, late)).toBe(true);
+  });
+});
+
 describe('computeFollowUpAfter — §10.4', () => {
   it('無日期 → null', () => {
     expect(computeFollowUpAfter({ eventDate: null })).toBeNull();
@@ -254,6 +276,29 @@ describe('fingerprint', () => {
     const closed = { charId: 'c1', kind: 'event', owner: 'user', title: '面試', eventDate: '2026-07-27', status: 'resolved' };
     const revive = { charId: 'c1', kind: 'event', owner: 'user', title: '面試', eventDate: '2026-07-27' };
     expect(isDuplicateThread(revive, [closed])).toBe(true);
+  });
+  it('同日同主題的輕微改寫視為重複', () => {
+    const a = {
+      charId: 'c1', kind: 'event', owner: 'user',
+      title: '週一參加面試', eventDate: '2026-07-27', matchKeywords: ['面試'],
+    };
+    const b = {
+      charId: 'c1', kind: 'event', owner: 'user',
+      title: '下週一要去面試', eventDate: '2026-07-27', matchKeywords: ['面試'],
+    };
+    expect(threadFingerprint(a)).not.toBe(threadFingerprint(b));
+    expect(isDuplicateThread(b, [a])).toBe(true);
+  });
+  it('同日但各有不同專名時不做模糊合併', () => {
+    const google = {
+      charId: 'c1', kind: 'event', owner: 'user',
+      title: 'Google 面試', eventDate: '2026-07-27', matchKeywords: ['Google', '面試'],
+    };
+    const apple = {
+      charId: 'c1', kind: 'event', owner: 'user',
+      title: 'Apple 面試', eventDate: '2026-07-27', matchKeywords: ['Apple', '面試'],
+    };
+    expect(isDuplicateThread(apple, [google])).toBe(false);
   });
 });
 
@@ -461,5 +506,315 @@ describe('classifyThreadCleanup — §15', () => {
   it('回填後：若回填的 closedAt 已逾 30 天，下一輪即可 purge', () => {
     const backfilled = { status: 'resolved', closedAt: now - 40 * DAY };
     expect(classifyThreadCleanup(backfilled, now)).toBe('purge');
+  });
+});
+
+// ── §9.3／§11.4 Operation parse／normalize ──────────────────────────────────
+describe('parseThreadOps — 容錯擷取 operations 陣列', () => {
+  it('即時擷取器：整段就是 JSON 陣列', () => {
+    const ops = parseThreadOps('[{"op":"ADD","title":"面試"}]');
+    expect(ops).toEqual([{ op: 'ADD', title: '面試' }]);
+  });
+  it('容忍 ```json 圍欄與前後贅字', () => {
+    const ops = parseThreadOps('好的，這是結果：\n```json\n[{"op":"NONE"}]\n```\n謝謝');
+    expect(ops).toEqual([{ op: 'NONE' }]);
+  });
+  it('總結尾段 THREAD_OPS 標記，含巢狀 matchKeywords（不可被非貪婪 regex 截斷）', () => {
+    const raw = '這是摘要文字。\nBONDS: ["約定"]\nTHREAD_OPS: [{"op":"ADD","title":"回診","matchKeywords":["回診"]}]';
+    const ops = parseThreadOps(raw);
+    expect(ops).toEqual([{ op: 'ADD', title: '回診', matchKeywords: ['回診'] }]);
+  });
+  it('壞 JSON／非陣列／空白 → 空陣列（安全放棄）', () => {
+    expect(parseThreadOps('[{op:ADD}')).toEqual([]);
+    expect(parseThreadOps('THREAD_OPS: {"op":"ADD"}')).toEqual([]);
+    expect(parseThreadOps('')).toEqual([]);
+    expect(parseThreadOps('沒有任何陣列')).toEqual([]);
+  });
+});
+
+describe('normalizeThreadOp／normalizeThreadOps — allowlist 與欄位驗證', () => {
+  it('未知 op、缺 title 的 ADD、缺 id 的 UPDATE 皆回 null', () => {
+    expect(normalizeThreadOp({ op: 'DELETE', id: 'x' })).toBeNull();
+    expect(normalizeThreadOp({ op: 'ADD' })).toBeNull();
+    expect(normalizeThreadOp({ op: 'UPDATE' })).toBeNull();
+    expect(normalizeThreadOp({ op: 'RESOLVE' })).toBeNull();
+  });
+  it('op 大小寫容忍、NONE 正規化保留', () => {
+    expect(normalizeThreadOp({ op: 'add', title: '面試' })).toMatchObject({ op: 'ADD', title: '面試' });
+    expect(normalizeThreadOp({ op: 'none' })).toEqual({ op: 'NONE' });
+  });
+  it('無效日期整組忽略、datePrecision 依有無時間推定', () => {
+    expect(normalizeThreadOp({ op: 'ADD', title: '面試', eventDate: '2026-02-30' }).eventDate).toBeUndefined();
+    const withTime = normalizeThreadOp({ op: 'ADD', title: '面試', eventDate: '2026-07-27', eventTime: '14:00' });
+    expect(withTime.datePrecision).toBe('time');
+    const dateOnly = normalizeThreadOp({ op: 'ADD', title: '面試', eventDate: '2026-07-27' });
+    expect(dateOnly.datePrecision).toBe('date');
+  });
+  it('超長 title/detail 截斷到上限、不整組丟棄', () => {
+    const op = normalizeThreadOp({ op: 'ADD', title: '字'.repeat(500), detail: '詳'.repeat(9000) });
+    expect(op.title.length).toBe(200);
+    expect(op.detail.length).toBe(4000);
+  });
+  it('UPDATE 經 normalizer 保留 title（回歸：舊版遺失 title 導致標題不變、關鍵詞卻變）', () => {
+    const op = normalizeThreadOp({ op: 'UPDATE', id: 'x', title: '新公司報到' });
+    expect(op.title).toBe('新公司報到');
+  });
+  it('UPDATE eventDate 三態：合法字串設值、明確 null 清除、缺席不動', () => {
+    expect(normalizeThreadOp({ op: 'UPDATE', id: 'x', eventDate: '2026-07-27' }).eventDate).toBe('2026-07-27');
+    expect(normalizeThreadOp({ op: 'UPDATE', id: 'x', eventDate: null }).eventDate).toBeNull();
+    expect('eventDate' in normalizeThreadOp({ op: 'UPDATE', id: 'x', title: '改' })).toBe(false);
+  });
+  it('normalizeThreadOps 濾掉 NONE 與不合規、至多 3 個', () => {
+    const ops = normalizeThreadOps([
+      { op: 'NONE' },
+      { op: 'ADD', title: '面試' },
+      { op: 'BOGUS' },
+      { op: 'ADD', title: '回診' },
+      { op: 'ADD', title: '搬家' },
+      { op: 'ADD', title: '考試' }, // 第 4 個合規 → 被 3 個上限擋掉
+    ]);
+    expect(ops.length).toBe(MAX_THREAD_OPS);
+    expect(ops.map(o => o.title)).toEqual(['面試', '回診', '搬家']);
+  });
+});
+
+// ── §12.3 寫前重讀後的原子套用計畫 ───────────────────────────────────────────
+describe('planThreadApply — ADD／UPDATE／RESOLVE／CANCEL', () => {
+  const now = new Date(2026, 6, 23, 10, 0).getTime();
+  const src = new Date(2026, 6, 23, 9, 0).getTime();
+  const genId = (n, seq) => `t_${seq}`;
+  const base = { charId: 'c1', sourceMsgId: 'msg_1', sourceCreatedAt: src, sourcePreview: '我下週一要面試', now, genId };
+
+  it('ADD 建出完整 planned thread（含 followUpAfter／matchKeywords／時間戳）', () => {
+    const { puts } = planThreadApply({
+      ...base, existingThreads: [],
+      operations: [{ op: 'ADD', title: '週一參加面試', eventDate: '2026-07-27', datePrecision: 'date' }],
+    });
+    expect(puts.length).toBe(1);
+    const t = puts[0];
+    expect(t).toMatchObject({
+      id: 't_0', charId: 'c1', kind: 'event', owner: 'user', title: '週一參加面試',
+      status: 'planned', eventDate: '2026-07-27', datePrecision: 'date',
+      sourceMsgId: 'msg_1', sourcePreview: '我下週一要面試',
+      promptedCount: 0, offeredCount: 0, cooldownUntil: null, closedAt: null, enabled: true,
+      createdAt: now, updatedAt: now,
+    });
+    expect(t.matchKeywords).toContain('面試');
+    expect(t.followUpAfter).toBeGreaterThan(0);
+  });
+
+  it('ADD fingerprint 去重：既有相同 thread → 略過（含最近關閉者，防復活）', () => {
+    const existing = { id: 'old', charId: 'c1', kind: 'event', owner: 'user', title: '面試', eventDate: '2026-07-27', status: 'resolved' };
+    const { puts, skipped } = planThreadApply({
+      ...base, existingThreads: [existing],
+      operations: [{ op: 'ADD', title: '面試', eventDate: '2026-07-27' }],
+    });
+    expect(puts.length).toBe(0);
+    expect(skipped[0]).toMatchObject({ op: 'ADD', reason: 'duplicate' });
+  });
+
+  it('idempotent：把第一次 ADD 的結果當既有再套一次同樣 ADD → 不重複', () => {
+    const first = planThreadApply({ ...base, existingThreads: [], operations: [{ op: 'ADD', title: '面試', eventDate: '2026-07-27' }] });
+    const second = planThreadApply({ ...base, existingThreads: first.puts, operations: [{ op: 'ADD', title: '面試', eventDate: '2026-07-27' }] });
+    expect(second.puts.length).toBe(0);
+  });
+
+  it('即時與總結用不同措辭新增同一事件 → 第二次略過', () => {
+    const instant = planThreadApply({
+      ...base, existingThreads: [],
+      operations: [{ op: 'ADD', title: '週一參加面試', eventDate: '2026-07-27', matchKeywords: ['面試'] }],
+    });
+    const summary = planThreadApply({
+      ...base, sourceMsgId: null, existingThreads: instant.puts,
+      operations: [{ op: 'ADD', title: '下週一要去面試', eventDate: '2026-07-27', matchKeywords: ['面試'] }],
+    });
+    expect(instant.puts).toHaveLength(1);
+    expect(summary.puts).toHaveLength(0);
+    expect(summary.skipped[0]).toMatchObject({ op: 'ADD', reason: 'duplicate' });
+  });
+
+  it('ADD 推不出可用 matchKeywords → 略過，不建立永遠無法消耗的 thread', () => {
+    const { puts, skipped } = planThreadApply({
+      ...base, existingThreads: [],
+      operations: [{ op: 'ADD', title: '事情' }],
+    });
+    expect(puts).toHaveLength(0);
+    expect(skipped[0]).toMatchObject({ op: 'ADD', reason: 'no-keywords' });
+  });
+
+  it('事件日超出來源日合理範圍 → 視為無日期（followUpAfter null、precision unknown）', () => {
+    const { puts } = planThreadApply({
+      ...base, existingThreads: [],
+      operations: [{ op: 'ADD', title: '面試', eventDate: '2030-01-01' }], // 遠超 366 天
+    });
+    expect(puts[0].eventDate).toBeNull();
+    expect(puts[0].followUpAfter).toBeNull();
+    expect(puts[0].datePrecision).toBe('unknown');
+  });
+
+  it('UPDATE 改標題 → 重算 matchKeywords、解除冷卻；未改期故維持原狀態（不回 planned）', () => {
+    const existing = { id: 'x', charId: 'c1', kind: 'event', owner: 'user', title: '面試', status: 'waiting_result', matchKeywords: ['面試'], offeredCount: 2, cooldownUntil: now + DAY, eventDate: null, detail: '' };
+    const { puts } = planThreadApply({ ...base, existingThreads: [existing], operations: [{ op: 'UPDATE', id: 'x', title: '報到' }] });
+    expect(puts[0].status).toBe('waiting_result'); // §5.3：純改標題不改回 planned
+    expect(puts[0].matchKeywords).not.toContain('面試');
+    expect(puts[0].matchKeywords.some(k => k.includes('報到'))).toBe(true);
+    expect(puts[0].offeredCount).toBe(0);
+    expect(puts[0].cooldownUntil).toBeNull();
+  });
+
+  it('端到端（經 normalizer）：UPDATE 改標題 → title 與 keywords 一致更新', () => {
+    const existing = { id: 'x', charId: 'c1', kind: 'event', owner: 'user', title: '面試', status: 'planned', matchKeywords: ['面試'], eventDate: null, detail: '' };
+    const ops = normalizeThreadOps([{ op: 'UPDATE', id: 'x', title: '新公司報到', matchKeywords: ['報到'] }]);
+    const { puts } = planThreadApply({ ...base, existingThreads: [existing], operations: ops });
+    expect(puts[0].title).toBe('新公司報到'); // 不再只變 keywords 卻留舊標題
+    expect(puts[0].matchKeywords.some(k => k.includes('報到'))).toBe(true);
+    expect(puts[0].matchKeywords).not.toContain('面試');
+  });
+
+  it('UPDATE 改成推不出關鍵詞的主題 → 整筆略過並保留既有資料', () => {
+    const existing = {
+      id: 'x', charId: 'c1', kind: 'event', owner: 'user',
+      title: '面試', status: 'planned', matchKeywords: ['面試'], eventDate: null, detail: '',
+    };
+    const { puts, skipped } = planThreadApply({
+      ...base, existingThreads: [existing],
+      operations: [{ op: 'UPDATE', id: 'x', title: '事情', detail: '' }],
+    });
+    expect(puts).toHaveLength(0);
+    expect(skipped[0]).toMatchObject({ op: 'UPDATE', reason: 'no-keywords', id: 'x' });
+    expect(existing).toMatchObject({ title: '面試', matchKeywords: ['面試'] });
+  });
+
+  it('keywords-only UPDATE 推導為空時不清空既有主題詞（title 為停用詞、詞源自 provided）', () => {
+    const existing = {
+      id: 'x', charId: 'c1', kind: 'event', owner: 'user',
+      title: '工作', status: 'planned', matchKeywords: ['面試'], eventDate: null, detail: '',
+    };
+    const { puts, skipped } = planThreadApply({
+      ...base, existingThreads: [existing],
+      operations: [{ op: 'UPDATE', id: 'x', matchKeywords: ['工作'] }], // 停用詞＋title 停用詞 → 推不出詞
+    });
+    expect(puts).toHaveLength(0); // 不套用（no-op），不把 ['面試'] 清成 []
+    expect(skipped[0]).toMatchObject({ op: 'UPDATE', reason: 'no-op', id: 'x' });
+    expect(existing.matchKeywords).toEqual(['面試']);
+  });
+
+  it('端到端（經 normalizer）：UPDATE eventDate:null 清除舊日期與 followUpAfter', () => {
+    const existing = { id: 'x', charId: 'c1', kind: 'event', owner: 'user', title: '面試', status: 'planned', eventDate: '2026-07-27', datePrecision: 'date', followUpAfter: 123, detail: '' };
+    const ops = normalizeThreadOps([{ op: 'UPDATE', id: 'x', eventDate: null }]);
+    const { puts } = planThreadApply({ ...base, existingThreads: [existing], operations: ops });
+    expect(puts[0].eventDate).toBeNull();
+    expect(puts[0].followUpAfter).toBeNull();
+    expect(puts[0].datePrecision).toBe('unknown');
+  });
+
+  it('§5.3 純補充內容不改回 planned：waiting_result 補 detail 仍 waiting_result、不清 lastPromptedAt', () => {
+    const existing = { id: 'x', charId: 'c1', kind: 'event', owner: 'user', title: '面試', status: 'waiting_result', eventDate: '2026-07-27', datePrecision: 'date', lastPromptedAt: now - DAY, detail: '' };
+    const { puts } = planThreadApply({ ...base, existingThreads: [existing], operations: [{ op: 'UPDATE', id: 'x', detail: '還在等通知' }] });
+    expect(puts[0].status).toBe('waiting_result');
+    expect(puts[0].lastPromptedAt).toBe(now - DAY);
+  });
+
+  it('同日改時間也算改期：重算 followUpAfter、清 lastPromptedAt、waiting_result 回 planned', () => {
+    const existing = { id: 'x', charId: 'c1', kind: 'event', owner: 'user', title: '面試', status: 'waiting_result', eventDate: '2026-07-27', eventTime: '10:00', datePrecision: 'time', followUpAfter: 111, lastPromptedAt: now - DAY, detail: '' };
+    const { puts } = planThreadApply({ ...base, existingThreads: [existing], operations: [{ op: 'UPDATE', id: 'x', eventDate: '2026-07-27', eventTime: '15:00', datePrecision: 'time' }] });
+    expect(puts.length).toBe(1);
+    expect(puts[0].eventTime).toBe('15:00');
+    expect(puts[0].status).toBe('planned');
+    expect(puts[0].lastPromptedAt).toBeNull();
+    expect(new Date(puts[0].followUpAfter).getHours()).toBe(18); // 15:00 + 3h
+  });
+
+  it('空 UPDATE（無實際變更）→ no-op 略過，不寫入也不刷新 updatedAt', () => {
+    const existing = { id: 'x', charId: 'c1', kind: 'event', owner: 'user', title: '面試', status: 'waiting_result', eventDate: null, datePrecision: 'unknown', updatedAt: now - 100 * DAY, matchKeywords: ['面試'], detail: '' };
+    const { puts, skipped } = planThreadApply({ ...base, existingThreads: [existing], operations: [{ op: 'UPDATE', id: 'x' }] });
+    expect(puts.length).toBe(0);
+    expect(skipped[0].reason).toBe('no-op');
+  });
+
+  it('重跑同一 UPDATE 冪等：第二次成為 no-op（title 已是新值、updatedAt 不再被推後）', () => {
+    const existing = { id: 'x', charId: 'c1', kind: 'event', owner: 'user', title: '面試', status: 'planned', matchKeywords: ['面試'], eventDate: null, detail: '' };
+    const ops = [{ op: 'UPDATE', id: 'x', title: '報到' }];
+    const first = planThreadApply({ ...base, existingThreads: [existing], operations: ops });
+    expect(first.puts.length).toBe(1);
+    const second = planThreadApply({ ...base, existingThreads: first.puts, operations: ops });
+    expect(second.puts.length).toBe(0);
+    expect(second.skipped[0].reason).toBe('no-op');
+  });
+
+  it('總結補漏用 transcript 時間範圍驗證：7/1 說的 7/2 在 7/20 總結仍保留日期', () => {
+    const early = new Date(2026, 6, 1, 12, 0).getTime();
+    const late = new Date(2026, 6, 20, 12, 0).getTime();
+    const { puts } = planThreadApply({
+      charId: 'c1', existingThreads: [], now: late, genId: (n, s) => `t_${s}`,
+      sourceCreatedAt: early, sourceCreatedAtEnd: late,
+      operations: [{ op: 'ADD', title: '面試', eventDate: '2026-07-02' }],
+    });
+    expect(puts[0].eventDate).toBe('2026-07-02'); // 不因距最後訊息 18 天而被降為無日期
+  });
+
+  it('UPDATE 改期 → 重算 followUpAfter 並清 lastPromptedAt', () => {
+    const existing = { id: 'x', charId: 'c1', kind: 'event', owner: 'user', title: '面試', status: 'waiting_result', eventDate: '2026-07-27', datePrecision: 'date', lastPromptedAt: now - DAY, detail: '' };
+    const { puts } = planThreadApply({ ...base, existingThreads: [existing], operations: [{ op: 'UPDATE', id: 'x', eventDate: '2026-08-10' }] });
+    expect(puts[0].eventDate).toBe('2026-08-10');
+    expect(puts[0].lastPromptedAt).toBeNull();
+    expect(puts[0].followUpAfter).toBeGreaterThan(now);
+  });
+
+  it('RESOLVE／CANCEL → 終止態並寫 closedAt', () => {
+    const existing = { id: 'x', charId: 'c1', kind: 'event', owner: 'user', title: '面試', status: 'waiting_result' };
+    const r = planThreadApply({ ...base, existingThreads: [existing], operations: [{ op: 'RESOLVE', id: 'x', result: '錄取了' }] });
+    expect(r.puts[0]).toMatchObject({ status: 'resolved', result: '錄取了', closedAt: now });
+    const c = planThreadApply({ ...base, existingThreads: [existing], operations: [{ op: 'CANCEL', id: 'x' }] });
+    expect(c.puts[0]).toMatchObject({ status: 'cancelled', closedAt: now });
+  });
+
+  it('終止態 thread 不接受 UPDATE/RESOLVE/CANCEL（略過）', () => {
+    const existing = { id: 'x', charId: 'c1', kind: 'event', owner: 'user', title: '面試', status: 'resolved' };
+    const { puts, skipped } = planThreadApply({ ...base, existingThreads: [existing], operations: [{ op: 'UPDATE', id: 'x', title: '改' }] });
+    expect(puts.length).toBe(0);
+    expect(skipped[0].reason).toBe('terminal');
+  });
+
+  it('跨 charId 的 id 不可更新（略過）', () => {
+    const other = { id: 'x', charId: 'c2', kind: 'event', owner: 'user', title: '面試', status: 'planned' };
+    const { puts, skipped } = planThreadApply({ ...base, existingThreads: [other], operations: [{ op: 'RESOLVE', id: 'x' }] });
+    expect(puts.length).toBe(0);
+    expect(skipped[0].reason).toBe('char-mismatch');
+  });
+
+  it('id 不存在 → 略過（not-found）', () => {
+    const { skipped } = planThreadApply({ ...base, existingThreads: [], operations: [{ op: 'UPDATE', id: 'ghost', title: 'x' }] });
+    expect(skipped[0].reason).toBe('not-found');
+  });
+
+  it('§21.4 後續 op 看得到前面 op 的最新狀態：先 RESOLVE 後 UPDATE 同 id → UPDATE 因已終止被擋', () => {
+    const existing = { id: 'x', charId: 'c1', kind: 'event', owner: 'user', title: '面試', status: 'planned' };
+    const { puts, skipped } = planThreadApply({
+      ...base, existingThreads: [existing],
+      operations: [{ op: 'RESOLVE', id: 'x' }, { op: 'UPDATE', id: 'x', title: '改' }],
+    });
+    expect(puts.length).toBe(1); // 只留 RESOLVE 後的版本
+    expect(puts[0].status).toBe('resolved');
+    expect(skipped.some(s => s.op === 'UPDATE' && s.reason === 'terminal')).toBe(true);
+  });
+});
+
+describe('enqueueThreadTask — per-character 序列化', () => {
+  it('同角色的 task 依序執行，第二個看得到第一個的結果', async () => {
+    _resetThreadQueues('c1');
+    const order = [];
+    const p1 = enqueueThreadTask('c1', async () => { await new Promise(r => setTimeout(r, 20)); order.push('a'); return 'a'; });
+    const p2 = enqueueThreadTask('c1', async () => { order.push('b'); return order.slice(); });
+    const [, r2] = await Promise.all([p1, p2]);
+    expect(order).toEqual(['a', 'b']); // b 一定在 a 之後
+    expect(r2).toEqual(['a', 'b']);
+  });
+  it('前一個 task 失敗不影響後續 task 執行', async () => {
+    _resetThreadQueues('c2');
+    const p1 = enqueueThreadTask('c2', async () => { throw new Error('boom'); });
+    await expect(p1).rejects.toThrow('boom');
+    const p2 = enqueueThreadTask('c2', async () => 'ok');
+    await expect(p2).resolves.toBe('ok');
   });
 });
