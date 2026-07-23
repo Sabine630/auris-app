@@ -59,6 +59,28 @@ export const THREAD_STATUSES = new Set(['planned', 'waiting_result', 'resolved',
 export const THREAD_PRECISIONS = new Set(['date', 'time', 'unknown']);
 export const MAX_THREAD_KEYWORDS = 3;
 export const MAX_THREAD_KEYWORD_CHARS = 8;
+export const MIN_THREAD_KEYWORD_CHARS = 2;   // §13.4：主題名詞至少 2 字，擋「我」這類單字誤消耗
+export const MAX_THREAD_TITLE_CHARS = 200;   // thread 標題專用上限（遠嚴於泛用 20 萬字欄位上限）
+export const MAX_THREAD_TEXT_CHARS = 4000;   // detail／sourcePreview／result 專用上限
+
+// §13.4 提及判定停用詞：泛用詞不能當主題名詞，否則角色隨口說「工作」「時候」就誤判已提及。
+// 涵蓋時間詞、狀態詞、人稱、情緒/關心語意詞。runtime（continuity.js 的 matchKeywords 過濾與
+// title 推導）與匯入驗證共用此單一清單，避免漂移——continuity.js 已規定領域詞彙以本檔為準。
+export const THREAD_KEYWORD_STOPWORDS = new Set([
+  // 時間詞
+  '今天', '明天', '後天', '大後天', '昨天', '前天', '早上', '中午', '下午', '晚上',
+  '下週', '下星期', '這週', '本週', '上週', '下個月', '這個月', '上個月',
+  '月底', '月初', '月中', '週末', '平日', '最近', '之後', '以後', '現在', '時候',
+  // 狀態/泛用名詞
+  '工作', '事情', '事', '結果', '狀況', '情況', '東西', '問題', '樣子', '一下',
+  '時間', '地方', '感覺', '心情', '打算', '計畫', '安排',
+  // 人稱
+  '我', '你', '他', '她', '我們', '你們', '他們', '對方', '使用者', '自己', '大家',
+  // 泛用副詞（不是主題名詞）
+  '一起', '一樣',
+  // 關心語意詞（診斷用，不能當主題）
+  '怎麼樣', '順利', '還好', '如何', '消息', '加油',
+]);
 
 // 只接受本地日曆 YYYY-MM-DD，且必須 round-trip 回同一組年月日：
 // 2026-02-30 會被 Date 自動滾成 3 月 2 日，這裡要判為無效。
@@ -259,14 +281,22 @@ function validateThreadRow(rec, index) {
   if (rec.eventDate != null && !isValidLocalDateString(rec.eventDate)) throw bad('eventDate');
   if (rec.eventTime != null && !isValidLocalTimeString(rec.eventTime)) throw bad('eventTime');
 
-  for (const field of ['followUpAfter', 'lastPromptedAt', 'closedAt', 'cooldownUntil']) {
+  // 時間戳欄位：有值必須是有限數。updatedAt 一併鎖住——否則 "never" 這類字串會讓 §15
+  // 無日期清理的 (now - updatedAt) 變 NaN、事件永不過期。
+  for (const field of ['followUpAfter', 'lastPromptedAt', 'closedAt', 'cooldownUntil', 'updatedAt']) {
     if (rec[field] != null && !Number.isFinite(rec[field])) throw bad(field);
   }
+  // 計數欄位：必須是非負整數，擋負數／小數污染冷卻與消耗判定。
   for (const field of ['promptedCount', 'offeredCount']) {
-    if (rec[field] !== undefined && !Number.isFinite(rec[field])) throw bad(field);
+    if (rec[field] !== undefined && (!Number.isInteger(rec[field]) || rec[field] < 0)) throw bad(field);
   }
+  // title 為 required string（已於 requireString 檢型），這裡再限長，避免 20 萬字標題。
+  if (rec.title.length > MAX_THREAD_TITLE_CHARS) throw bad('title');
   for (const field of ['detail', 'sourcePreview', 'result']) {
-    if (rec[field] != null && typeof rec[field] !== 'string') throw bad(field);
+    if (rec[field] != null) {
+      if (typeof rec[field] !== 'string') throw bad(field);
+      if (rec[field].length > MAX_THREAD_TEXT_CHARS) throw bad(field);
+    }
   }
   if (rec.sourceMsgId != null && typeof rec.sourceMsgId !== 'string') throw bad('sourceMsgId');
   if (rec.enabled !== undefined && typeof rec.enabled !== 'boolean') throw bad('enabled');
@@ -274,7 +304,13 @@ function validateThreadRow(rec, index) {
   if (rec.matchKeywords !== undefined) {
     if (!Array.isArray(rec.matchKeywords) || rec.matchKeywords.length > MAX_THREAD_KEYWORDS) throw bad('matchKeywords');
     for (const kw of rec.matchKeywords) {
-      if (typeof kw !== 'string' || !kw || kw.length > MAX_THREAD_KEYWORD_CHARS) throw bad('matchKeywords');
+      if (typeof kw !== 'string') throw bad('matchKeywords');
+      // runtime 提及判定會去空白後比對，帶空白的關鍵詞永遠命不中——直接拒絕（含前後與內部空白），
+      // 逼匯入資料與 runtime 正規化一致；再套相同的 2–8 字與停用詞規則。
+      const t = kw.replace(/\s+/g, '');
+      if (t !== kw) throw bad('matchKeywords');
+      if (t.length < MIN_THREAD_KEYWORD_CHARS || t.length > MAX_THREAD_KEYWORD_CHARS) throw bad('matchKeywords');
+      if (THREAD_KEYWORD_STOPWORDS.has(t)) throw bad('matchKeywords');
     }
   }
 }

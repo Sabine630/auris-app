@@ -9,6 +9,7 @@
 import {
   THREAD_KINDS, THREAD_OWNERS, THREAD_STATUSES, THREAD_PRECISIONS,
   MAX_THREAD_KEYWORDS, MAX_THREAD_KEYWORD_CHARS,
+  THREAD_KEYWORD_STOPWORDS as STOPWORDS,
   isValidLocalDateString, isValidLocalTimeString,
 } from './importValidation.js';
 import { calendarDaysSince } from './date.js';
@@ -47,8 +48,12 @@ export function looksLikeThreadCandidate(text) {
   return SIGNAL_PATTERNS.some((re) => re.test(t));
 }
 
-// 確認／否定詞：本輪 user 訊息只是回應上一則，本身不帶訊號時用來接確認式對話。
-const CONFIRM_PATTERN = /^(對|對啊|對呀|是|是啊|是的|沒錯|嗯+|好|好啊|好的|ok|OK|要|沒有|沒|不用|不是|還沒|還沒有)[。！!，,～~\s]*$/;
+// 確認／否定詞：本輪 user 訊息只是回應上一則、本身不帶訊號時，用來接確認式對話。
+// 錨定在句首、後接標點／空白／句尾即可（不要求整句都是確認詞），故計畫 §8 明列的
+// 「對啊，好緊張」也算確認；而「對了我要說」「好久不見」因確認詞後非邊界不誤判。
+// 放寬前綴不會憑空製造候選——rule2 仍要求「緊鄰的上一則角色訊息帶訊號」才成立。
+// 長詞排在短詞前（對啊 先於 對），確保優先吃較長的確認詞。
+const CONFIRM_PATTERN = /^(對啊|對呀|對|是啊|是的|是|沒錯|嗯+|好啊|好的|好|ok|OK|要|沒有|沒|不用|不是|還沒有|還沒)([。！!，,、～~\s]|$)/;
 
 export function isConfirmationText(text) {
   const t = (text || '').trim();
@@ -189,28 +194,14 @@ export function isDuplicateThread(candidate, existingThreads) {
 }
 
 // ── 6. matchKeywords 停用詞過濾與提及判定（§13.4）───────────────────────────
-// 停用詞：泛用詞不能當主題名詞，否則角色隨口說「工作」「時候」就誤判已提及。
-// 涵蓋時間詞、狀態詞、人稱、情緒/關心語意詞。
-const STOPWORDS = new Set([
-  // 時間詞
-  '今天', '明天', '後天', '大後天', '昨天', '前天', '早上', '中午', '下午', '晚上',
-  '下週', '下星期', '這週', '本週', '上週', '下個月', '這個月', '上個月',
-  '月底', '月初', '月中', '週末', '平日', '最近', '之後', '以後', '現在', '時候',
-  // 狀態/泛用名詞
-  '工作', '事情', '事', '結果', '狀況', '情況', '東西', '問題', '樣子', '一下',
-  '時間', '地方', '感覺', '心情', '打算', '計畫', '安排',
-  // 人稱
-  '我', '你', '他', '她', '我們', '你們', '他們', '對方', '使用者', '自己', '大家',
-  // 關心語意詞（診斷用，不能當主題）
-  '怎麼樣', '順利', '還好', '如何', '消息', '加油',
-]);
-
+// 停用詞清單（STOPWORDS）以 importValidation.js 為單一真相來源，runtime 與匯入驗證共用。
 // 把候選詞經停用詞與長度過濾；至多 3 個、每個 2–8 字。
 function filterKeywords(list) {
   const out = [];
   for (const raw of list) {
     if (typeof raw !== 'string') continue;
-    const kw = raw.trim();
+    // 去全部空白（不只 trim）：提及判定的 hay 也會去空白，帶內部空白的關鍵詞永遠命不中
+    const kw = raw.replace(/\s+/g, '');
     if (kw.length < 2 || kw.length > MAX_THREAD_KEYWORD_CHARS) continue;
     if (STOPWORDS.has(kw)) continue;
     if (out.includes(kw)) continue;
@@ -220,17 +211,31 @@ function filterKeywords(list) {
   return out;
 }
 
-// 由 title 去停用詞後粗切主題名詞（fallback）。CJK 無詞界，取連續非停用片段的
-// 2–4 字子串為候選，過濾停用詞後取前幾個。
+// 時間片語與常見安排動詞：從 title「整段移除」後剩下的殘段才拿去推主題名詞。
+// 直接截頭尾行不通——會把「週一」「月底」當關鍵詞（角色隨口提時間就誤消耗），或在
+// 「下週面試改到月底」這種主題被時間包夾時取不到「面試」。先剔除完整時間片語可兩者兼治。
+// 含帶數字的日期，故作用在原字串（未去數字）上。
+const TITLE_TIME_PHRASE = /今天|明天|後天|大後天|昨天|前天|下星期|下個月|這個月|上個月|下週|這週|本週|上週|月底|月初|月中|週末|平日|最近|早上|中午|下午|晚上|週[一二三四五六日天]|星期[一二三四五六日天]|禮拜[一二三四五六日天]|\d+\s*[月/\-]\s*\d+|\d+\s*[月號點]|安排在|安排|排在|排到|排了|改到|改期|延到|延後|提前|約在|約好|約了|報名|參加|要去|預計|打算|準備/g;
+
+// 由 title 粗切主題名詞（fallback，僅當模型未給可用 matchKeywords 時走）。CJK 無詞界：
+// 先移除時間片語，再把殘段切 2→3→4 字子串。2 字最易被角色回覆逐字命中
+// （didMentionContinuityThread 用 reply.includes(keyword)），故短的優先、尾端優先
+// （中文賓語多在句尾）。刻意不取跨段中段視窗——那會塞進泛動詞碎片抬高「誤判已提及」的
+// 假陽性；假陽性＝事件永久靜默消失，是最危險方向（§13.4），漏命中只是多給一次機會，安全。
 function deriveFromTitle(title) {
-  const clean = (title || '').replace(/[\s。，、！？：；~～·．…「」『』（）()【】\[\]{}"'`,.!?:;0-9A-Za-z]/g, '');
-  if (!clean) return [];
+  const segments = (title || '')
+    .replace(TITLE_TIME_PHRASE, ' ')
+    .replace(/[。，、！？：；~～·．…「」『』（）()【】\[\]{}"'`,.!?:;]/g, ' ')
+    .split(/\s+/)
+    .map((s) => s.replace(/[0-9A-Za-z]/g, ''))
+    .filter((s) => s.length >= 2);
   const cands = [];
-  // 先試整串（截到 8 字內），再試各種 2–4 字視窗，讓「面試」「回診」這類主題名詞浮現
-  for (let len = Math.min(4, clean.length); len >= 2; len--) {
-    for (let i = 0; i + len <= clean.length; i++) {
-      const sub = clean.slice(i, i + len);
-      if (!STOPWORDS.has(sub) && !cands.includes(sub)) cands.push(sub);
+  const add = (sub) => { if (sub.length >= 2 && !cands.includes(sub)) cands.push(sub); };
+  for (const seg of segments) {
+    const n = seg.length;
+    for (let len = 2; len <= Math.min(4, n); len++) {
+      add(seg.slice(n - len));   // 尾端優先
+      add(seg.slice(0, len));    // 再補開頭
     }
   }
   return filterKeywords(cands);
@@ -279,8 +284,12 @@ export function computeMentionPatch(thread, mentioned, nowMs = Date.now()) {
     if (thread.status === 'planned') patch.status = 'waiting_result';
     return patch;
   }
-  const offered = (thread.offeredCount || 0) + 1;
+  // 冷卻已到期後又漏提：視為新一輪重新起算——offeredCount 歸零重數、清掉舊 cooldownUntil，
+  // 而不是在 3 之上再 +1 立刻回鍋冷卻（否則到期後只給一次機會，違反 §13.4「歸零、恢復候選」）。
+  const cooldownExpired = thread.cooldownUntil != null && thread.cooldownUntil <= nowMs;
+  const offered = (cooldownExpired ? 0 : (thread.offeredCount || 0)) + 1;
   const patch = { offeredCount: offered, updatedAt: nowMs };
+  if (cooldownExpired) patch.cooldownUntil = null;
   if (offered >= OFFER_MISS_LIMIT) {
     patch.cooldownUntil = nowMs + COOLDOWN_DAYS * DAY_MS;
   }
@@ -309,17 +318,21 @@ export function isActionEligible(thread, nowMs = Date.now()) {
 }
 
 // ── 8. 每日清理分類（§15）────────────────────────────────────────────────────
-// 純分類：回傳 'expire' | 'purge' | 'keep'。IO（寫 closedAt／刪除）由呼叫端執行。
-//   - 'expire'：仍為 planned/waiting_result 但已逾期 → 轉 expired 並寫 closedAt
-//   - 'purge' ：closedAt 距今達 30 天 → 刪除結構化紀錄
-//   - 'keep'  ：維持現狀
+// 純分類：回傳 'expire' | 'purge' | 'backfill-closed' | 'keep'。IO 由呼叫端執行。
+//   - 'expire'         ：仍為 planned/waiting_result 但已逾期 → 轉 expired 並寫 closedAt
+//   - 'purge'          ：closedAt 距今達 30 天 → 刪除結構化紀錄
+//   - 'backfill-closed'：終止態卻缺 closedAt 的舊資料 → 以 updatedAt 回填一次（§15），回填後
+//                        下輪才可能 purge；不可直接拿 updatedAt 當刪除基準（事後編輯會推後）
+//   - 'keep'           ：維持現狀
 // closedAt 三種終止狀態共用，不得依賴 updatedAt（使用者事後編輯會把它推後，永遠刪不掉）。
 export function classifyThreadCleanup(thread, nowMs = Date.now()) {
   if (!thread) return 'keep';
 
   // 已關閉：看 closedAt 是否到刪除年限
   if (TERMINAL_STATUSES.has(thread.status)) {
-    if (thread.closedAt != null && nowMs - thread.closedAt >= PURGE_AFTER_CLOSED_DAYS * DAY_MS) {
+    // 缺 closedAt 的舊資料（§15）：先以 updatedAt 回填一次，不可依 updatedAt 直接算刪除
+    if (thread.closedAt == null) return 'backfill-closed';
+    if (nowMs - thread.closedAt >= PURGE_AFTER_CLOSED_DAYS * DAY_MS) {
       return 'purge';
     }
     return 'keep';
@@ -339,7 +352,15 @@ export function classifyThreadCleanup(thread, nowMs = Date.now()) {
   return 'keep';
 }
 
-// 產生 expire patch（含 closedAt）。缺 closedAt 的舊資料回填也走這裡。
+// 產生 expire patch（含 closedAt）。清理判定為 'expire' 時用，一律把狀態設成 expired。
 export function expirePatch(nowMs = Date.now()) {
   return { status: 'expired', closedAt: nowMs, updatedAt: nowMs };
+}
+
+// 缺 closedAt 的終止紀錄回填（§15，classifyThreadCleanup 回 'backfill-closed' 時走這裡）：
+// 以 updatedAt（缺則 createdAt，再缺才 now）回填一次。刻意不動 status——故 resolved／cancelled／
+// expired 皆適用，不像 expirePatch 會把狀態強制改成 expired。不改 updatedAt，讓 closedAt 忠實
+// 反映當初關閉時點、purge 判定不受影響。
+export function backfillClosedAtPatch(thread, nowMs = Date.now()) {
+  return { closedAt: thread.updatedAt || thread.createdAt || nowMs };
 }

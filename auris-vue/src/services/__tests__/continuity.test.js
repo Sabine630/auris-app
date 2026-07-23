@@ -8,7 +8,7 @@ import {
   normalizeForFingerprint, threadFingerprint, isDuplicateThread,
   deriveMatchKeywords, didMentionContinuityThread, hasCareSignal,
   computeMentionPatch, computeKeywordRefreshPatch, isActionEligible,
-  classifyThreadCleanup, expirePatch,
+  classifyThreadCleanup, expirePatch, backfillClosedAtPatch,
   OFFER_MISS_LIMIT, COOLDOWN_DAYS,
 } from '../continuity.js';
 
@@ -57,19 +57,27 @@ describe('evaluateCandidateTurn — §8 錨定規則', () => {
     expect(r.reason).toBe('self');
   });
 
-  it('rule2 確認式：本輪是「對」＋上一則角色訊息命中', () => {
+  it('rule2 確認式：計畫 §8 明列的「對啊，好緊張」＋上一則角色訊息命中', () => {
+    // 確認詞起頭、後接標點即算確認，故此正是計畫範例（不再退回較弱的純「對」）
     const r = evaluateCandidateTurn({
       newUserText: '對啊，好緊張',
       prevCharText: '你不是說明天要面試嗎？',
     });
-    // 「對啊，好緊張」本身不是純確認詞，故走不到 rule2；驗證純確認詞的情況
+    expect(r.candidate).toBe(true);
+    expect(r.reason).toBe('confirm');
+    expect(r.text).toContain('面試');
+    // 純確認詞同樣成立
     const r2 = evaluateCandidateTurn({
       newUserText: '對',
       prevCharText: '你不是說明天要面試嗎？',
     });
     expect(r2.candidate).toBe(true);
     expect(r2.reason).toBe('confirm');
-    expect(r2.text).toContain('面試');
+  });
+
+  it('確認詞後非邊界不誤判：「對了我要說」「好久不見」不是確認', () => {
+    expect(isConfirmationText('對了我要說')).toBe(false);
+    expect(isConfirmationText('好久不見')).toBe(false);
   });
 
   it('rule3 拆句：兩半各自不命中、合併才命中（數字日期被拆成兩泡泡）', () => {
@@ -262,13 +270,45 @@ describe('deriveMatchKeywords — 停用詞過濾', () => {
     const kw = deriveMatchKeywords({ title: 'x', provided: ['面試', '回診', '搬家', '考試', '報到'] });
     expect(kw.length).toBeLessThanOrEqual(3);
   });
-  it('過濾後為空 → 由 title 推導出主題名詞', () => {
+  it('過濾後為空 → 由 title 推導出「能被回覆逐字命中」的主題名詞', () => {
+    // 關鍵回歸：不只檢查 includes 子字串，而是真的餵進 didMentionContinuityThread。
+    // 舊實作優先取 4 字滑動片段（週一參加／一參加面／參加面試），角色說「面試順利嗎」全數落空。
     const kw = deriveMatchKeywords({ title: '週一參加面試', provided: ['明天', '工作'] });
-    expect(kw.some((k) => k.includes('面試'))).toBe(true);
+    expect(kw).toContain('面試'); // 尾端 2 字主題名詞排最前
+    expect(didMentionContinuityThread('面試順利嗎？', kw)).toBe(true);
+    expect(didMentionContinuityThread('面試加油！', kw)).toBe(true);
   });
-  it('provided 缺省時由 title 推導', () => {
-    const kw = deriveMatchKeywords({ title: '回診拿藥' });
+  it('provided 缺省時由 title 推導，且推導詞能真正命中回覆', () => {
+    const kw = deriveMatchKeywords({ title: '月底要去回診' });
     expect(kw.length).toBeGreaterThan(0);
+    expect(didMentionContinuityThread('回診結果如何？', kw)).toBe(true);
+  });
+  it('主題在標題開頭、時間在後也能命中（不只取尾端）', () => {
+    // 面試在前、時間在後：舊尾端實作只取「下週一」會漏掉「面試」
+    const kw1 = deriveMatchKeywords({ title: '面試改到下週一' });
+    expect(kw1).toContain('面試');
+    expect(didMentionContinuityThread('面試順利嗎？', kw1)).toBe(true);
+
+    const kw2 = deriveMatchKeywords({ title: '回診安排在月底' });
+    expect(kw2).toContain('回診');
+    expect(didMentionContinuityThread('回診結果如何？', kw2)).toBe(true);
+  });
+  it('主題被時間片語包夾（下週面試改到月底）仍取得「面試」', () => {
+    const kw = deriveMatchKeywords({ title: '下週面試改到月底' });
+    expect(kw).toContain('面試');
+    expect(didMentionContinuityThread('面試順利嗎？', kw)).toBe(true);
+  });
+  it('先移除時間片語 → 時間詞不會變成關鍵詞（角色只提時間不誤消耗）', () => {
+    // 「週一參加面試」不得產出「週一」；否則角色說「週一有空嗎」會被誤判已提及
+    const kw = deriveMatchKeywords({ title: '週一參加面試' });
+    expect(kw).not.toContain('週一');
+    expect(didMentionContinuityThread('週一有空嗎？', kw)).toBe(false);
+    expect(didMentionContinuityThread('面試順利嗎？', kw)).toBe(true);
+  });
+  it('內部含空白的候選詞去空白後才存（提及判定才命得中）', () => {
+    const kw = deriveMatchKeywords({ provided: ['面 試'] });
+    expect(kw).toContain('面試');
+    expect(didMentionContinuityThread('面試順利嗎？', kw)).toBe(true);
   });
 });
 
@@ -323,6 +363,17 @@ describe('computeMentionPatch — 消耗與冷卻', () => {
     const p = computeMentionPatch({ status: 'planned', offeredCount: OFFER_MISS_LIMIT - 1 }, false, now);
     expect(p.offeredCount).toBe(OFFER_MISS_LIMIT);
     expect(p.cooldownUntil).toBe(now + COOLDOWN_DAYS * DAY);
+  });
+  it('冷卻到期後再漏提：offeredCount 歸零重新起算、清掉舊冷卻（§13.4，不是在 3 上 +1 立刻回鍋）', () => {
+    const thread = { status: 'planned', offeredCount: OFFER_MISS_LIMIT, cooldownUntil: now - DAY };
+    const p = computeMentionPatch(thread, false, now);
+    expect(p.offeredCount).toBe(1);       // 重新從 1 起算，而非 4
+    expect(p.cooldownUntil).toBeNull();   // 舊冷卻清空，未再達上限故不重設
+  });
+  it('冷卻未到期時（理論上不會被注入）維持累加語意，不歸零', () => {
+    const thread = { status: 'planned', offeredCount: OFFER_MISS_LIMIT - 1, cooldownUntil: now + DAY };
+    const p = computeMentionPatch(thread, false, now);
+    expect(p.offeredCount).toBe(OFFER_MISS_LIMIT);
   });
 });
 
@@ -397,5 +448,18 @@ describe('classifyThreadCleanup — §15', () => {
     const p = expirePatch(now);
     expect(p.status).toBe('expired');
     expect(p.closedAt).toBe(now);
+  });
+  it('終止態缺 closedAt 的舊資料 → backfill-closed（不是永遠 keep）', () => {
+    expect(classifyThreadCleanup({ status: 'resolved', updatedAt: now - 100 * DAY }, now)).toBe('backfill-closed');
+    expect(classifyThreadCleanup({ status: 'cancelled', closedAt: null, updatedAt: now }, now)).toBe('backfill-closed');
+  });
+  it('backfillClosedAtPatch 以 updatedAt 回填 closedAt、不改 status（resolved/cancelled 皆可用）', () => {
+    const p = backfillClosedAtPatch({ status: 'cancelled', updatedAt: now - 40 * DAY }, now);
+    expect(p.closedAt).toBe(now - 40 * DAY);
+    expect(p.status).toBeUndefined(); // 有別於 expirePatch，不強制改 expired
+  });
+  it('回填後：若回填的 closedAt 已逾 30 天，下一輪即可 purge', () => {
+    const backfilled = { status: 'resolved', closedAt: now - 40 * DAY };
+    expect(classifyThreadCleanup(backfilled, now)).toBe('purge');
   });
 });
