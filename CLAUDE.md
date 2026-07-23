@@ -15,7 +15,7 @@ Hooks（共用腳本在 `scripts/hooks/`，由 `.claude/settings.json` 掛載；
 - **check-version-bump**：commit 含 `auris-vue/src/` 異動時，強制檢查版號已 +1、進度總覽已更新、「當前版本」恰好 2 處；WIP 等特殊 commit 可在訊息加 `[skip-ver]` 略過
 - **check-secret-leak**：commit 前掃描新增內容有無 API 金鑰／私鑰特徵（sk-…、AIza…、PRIVATE KEY、ghp_… 等；`sk-demo-` 為示範模式白名單），防測試金鑰誤入版控；確認誤報可在訊息加 `[skip-secret]` 略過
 
-資安防線（2026-07-11 起）：CI（ci.yml）含 `npm audit --audit-level=high` 依賴弱掃；發正式版前 `/release` 步驟 3 必須依明確 checklist 審查整包待發 diff，不能只靠指令名稱宣稱已完成。
+資安防線（2026-07-11 起）：CI（ci.yml）含 `npm audit --audit-level=high` 依賴弱掃；發正式版前 `/release` 步驟 3 必須依明確 checklist 審查整包待發 diff，不能只靠指令名稱宣稱已完成。Claude Code 內建 `/security-review` 可作為 checklist 之外的第二道檢查，但兩者不可互相取代（並非所有工具都有同名指令，發版驗收一律以明確 checklist 與實際證據為準）。
 
 ## 版更 Checklist（每次 commit 前必做，= /bump 的內容）
 
