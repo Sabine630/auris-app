@@ -50,17 +50,20 @@ export const STORE_RECORD_LIMITS = Object.freeze({
 
 // P131 待續事件：狀態機與列舉由本地決定，匯入的值必須落在白名單內，
 // 否則一筆被竄改的 status 會讓 thread 永遠選不到、也永遠清不掉。
-const THREAD_KINDS = new Set(['event', 'promise', 'open_question']);
-const THREAD_OWNERS = new Set(['user', 'shared']);
-const THREAD_STATUSES = new Set(['planned', 'waiting_result', 'resolved', 'cancelled', 'expired']);
-const THREAD_PRECISIONS = new Set(['date', 'time', 'unknown']);
-const MAX_THREAD_KEYWORDS = 3;
-const MAX_THREAD_KEYWORD_CHARS = 8;
+// 這些列舉與日期驗證是「continuity 領域詞彙」的單一真相來源：本檔是零依賴的
+// 資安 leaf 模組，故詞彙落在這裡，由 services/continuity.js import 沿用，
+// 不得在兩處各抄一份（違反防呆原則 3：漂移）。
+export const THREAD_KINDS = new Set(['event', 'promise', 'open_question']);
+export const THREAD_OWNERS = new Set(['user', 'shared']);
+export const THREAD_STATUSES = new Set(['planned', 'waiting_result', 'resolved', 'cancelled', 'expired']);
+export const THREAD_PRECISIONS = new Set(['date', 'time', 'unknown']);
+export const MAX_THREAD_KEYWORDS = 3;
+export const MAX_THREAD_KEYWORD_CHARS = 8;
 
 // 只接受本地日曆 YYYY-MM-DD，且必須 round-trip 回同一組年月日：
 // 2026-02-30 會被 Date 自動滾成 3 月 2 日，這裡要判為無效。
 // 一律分開解析後用 new Date(y, m-1, d)，不得用 new Date('YYYY-MM-DD')（UTC 午夜會偏移日期）。
-function isValidLocalDateString(value) {
+export function isValidLocalDateString(value) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!m) return false;
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
@@ -68,7 +71,7 @@ function isValidLocalDateString(value) {
   return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d;
 }
 
-function isValidLocalTimeString(value) {
+export function isValidLocalTimeString(value) {
   const m = /^(\d{2}):(\d{2})$/.exec(value);
   if (!m) return false;
   return Number(m[1]) <= 23 && Number(m[2]) <= 59;
