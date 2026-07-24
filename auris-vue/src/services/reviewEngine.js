@@ -10,6 +10,7 @@ import { applyNameMacros } from './format.js';
 import { dayPeriod } from './chatEngine.js';
 import { MOODS } from './mood.js';
 import { listKeepsakes } from './keepsakes.js';
+import { characterLanguageInstruction, normalizeCharacterOutput } from './outputLanguage.js';
 
 // 月報生成門檻：該月「真實對話」訊息數（排除 heart voice）
 export const REVIEW_MSG_THRESHOLD = 100;
@@ -160,6 +161,7 @@ export async function generateMonthlyReview(charId, ym, { notify = false } = {})
       ? `\n【對方特別收藏的話】\n${quotes.map(q => `「${q.content.substring(0, 80)}」`).join('\n')}`
       : '';
     const prompt = `你是「${c.name}」。個性：${c.persona || ''}。
+${characterLanguageInstruction(c.lang)}
 ${youName ? `對方本名是「${youName}」${c.call ? `，你習慣稱呼對方為「${c.call}」` : ''}。` : ''}
 現在要為「你們的 ${monthTitle(ym)}」寫一封回顧短信給對方。
 
@@ -179,7 +181,10 @@ ${material}
       [{ role: 'system', content: applyNameMacros(prompt, youName || '你', c.name) }, { role: 'user', content: '請開始寫這封回顧短信。' }],
       { max_tokens: 1200, temperature: 0.78, frequency_penalty: 0.5, presence_penalty: 0.2 }
     );
-    letter = applyNameMacros((text || '').trim(), youName || '你', c.name);
+    letter = await normalizeCharacterOutput(
+      applyNameMacros((text || '').trim(), youName || '你', c.name),
+      c.lang
+    );
     if (!letter) throw new Error('AI 回傳空白，請稍後重試');
   }
 

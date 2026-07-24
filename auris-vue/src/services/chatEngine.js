@@ -10,6 +10,7 @@ import { calendarDaysSince, localDateKey } from './date.js';
 import { getMilestoneInfo } from './milestones.js';
 import { isDemo } from './demoMode.js';
 import { logError } from './diag.js';
+import { characterLanguageInstruction, normalizeCharacterOutput } from './outputLanguage.js';
 import {
   evaluateCandidateTurn, deriveTurnTexts, buildRecentThreadWindow,
   parseThreadOps, normalizeThreadOps, planThreadApply, enqueueThreadTask,
@@ -100,7 +101,11 @@ async function persistReplySegments(charId, fullText, { maxSegments = 3, kind = 
   const c = await dbGet('characters', charId);
   const me = await getSetting('me_settings') || {};
   const youName = c?.overrideMe && c?.you_name ? c.you_name : me.name || '你';
-  const segs = splitReply(applyNameMacros(fullText, youName, c?.name), maxSegments);
+  const normalized = await normalizeCharacterOutput(
+    applyNameMacros(fullText, youName, c?.name),
+    c?.lang
+  );
+  const segs = splitReply(normalized, maxSegments);
   const base = Date.now();
   const msgs = segs.map((content, i) => {
     const m = { id: 'msg_' + base + '_ai_' + i, charId, role: 'assistant', content, createdAt: base + i };
@@ -430,13 +435,8 @@ async function buildAIChatSetup(charId, allMsgs, { includeContinuity = false } =
       ? '・你話多、愛聊天，可以回得長一些、自然地連發多則訊息，內容要具體、有細節與溫度'
       : '・回覆長度適中，要有具體內容，不要只是「嗯」「好啊」「哈哈」這種空洞回應';
 
-  let lang = '繁體中文';
-  if (c.lang === 'zh-cn') lang = '簡體中文';
-  if (c.lang === 'ja') lang = '日文';
-  if (c.lang === 'ko') lang = '韓文';
-  if (c.lang === 'en') lang = '英文';
-
-  const systemPrompt = `你是「${c.name}」，請完全扮演這個角色與使用者對話。用${lang}回覆。
+  const systemPrompt = `你是「${c.name}」，請完全扮演這個角色與使用者對話。
+${characterLanguageInstruction(c.lang)}
 ${c.age ? `年齡：${c.age}歲。` : ''}${c.job ? `職業：${c.job}。` : ''}${c.location ? `居住：${c.location}。` : ''}
 【個性】${c.persona || ''}
 ${storyCtx ? `【背景故事】\n${storyCtx}` : ''}
@@ -1017,7 +1017,7 @@ ${recentText}
 4. 不要說「心想：xxx」這種旁白格式，直接寫內心話本身
 5. 不要加引號、不要加 emoji
 6. 絕對不要輸出（對話結束，請開始執行任務）等任何解釋與系統文字，直接給出內心話即可。
-7. 一律使用繁體中文（台灣用語），嚴禁出現任何簡體字
+7. ${characterLanguageInstruction(c.lang)}
 8. 符合角色個性
 
 現在請直接輸出一句內心話：`;
@@ -1039,7 +1039,10 @@ ${recentText}
     // 被 max_tokens 硬切 → 必是殘句，寧缺勿濫：不存、不發通知。
     if (truncated) return;
 
-    let hvText = fullText.trim().replace(/\n{2,}/g, ' ').replace(/\s+/g, ' ');
+    let hvText = await normalizeCharacterOutput(
+      fullText.trim().replace(/\n{2,}/g, ' ').replace(/\s+/g, ' '),
+      c.lang
+    );
 
     // 上游拒絕生成（如 "I can't help with this request."）→ 不存（P107，
     // 比照主路徑；心聲無 prompt 上下文時部分模型會拒絕這種抽象任務）。
@@ -1115,6 +1118,7 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
   // 每則訊息變動也不破壞前段快取。非 anthropic 由 callLLM join 回單一字串。
   const systemStable = '這是一個群組聊天，參與者有：你（' + c.name + '）、' + otherChars + '，以及' + (me.name || '使用者') + '。\n' +
     '你是「' + c.name + '」，個性：' + (c.persona || '') + '，說話風格：' + (styleMap[c.style] || '輕鬆自然') + '。' + groupPersonaCtx + '\n' +
+    characterLanguageInstruction(c.lang) + '\n' +
     (c.isAI ? '' : '永遠不要承認你是 AI。') + '\n\n' +
     '📝 回覆規則（嚴格遵守）：\n' +
     '1. 用' + c.name + '的口吻回覆，30-80字，自然簡短像群聊訊息。\n' +
@@ -1198,7 +1202,10 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
     onStart,
   });
 
-  const cleanedText = applyNameMacros(cleanGroupAIText(fullText.trim(), c, validChars), meName, c.name);
+  const cleanedText = await normalizeCharacterOutput(
+    applyNameMacros(cleanGroupAIText(fullText.trim(), c, validChars), meName, c.name),
+    c.lang
+  );
 
   if (!cleanedText) return null;
 
@@ -1565,7 +1572,7 @@ export async function generateCapsuleLetter(charId, openAt) {
       stream: false,
       extra: { frequency_penalty: 0.5, presence_penalty: 0.2 },
     });
-    return (fullText || '').trim() || null;
+    return (await normalizeCharacterOutput((fullText || '').trim(), c.lang)) || null;
   } catch (e) {
     console.error('generateCapsuleLetter failed:', e);
     return null;
