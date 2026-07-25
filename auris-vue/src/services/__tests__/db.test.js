@@ -11,7 +11,7 @@ import {
   initDB, dbPut, dbAll, getSetting, setSetting,
   exportAllData, importAllData, importCharacterData, stripUnsafeImage,
 } from '../db.js';
-import { seedDemoIfEmpty } from '../demoData.js';
+import { DEMO_SEED_VERSION, seedDemoIfEmpty } from '../demoData.js';
 
 const REQUIRED_STORES = ['characters', 'messages', 'memories', 'moments', 'diary', 'dreams', 'worlds', 'groups', 'group_messages', 'notifications', 'settings'];
 const PNG_DATA = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
@@ -122,6 +122,30 @@ describe('importAllData — API 設定屬本機、備份內一律忽略', () => 
     expect(await getSetting('api_provider')).toBe('anthropic');
     expect(await getSetting('api_base')).toBe('https://api.anthropic.com/v1');
     expect(await getSetting('api_model')).toBe('claude-sonnet-5');
+  });
+});
+
+describe('seedDemoIfEmpty — demo_seed_version 遷移', () => {
+  it('既有 Demo 補兩筆固定 ID threads，重開不重複也不覆蓋使用者操作', async () => {
+    await dbPut('characters', { id: 'char1', name: '既有夜雨' });
+
+    await seedDemoIfEmpty();
+    let threads = await dbAll('continuity_threads');
+    expect(threads.map(t => t.id).sort()).toEqual([
+      'thread_demo_exam_result',
+      'thread_demo_weekend_show',
+    ]);
+    expect(await getSetting('demo_seed_version')).toBe(DEMO_SEED_VERSION);
+
+    const edited = { ...threads[0], title: '我改過的標題', status: 'resolved', closedAt: Date.now() };
+    await dbPut('continuity_threads', edited);
+    await seedDemoIfEmpty();
+
+    threads = await dbAll('continuity_threads');
+    expect(threads).toHaveLength(2);
+    expect(threads.find(t => t.id === edited.id)).toMatchObject({
+      title: '我改過的標題', status: 'resolved',
+    });
   });
 });
 

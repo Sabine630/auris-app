@@ -52,6 +52,7 @@ import { runMonthlyReviews } from './services/reviewEngine.js';
 import { dueCapsules, markDueResult } from './services/capsules.js';
 import { getCyclePhase } from './services/cycle.js';
 import { localDateKey } from './services/date.js';
+import { runContinuityCleanup } from './services/continuityCleanup.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
@@ -449,6 +450,9 @@ onMounted(async () => {
 
   // 回憶月報（P111 D1）：每月首次開 app 背景補生成上個月的「我們的這個月」＋通知
   runMonthlyReviews();
+
+  // P131：每日清理逾期待續事件；失敗不阻塞啟動，且不寫每日 key，下次開 App 會重試。
+  runContinuityCleanup().catch(() => {});
 
   // 主動訊息（背景靜默；P79 起改為分時段、一次一則，不再開 app 同時全冒出來）
   // P81：用 runAllProactive 序列化＋上鎖，定時先跑完再跑環境，整輪最多一則，杜絕競態疊訊息。

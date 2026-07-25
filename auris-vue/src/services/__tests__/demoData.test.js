@@ -51,6 +51,18 @@ describe('demoReply — system blocks 陣列攤平（P130）', () => {
   });
 });
 
+describe('demoReply — P131 待續事件 action', () => {
+  it('獨有 action marker 產生會命中主題詞的假回覆', () => {
+    const r = demoReply({
+      system: [
+        { text: '你是「夜雨」。', cache: true },
+        { text: '\n【待續事件｜本輪可行動】\n期末考成績公布｜小晴在等期末考成績' },
+      ],
+    });
+    expect(r).toContain('成績公布');
+  });
+});
+
 // 誤命中回歸（P130 驗收修正第三批）：完整聊天 prompt 的易變段含【長期記憶】「重要摘要」，
 // 原「總結／摘要」寬鬆分支會把睡前陪伴與晚安收尾攔走、回成關係摘要。
 describe('demoReply — 帶【長期記憶】的真實 prompt 不誤入摘要分支', () => {

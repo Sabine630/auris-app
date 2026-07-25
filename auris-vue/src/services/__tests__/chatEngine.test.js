@@ -2,7 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   dayPeriod, timeAnchorLine, shouldBusyRead, isGoodnightText, sleepRecallState,
   SLEEP_RECALL_MIN_MS, SLEEP_RECALL_MAX_MS,
-  buildSummaryThreadInstr, buildThreadExtractSystem, THREAD_FINAL_STATE_RULE,
+  buildMemorySummarySystemPrompt, buildSummaryThreadInstr, buildThreadExtractSystem,
+  THREAD_FINAL_STATE_RULE,
 } from '../chatEngine.js';
 
 describe('dayPeriod — 時段分界', () => {
@@ -143,6 +144,11 @@ describe('待續擷取 prompt — 同批對話以最後狀態為準', () => {
     expect(prompt).toContain('沒有既有 thread 時回 NONE、不得 ADD');
     expect(prompt).toContain('已有既有 thread 時，才用該 id 回 CANCEL 或 RESOLVE');
     expect(prompt).toContain('id=t1');
+  });
+
+  it('擷取器與摘要 prompt 都帶角色語言規則', () => {
+    expect(buildThreadExtractSystem(open, closed, 'ja')).toContain('自然な日本語');
+    expect(buildMemorySummarySystemPrompt('zh-tw')).toContain('繁體中文（台灣用語）');
   });
 });
 

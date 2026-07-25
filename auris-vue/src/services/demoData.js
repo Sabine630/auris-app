@@ -2,10 +2,12 @@
 // 這裡是「夜雨／小晴」這組示範世界的全部種子資料（沿用截圖腳本 shot_all.cjs 的設定），
 // 以及給 callLLM stub 用的假回覆產生器。全部只在 demo 模式（隔離的 auris-demo DB）生效，
 // 絕不碰使用者真實資料、也不呼叫任何真 API。
-import { dbAll, dbPut, setSetting } from './db.js';
+import { dbAll, dbPut, getSetting, setSetting } from './db.js';
+import { localDateKey } from './date.js';
 
 const D = 86400000;
 const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+export const DEMO_SEED_VERSION = 8;
 
 // 每次 seed 以「當下」為基準算相對時間，示範資料的「幾天前 / 倒數」永遠合理。
 function buildSeed() {
@@ -31,7 +33,7 @@ function buildSeed() {
     workTime: '22:00–02:00（深夜廣播時段）',
     workPlace: '城市廣播電台 FM 98.7',
     restTime: '下午到傍晚',
-    cycleCare: false, autoSummarize: true, autoSumEvery: 20, isAI: false,
+    cycleCare: false, autoSummarize: true, autoSumEvery: 20, followupAware: true, isAI: false,
     taboo: '不要主動提到廣播意外事故。', extra: '',
     scheduleTriggers: [{ id: 'st1', time: '22:30', label: '廣播開始時段', enabled: true }],
     // 我們的默契（P112 D4）：characters 軟欄位，注入 prompt 讓角色自然使用
@@ -70,6 +72,29 @@ function buildSeed() {
     { id: 'cm1', charId: CHAR_ID, title: '深夜聊天', content: '小晴喜歡在深夜聊天，對雨聲有特別的喜愛。', enabled: true, createdAt: now - 20 * D },
     { id: 'cm2', charId: CHAR_ID, title: '期末考', content: '小晴正在準備期末考，對成績很在意，容易緊張。', enabled: true, createdAt: now - 5 * D },
     { id: 'cm3', charId: CHAR_ID, title: '台灣大學', content: '小晴就讀台灣大學，壓力較大但上進心強。', enabled: false, createdAt: now - 2 * D },
+  ];
+
+  const CONTINUITY_THREADS = [
+    {
+      id: 'thread_demo_exam_result', charId: CHAR_ID, kind: 'event', owner: 'user',
+      title: '期末考成績公布', detail: '小晴在等期末考成績',
+      matchKeywords: ['成績公布', '期末考'],
+      eventDate: localDateKey(new Date(now - D)), eventTime: null, datePrecision: 'date',
+      followUpAfter: now - 3600000, status: 'planned', result: null,
+      sourceMsgId: null, sourcePreview: '明天期末考成績會公布，有點不敢看。',
+      enabled: true, lastPromptedAt: null, promptedCount: 0, offeredCount: 0,
+      cooldownUntil: null, createdAt: now - 2 * D, updatedAt: now - 2 * D, closedAt: null,
+    },
+    {
+      id: 'thread_demo_weekend_show', charId: CHAR_ID, kind: 'promise', owner: 'shared',
+      title: '一起聽週末特別節目', detail: '約好有空時一起聽夜雨的週末特別節目',
+      matchKeywords: ['特別節目', '週末節目'],
+      eventDate: null, eventTime: null, datePrecision: 'unknown',
+      followUpAfter: null, status: 'planned', result: null,
+      sourceMsgId: null, sourcePreview: '下次週末特別節目，我們一起聽。',
+      enabled: true, lastPromptedAt: null, promptedCount: 0, offeredCount: 0,
+      cooldownUntil: null, createdAt: now - D, updatedAt: now - D, closedAt: null,
+    },
   ];
 
   const HEART_VOICES = [
@@ -178,6 +203,7 @@ function buildSeed() {
       memories: HEART_VOICES, moments: MOMENTS, diary: DIARY, dreams: DREAMS,
       notifications: NOTIFICATIONS, worlds: WORLDS, groups: GROUPS,
       group_messages: [], wishes: WISHES, notes: NOTES,
+      continuity_threads: CONTINUITY_THREADS,
     },
     settings: {
       onboarding_done: true,
@@ -189,21 +215,32 @@ function buildSeed() {
       keepsakes: KEEPSAKES,
       capsules: CAPSULES,
       monthly_reviews: MONTHLY_REVIEWS,
+      demo_seed_version: DEMO_SEED_VERSION,
     },
   };
 }
 
-// 只在 demo DB 尚無角色時灌資料；之後在 demo 內的操作（含背景假訊息）會被保留。
+// 首次建立灌完整資料；既有 Demo 依 demo_seed_version 只補該版新增的固定 ID 資料。
+// 版本寫入後不再 put，避免日後每次開 Demo 覆蓋使用者對種子卡片的編輯／完成狀態。
 export async function seedDemoIfEmpty() {
   const existing = await dbAll('characters');
-  if (existing && existing.length > 0) return;
-
   const seed = buildSeed();
-  for (const [store, items] of Object.entries(seed.stores)) {
-    for (const item of items) await dbPut(store, item);
+  if (!existing || existing.length === 0) {
+    for (const [store, items] of Object.entries(seed.stores)) {
+      for (const item of items) await dbPut(store, item);
+    }
+    for (const [key, value] of Object.entries(seed.settings)) {
+      await setSetting(key, value);
+    }
+    return;
   }
-  for (const [key, value] of Object.entries(seed.settings)) {
-    await setSetting(key, value);
+
+  const currentVersion = Number(await getSetting('demo_seed_version')) || 0;
+  if (currentVersion < DEMO_SEED_VERSION) {
+    for (const thread of seed.stores.continuity_threads) {
+      await dbPut('continuity_threads', thread);
+    }
+    await setSetting('demo_seed_version', DEMO_SEED_VERSION);
   }
 }
 
@@ -251,6 +288,10 @@ export function demoReply({ system = '', messages = [] } = {}) {
   }
   if (scan.includes('睡前模式')) {
     return pick(SLEEP_POOL);
+  }
+  // P131 Demo 靜態 action：必須命中主題詞，才能展示「成功落庫後單一消耗」。
+  if (scan.includes('【待續事件｜本輪可行動】')) {
+    return '期末考成績公布了嗎？不管結果怎麼樣，都先慢慢呼吸，我在這裡聽你說。';
   }
   // 時間膠囊信件（勾「他也寫一封」）：generateCapsuleLetter tail 的獨有指令。
   // 拆封日聊天的【時間膠囊】易變段沒有這句，會正常落到聊天池

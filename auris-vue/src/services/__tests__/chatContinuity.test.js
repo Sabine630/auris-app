@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   reply: '知道了',
   callError: null,
   failMessagePut: false,
+  demo: false,
 }));
 
 vi.mock('../db.js', () => ({
@@ -28,7 +29,16 @@ vi.mock('../db.js', () => ({
     }
     return value.id;
   }),
-  dbPutAll: vi.fn(async () => 0),
+  dbPutAll: vi.fn(async (store, rows) => {
+    if (store === 'continuity_threads') {
+      for (const row of rows) {
+        const index = state.threads.findIndex(t => t.id === row.id);
+        if (index >= 0) state.threads[index] = structuredClone(row);
+        else state.threads.push(structuredClone(row));
+      }
+    }
+    return rows.length;
+  }),
   dbIdx: vi.fn(async (store) => {
     if (store === 'continuity_threads') return structuredClone(state.threads);
     return [];
@@ -36,6 +46,7 @@ vi.mock('../db.js', () => ({
   dbAll: vi.fn(async () => []),
   dbLatestByChar: vi.fn(async () => []),
   getSetting: vi.fn(async (key) => {
+    if (key === 'api_key') return 'sk-demo-test';
     if (key === 'me_settings') return { name: '小晴' };
     if (key === 'chat_format_style') return false;
     if (key === 'capsules') return [];
@@ -60,11 +71,12 @@ vi.mock('../mood.js', () => ({
   getTodayMood: vi.fn(async () => null),
   moodContext: vi.fn(() => ''),
 }));
-vi.mock('../demoMode.js', () => ({ isDemo: () => false }));
+vi.mock('../demoMode.js', () => ({ isDemo: () => state.demo }));
 vi.mock('../diag.js', () => ({ logError: vi.fn() }));
 
 import {
   buildContinuityThreadCtx,
+  extractContinuityThreads,
   generateAIResponseStream,
   generateProactiveMessageStream,
   selectContinuityPromptThreads,
@@ -108,6 +120,7 @@ beforeEach(() => {
   state.reply = '知道了';
   state.callError = null;
   state.failMessagePut = false;
+  state.demo = false;
   _resetThreadQueues();
 });
 
@@ -250,6 +263,16 @@ describe('generateAIResponseStream — 落庫後單一消耗', () => {
     });
   });
 
+  it('Demo 不做自動擷取，但既有靜態 action 仍可注入並消耗', async () => {
+    state.demo = true;
+    state.reply = '面試順利嗎？';
+    await generateAIResponseStream('c1', userMessages(), { onChunk: vi.fn() });
+    expect(state.calls[0].system.map(b => b.text).join('')).toContain('【待續事件｜本輪可行動】');
+    expect(state.threads[0]).toMatchObject({
+      status: 'waiting_result', promptedCount: 1,
+    });
+  });
+
   it('主動訊息雖共用 buildAIChatSetup，仍不得注入或消耗待續事件', async () => {
     state.reply = '突然想到你的面試，希望一切順利。';
     await generateProactiveMessageStream(
@@ -258,5 +281,29 @@ describe('generateAIResponseStream — 落庫後單一消耗', () => {
     expect(state.threads[0]).toMatchObject({
       status: 'planned', offeredCount: 0, promptedCount: 0,
     });
+  });
+});
+
+describe('Demo 擷取邊界', () => {
+  it('Demo 新訊息不呼叫自動擷取模型', async () => {
+    state.demo = true;
+    await extractContinuityThreads('c1', userMessages('我明天要面試'));
+    expect(state.calls).toEqual([]);
+  });
+});
+
+describe('待續事件語言落庫防線', () => {
+  it('zh-tw 擷取結果的 title/detail 在寫入前轉成台灣繁體', async () => {
+    state.character.lang = 'zh-tw';
+    state.reply = JSON.stringify([{
+      op: 'ADD',
+      title: '软件面试',
+      detail: '这个软件职位',
+      matchKeywords: ['面试'],
+    }]);
+
+    await extractContinuityThreads('c1', userMessages('我明天要去软件公司面试'));
+    const added = state.threads.find(t => t.title === '軟體面試');
+    expect(added).toMatchObject({ detail: '這個軟體職位', matchKeywords: ['面試'] });
   });
 });

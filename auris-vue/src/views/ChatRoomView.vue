@@ -274,7 +274,7 @@
           <div class="mem-add-btn" v-if="memTab === 'mem'" @click="startAddMem" title="手動新增記憶">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </div>
-          <div class="mem-add-btn" v-else-if="bonds.length < BOND_CAP" @click="startAddBond" title="手動新增默契">
+          <div class="mem-add-btn" v-else-if="memTab === 'bond' && bonds.length < BOND_CAP" @click="startAddBond" title="手動新增默契">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </div>
           <div class="mem-drawer-close" @click="showMemDrawer = false">
@@ -283,10 +283,13 @@
         </div>
       </div>
 
-      <!-- 記憶｜我們的默契 分頁（P112 D4） -->
+      <!-- 記憶｜我們的默契｜待續的事 分頁 -->
       <div class="mem-seg">
-        <div class="mem-seg-btn" :class="{ active: memTab === 'mem' }" @click="memTab = 'mem'">記憶</div>
-        <div class="mem-seg-btn" :class="{ active: memTab === 'bond' }" @click="memTab = 'bond'">我們的默契</div>
+        <div class="mem-seg-btn" :class="{ active: memTab === 'mem' }" @click="switchMemTab('mem')">記憶</div>
+        <div class="mem-seg-btn" :class="{ active: memTab === 'bond' }" @click="switchMemTab('bond')">我們的默契</div>
+        <div class="mem-seg-btn" :class="{ active: memTab === 'thread' }" @click="switchMemTab('thread')">
+          待續的事<span v-if="hasNewThreads" class="thread-new-dot"></span>
+        </div>
       </div>
 
       <template v-if="memTab === 'mem'">
@@ -351,7 +354,7 @@
       </template>
 
       <!-- 我們的默契（P112 D4）：口頭禪/專屬稱呼/暗號，AI 總結時自動收集、注入對話 -->
-      <template v-else>
+      <template v-else-if="memTab === 'bond'">
         <div class="bond-cap-hint" v-if="bonds.length >= BOND_CAP">默契滿 {{ BOND_CAP }} 條了，整理一下才能收新的</div>
 
         <div class="mem-new-form" v-if="showNewBondForm">
@@ -396,6 +399,100 @@
 
         <div class="mem-footer">
           <span>{{ enabledBondCount }}/{{ BOND_CAP }} 條・已開啟的會自然融入他的說話方式</span>
+        </div>
+      </template>
+
+      <!-- P131 待續的事：進行中預設顯示，最近封存折疊查看 -->
+      <template v-else>
+        <div class="thread-feature-off" v-if="character?.followupAware === false">
+          角色設定中的「記住待續的事」目前已關閉；既有資料仍可查看與管理。
+        </div>
+
+        <div class="mem-list" v-if="openThreads.length">
+          <div class="thread-card" v-for="t in openThreads" :key="t.id">
+            <template v-if="editingThreadId === t.id">
+              <div class="thread-edit-body">
+                <input class="mem-edit-title" v-model="editThreadTitle" maxlength="200" placeholder="待續標題">
+                <textarea class="mem-edit-content" v-model="editThreadDetail" rows="3" maxlength="4000" placeholder="補充內容（選填）"></textarea>
+                <label class="thread-date-field">
+                  <span>日期</span>
+                  <input type="date" v-model="editThreadDate">
+                </label>
+                <div class="mem-edit-actions">
+                  <button class="mem-edit-cancel" @click="editingThreadId = null">取消</button>
+                  <button class="mem-edit-save" @click="saveEditThread(t)" :disabled="!editThreadTitle.trim()">儲存</button>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="thread-card-head">
+                <label class="mem-toggle">
+                  <input type="checkbox" :checked="t.enabled !== false" @change="toggleThread(t)">
+                  <span class="mem-toggle-track"></span>
+                </label>
+                <div class="thread-card-main">
+                  <div class="thread-title">{{ t.title }}</div>
+                  <div class="thread-meta">
+                    <span>{{ formatThreadDate(t) }}</span>
+                    <span class="thread-status" :class="'status-' + t.status">{{ threadStatusLabel(t.status) }}</span>
+                  </div>
+                </div>
+                <button class="thread-icon-btn" @click="startEditThread(t)" title="編輯">✎</button>
+                <button class="thread-icon-btn danger" @click="deleteThread(t)" title="刪除">×</button>
+              </div>
+              <div class="thread-detail" v-if="t.detail">{{ t.detail }}</div>
+              <div class="thread-source" v-if="t.sourcePreview">「{{ t.sourcePreview }}」</div>
+              <div class="thread-actions">
+                <button v-if="threadSourceAvailable[t.id]" @click="goToThreadSource(t)">回到來源訊息</button>
+                <button @click="finishThread(t)">標記完成</button>
+                <button class="danger" @click="cancelThread(t)">取消事件</button>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div v-else class="thread-empty">
+          還沒有待續的事。聊天中提到明確的未來事件或確認約定後，會顯示在這裡。
+        </div>
+
+        <button v-if="archivedThreads.length" class="thread-archive-toggle" @click="showArchivedThreads = !showArchivedThreads">
+          {{ showArchivedThreads ? '收起最近封存' : `查看最近封存（${archivedThreads.length}）` }}
+        </button>
+        <div class="mem-list thread-archive-list" v-if="showArchivedThreads && archivedThreads.length">
+          <div class="thread-card archived" v-for="t in archivedThreads" :key="t.id">
+            <div class="thread-card-head">
+              <div class="thread-card-main">
+                <div class="thread-title">{{ t.title }}</div>
+                <div class="thread-meta">
+                  <span>{{ formatThreadDate(t) }}</span>
+                  <span class="thread-status" :class="'status-' + t.status">{{ threadStatusLabel(t.status) }}</span>
+                </div>
+              </div>
+              <button class="thread-icon-btn" @click="startEditThread(t)" title="編輯">✎</button>
+              <button class="thread-icon-btn danger" @click="deleteThread(t)" title="刪除">×</button>
+            </div>
+            <template v-if="editingThreadId === t.id">
+              <div class="thread-edit-body">
+                <input class="mem-edit-title" v-model="editThreadTitle" maxlength="200">
+                <textarea class="mem-edit-content" v-model="editThreadDetail" rows="3" maxlength="4000"></textarea>
+                <label class="thread-date-field"><span>日期</span><input type="date" v-model="editThreadDate"></label>
+                <div class="mem-edit-actions">
+                  <button class="mem-edit-cancel" @click="editingThreadId = null">取消</button>
+                  <button class="mem-edit-save" @click="saveEditThread(t)" :disabled="!editThreadTitle.trim()">儲存</button>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="thread-detail" v-if="t.detail">{{ t.detail }}</div>
+              <div class="thread-source" v-if="t.sourcePreview">「{{ t.sourcePreview }}」</div>
+              <div class="thread-actions">
+                <button v-if="threadSourceAvailable[t.id]" @click="goToThreadSource(t)">回到來源訊息</button>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div class="mem-footer">
+          <span>{{ openThreads.length }} 件進行中・資料只保存在此裝置</span>
         </div>
       </template>
     </div>
@@ -489,6 +586,7 @@ import { readImportJsonFile, validateChatImport } from '../services/importValida
 import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, generateSleepClosingStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive, isGoodnightText, extractContinuityThreads, BOND_CAP } from '../services/chatEngine.js';
 import { formatContent, splitReply } from '../services/format.js';
 import { estimateTokens } from '../services/tokens.js';
+import { computeFollowUpAfter, computeKeywordRefreshPatch } from '../services/continuity.js';
 import { addKeepsake } from '../services/keepsakes.js';
 import { renderShareCard, shareCardImage } from '../services/shareCard.js';
 import { localDateKey } from '../services/date.js';
@@ -654,6 +752,26 @@ const newBondText = ref('');
 const editingBondId = ref(null);
 const editBondText = ref('');
 const enabledBondCount = computed(() => bonds.value.filter(b => b.enabled).length);
+
+// ── 待續的事（P131）──
+const threads = ref([]);
+const threadSeenAt = ref(0);
+const threadSourceAvailable = ref({});
+const editingThreadId = ref(null);
+const editThreadTitle = ref('');
+const editThreadDetail = ref('');
+const editThreadDate = ref('');
+const showArchivedThreads = ref(false);
+const OPEN_THREAD_STATUSES = new Set(['planned', 'waiting_result']);
+const openThreads = computed(() => threads.value
+  .filter(t => OPEN_THREAD_STATUSES.has(t.status))
+  .sort((a, b) => (a.followUpAfter ?? Infinity) - (b.followUpAfter ?? Infinity)
+    || (b.updatedAt || 0) - (a.updatedAt || 0)));
+const archivedThreads = computed(() => threads.value
+  .filter(t => !OPEN_THREAD_STATUSES.has(t.status))
+  .sort((a, b) => (b.closedAt || b.updatedAt || 0) - (a.closedAt || a.updatedAt || 0)));
+const hasNewThreads = computed(() =>
+  threads.value.some(t => (t.createdAt || 0) > threadSeenAt.value));
 
 // ── Image Attachment State ──
 const pendingImage = ref(null); // base64 string，同時用於 API 和存 DB
@@ -866,8 +984,38 @@ async function loadChatMems() {
   chatMems.value = mems;
 }
 
+async function loadThreads() {
+  const rows = await dbIdx('continuity_threads', 'charId', charId);
+  threads.value = rows;
+  threadSeenAt.value = Number(await getSetting(`continuity_seen_${charId}`)) || 0;
+
+  const availability = {};
+  await Promise.all(rows.map(async (thread) => {
+    if (!thread.sourceMsgId) return;
+    try {
+      const msg = await dbGet('messages', thread.sourceMsgId);
+      availability[thread.id] = !!msg && msg.charId === charId;
+    } catch (_) {
+      availability[thread.id] = false;
+    }
+  }));
+  threadSourceAvailable.value = availability;
+}
+
+async function markThreadsSeen() {
+  const seenAt = Date.now();
+  threadSeenAt.value = seenAt;
+  await setSetting(`continuity_seen_${charId}`, seenAt);
+}
+
+async function switchMemTab(tab) {
+  memTab.value = tab;
+  if (tab === 'thread') await markThreadsSeen();
+}
+
 async function openMemDrawer() {
   await loadChatMems();
+  await loadThreads();
   // 默契可能剛被背景自動總結默默補了新條目——開抽屜時從 DB 讀最新（P112 D4）
   try {
     const fresh = await dbGet('characters', charId);
@@ -877,6 +1025,7 @@ async function openMemDrawer() {
     }
   } catch (_) {}
   showMemDrawer.value = true;
+  if (memTab.value === 'thread') await markThreadsSeen();
 }
 
 async function toggleMem(mem) {
@@ -982,6 +1131,114 @@ async function saveEditBond(b) {
   b.text = text;
   await persistBonds();
   editingBondId.value = null;
+}
+
+function threadStatusLabel(status) {
+  return {
+    planned: '待關心',
+    waiting_result: '等待後續',
+    resolved: '已完成',
+    cancelled: '已取消',
+    expired: '已過期',
+  }[status] || status;
+}
+
+function formatThreadDate(thread) {
+  if (!thread.eventDate) return '尚未指定日期';
+  return thread.eventTime ? `${thread.eventDate} ${thread.eventTime}` : thread.eventDate;
+}
+
+function startEditThread(thread) {
+  editingThreadId.value = thread.id;
+  editThreadTitle.value = thread.title || '';
+  editThreadDetail.value = thread.detail || '';
+  editThreadDate.value = thread.eventDate || '';
+}
+
+async function saveEditThread(thread) {
+  const fresh = await dbGet('continuity_threads', thread.id);
+  if (!fresh || fresh.charId !== charId) return;
+  const title = editThreadTitle.value.trim();
+  const detail = editThreadDetail.value.trim();
+  if (!title) return;
+
+  const now = Date.now();
+  const topicChanged = title !== fresh.title || detail !== (fresh.detail || '');
+  const date = editThreadDate.value || null;
+  const dateChanged = date !== (fresh.eventDate || null);
+  const next = { ...fresh, title, detail, updatedAt: now };
+
+  if (topicChanged) {
+    const patch = computeKeywordRefreshPatch({ title, detail }, now);
+    if (!patch.matchKeywords.length) {
+      window.toast_('標題需要包含可辨識的主題，例如「面試」或「回診」');
+      return;
+    }
+    Object.assign(next, patch);
+  }
+  if (dateChanged) {
+    next.eventDate = date;
+    next.eventTime = null;
+    next.datePrecision = date ? 'date' : 'unknown';
+    next.followUpAfter = computeFollowUpAfter({
+      eventDate: date, eventTime: null, datePrecision: next.datePrecision,
+    });
+    next.lastPromptedAt = null;
+    if (next.status === 'waiting_result') next.status = 'planned';
+  }
+
+  await dbPut('continuity_threads', next);
+  editingThreadId.value = null;
+  await loadThreads();
+}
+
+async function toggleThread(thread) {
+  const fresh = await dbGet('continuity_threads', thread.id);
+  if (!fresh || fresh.charId !== charId) return;
+  fresh.enabled = fresh.enabled === false;
+  fresh.updatedAt = Date.now();
+  await dbPut('continuity_threads', fresh);
+  await loadThreads();
+}
+
+async function closeThread(thread, status) {
+  const fresh = await dbGet('continuity_threads', thread.id);
+  if (!fresh || fresh.charId !== charId || !OPEN_THREAD_STATUSES.has(fresh.status)) return;
+  const now = Date.now();
+  fresh.status = status;
+  fresh.closedAt = now;
+  fresh.updatedAt = now;
+  await dbPut('continuity_threads', fresh);
+  await loadThreads();
+}
+
+async function finishThread(thread) {
+  await closeThread(thread, 'resolved');
+}
+
+async function cancelThread(thread) {
+  if (!await window.confirm_(`確定取消「${thread.title}」？`)) return;
+  await closeThread(thread, 'cancelled');
+}
+
+async function deleteThread(thread) {
+  if (!await window.confirm_(`確定刪除「${thread.title}」？`)) return;
+  const fresh = await dbGet('continuity_threads', thread.id);
+  if (!fresh || fresh.charId !== charId) return;
+  await dbDel('continuity_threads', thread.id);
+  if (editingThreadId.value === thread.id) editingThreadId.value = null;
+  await loadThreads();
+}
+
+async function goToThreadSource(thread) {
+  if (!thread.sourceMsgId) return;
+  const msg = await dbGet('messages', thread.sourceMsgId);
+  if (!msg || msg.charId !== charId) {
+    threadSourceAvailable.value[thread.id] = false;
+    return;
+  }
+  showMemDrawer.value = false;
+  scrollToMessage(thread.sourceMsgId);
 }
 
 // ── Proactive Timer Functions ──
@@ -2125,6 +2382,7 @@ async function retryAfterRefusal() {
   flex-shrink: 0;
 }
 .mem-seg-btn {
+  position: relative;
   padding: 6px 14px;
   border-radius: 999px;
   border: .5px solid var(--border-2);
@@ -2148,6 +2406,134 @@ async function retryAfterRefusal() {
   color: var(--rose);
   text-align: center;
 }
+.thread-new-dot {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rose);
+}
+.thread-feature-off {
+  margin: 10px 16px 2px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.thread-card {
+  margin: 8px 16px;
+  padding: 12px;
+  border: .5px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.thread-card.archived { opacity: .82; }
+.thread-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+.thread-card-main { flex: 1; min-width: 0; }
+.thread-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.thread-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 10px;
+}
+.thread-status {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--rose-pale, rgba(201,136,122,.12));
+  color: var(--rose);
+}
+.thread-status.status-resolved { color: #51805f; background: rgba(81,128,95,.12); }
+.thread-status.status-cancelled,
+.thread-status.status-expired { color: var(--text-3); background: var(--bg); }
+.thread-detail {
+  margin: 9px 0 0 45px;
+  color: var(--text-2, var(--text));
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.thread-source {
+  margin: 7px 0 0 45px;
+  color: var(--text-3);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.thread-icon-btn {
+  width: 25px;
+  height: 25px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.thread-icon-btn.danger { color: var(--red); font-size: 18px; }
+.thread-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+.thread-actions button,
+.thread-archive-toggle {
+  padding: 6px 9px;
+  border: .5px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--text-3);
+  font-size: 10px;
+  cursor: pointer;
+}
+.thread-actions button.danger { color: var(--red); }
+.thread-edit-body { width: 100%; }
+.thread-date-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.thread-date-field input {
+  flex: 1;
+  padding: 7px 9px;
+  border: .5px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--text);
+}
+.thread-empty {
+  padding: 28px 20px;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.7;
+  text-align: center;
+}
+.thread-archive-toggle {
+  display: block;
+  margin: 8px auto;
+}
+.thread-archive-list { flex: none; overflow: visible; }
 
 .mem-drawer-hd {
   display: flex;

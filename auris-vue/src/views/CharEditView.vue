@@ -424,6 +424,13 @@
             </div>
             <div class="toggle" :class="{ on: char.autoSummarize }" @click="char.autoSummarize = !char.autoSummarize"><div class="toggle-knob"></div></div>
           </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-name">記住待續的事</div>
+              <div class="toggle-desc">辨識你提到的未來事件與已確認約定，之後在適合的對話自然接回；只存在本機，可隨時查看與刪除</div>
+            </div>
+            <div class="toggle" :class="{ on: char.followupAware !== false }" @click="char.followupAware = !(char.followupAware !== false)"><div class="toggle-knob"></div></div>
+          </div>
           <div class="slider-row" v-if="char.autoSummarize">
             <div class="slider-header">
               <span class="slider-label">每幾則自動總結</span>
@@ -603,6 +610,7 @@ const char = ref({
   dailyQuestionEnabled: false,
   autoSummarize: false,
   autoSumEvery: 30,
+  followupAware: true,
   lang: 'zh-tw'
 });
 
