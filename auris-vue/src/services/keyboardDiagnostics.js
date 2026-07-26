@@ -62,7 +62,56 @@ export function isKeyboardEffectDisabled(effect) {
 
 const subscribers = new Set();
 
+// ── 鍵盤事件 ring buffer（P132）─────────────────────────────────────────────
+// iOS 鍵盤問題只在實機重現得出來，而 kbdiag 面板要手動加 query 才會開，事後回報時
+// 現場早就沒了。改成永遠記錄最近幾十筆量測快照，隨診斷匯出一起帶走：只存數值與
+// 元素 tag/class，不碰輸入內容。
+const MAX_KEYBOARD_EVENTS = 60;
+const keyboardEvents = [];
+
+function num(value) {
+  return Number.isFinite(value) ? Math.round(value) : '—';
+}
+
+function describeFocus(el) {
+  if (!el || el === globalThis.document?.body) return 'none';
+  const tag = el.tagName?.toLowerCase?.() || '?';
+  const cls = String(el.className || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.');
+  return cls ? `${tag}.${cls}` : tag;
+}
+
+export function recordKeyboardEvent(snapshot, options = {}) {
+  const win = options.windowObj || globalThis.window;
+  const doc = options.documentObj || globalThis.document;
+  if (!win || !doc) return;
+  try {
+    const vv = win.visualViewport;
+    const page = doc.querySelector?.('.keyboard-page.kb-active, .keyboard-page');
+    const rect = page?.getBoundingClientRect?.();
+    const guard = getRootScrollGuardState();
+    keyboardEvents.push(
+      `[${new Date().toISOString().slice(11, 23)}] ${snapshot?.reason || '?'}`
+      + ` route=${String(win.location?.hash || win.location?.pathname || '').slice(-28)}`
+      + ` vv=${num(vv?.height)}h/${num(vv?.offsetTop)}t`
+      + ` win=${num(win.innerHeight)}h/${num(win.scrollY)}s`
+      + ` html=${num(doc.documentElement?.scrollTop)} body=${num(doc.body?.scrollTop)}`
+      + ` page=${num(rect?.top)}…${num(rect?.bottom)}`
+      + ` inset=${num(snapshot?.topInset)}/${num(snapshot?.bottomInset)}`
+      + ` base=${num(snapshot?.baselineHeight)}h/${num(snapshot?.baselineTop)}t`
+      + ` state=${page?.classList?.contains('kb-open') ? 'open' : 'closed'}/${page?.classList?.contains('kb-active') ? 'active' : 'idle'}`
+      + ` focus=${describeFocus(doc.activeElement)}`
+      + ` guard=${guard.corrections || 0}fix/${num(guard.lastBefore)}→${num(guard.lastAfter)}`,
+    );
+    if (keyboardEvents.length > MAX_KEYBOARD_EVENTS) keyboardEvents.shift();
+  } catch { /* 診斷永遠不能影響主流程 */ }
+}
+
+export function getKeyboardEvents() {
+  return keyboardEvents.slice();
+}
+
 export function publishKeyboardDiagnostic(snapshot) {
+  recordKeyboardEvent(snapshot);
   for (const subscriber of subscribers) subscriber(snapshot);
 }
 
@@ -199,3 +248,11 @@ export function installKeyboardDiagnostics(options = {}) {
     panel.remove();
   };
 }
+
+// root scroll guard 的每次動作也記進同一個 buffer：它是聊天室與一般頁面共用的元件，
+// 也是最可能造成「鍵盤彈出後輸入框仍被蓋住」的共同來源。
+subscribeRootScrollGuardState((state) => {
+  if (state?.reason && state.reason !== 'not-installed') {
+    recordKeyboardEvent({ reason: `guard:${state.reason}` });
+  }
+});

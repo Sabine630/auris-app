@@ -7,6 +7,7 @@ import { fetchWithTimeout, getVertexToken, getDefModel, isReasoningModel } from 
 import { isDemo } from './demoMode.js';
 import { demoReply } from './demoData.js';
 import { logError } from './diag.js';
+import { createThinkingStreamFilter, stripThinking } from './thinkingFilter.js';
 
 const VERTEX_REGION = 'us-central1';
 
@@ -133,9 +134,19 @@ function applyImage(messages, image, provider) {
 // 回傳 { fullText, truncated }
 // 失敗一律記進診斷 ring buffer（provider/model＋HTTP status／錯誤分類）；第三方
 // response message 不會保存。使用者主動中斷（AbortError）不算失敗、不記。
+// 統一出口：所有 provider、串流與非串流的結果都在這裡剝掉模型的思考區塊（P132）。
+// 串流時額外包一層 stateful filter，避免 <thinking> 先閃在畫面上再被清掉。
 export async function callLLM(opts) {
   try {
-    return await callLLMInner(opts);
+    const filter = opts.stream && opts.onChunk
+      ? createThinkingStreamFilter(opts.onChunk)
+      : null;
+    const inner = filter
+      ? { ...opts, onChunk: chunk => filter.push(chunk) }
+      : opts;
+    const result = await callLLMInner(inner);
+    filter?.flush();
+    return { ...result, fullText: stripThinking(result?.fullText) };
   } catch (e) {
     if (e?.name !== 'AbortError') {
       logError('llm', e, { provider: opts.provider, model: opts.model });

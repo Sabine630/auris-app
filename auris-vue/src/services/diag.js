@@ -12,6 +12,7 @@
 // 錯誤日誌存 localStorage（同步、不依賴 IndexedDB——DB 初始化失敗也記得下來）。
 import { APP_VERSION } from '../version.js';
 import { getSetting, dbCount } from './db.js';
+import { getKeyboardEvents } from './keyboardDiagnostics.js';
 
 const ERR_KEY = 'auris_diag_errors';
 const MAX_ERRORS = 30;
@@ -214,6 +215,16 @@ export async function exportDiag() {
   } catch {
     lines.push('（讀取設定失敗：settings_read_failed）');
   }
+  // 鍵盤量測序列（P132）：iOS 鍵盤問題只有實機重現得到，這段是唯一能事後定層的證據。
+  try {
+    const kbEvents = getKeyboardEvents();
+    lines.push(`── 鍵盤事件（最近 ${kbEvents.length} 筆）──`);
+    if (!kbEvents.length) lines.push('（無：這次沒有叫出鍵盤，或未進入聊天／留言頁）');
+    for (const line of kbEvents) lines.push(line);
+  } catch {
+    lines.push('（鍵盤事件讀取失敗）');
+  }
+
   const errors = getErrors();
   lines.push(`── 最近錯誤（${errors.length} 筆，最多 ${MAX_ERRORS}）──`);
   if (!errors.length) lines.push('（無）');

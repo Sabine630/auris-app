@@ -124,3 +124,69 @@ describe('keyboard diagnostic evidence', () => {
     expect(readout).toContain('guard 404.0→0.0 · active');
   });
 });
+
+// P132：鍵盤事件 ring buffer——實機 iOS 問題唯一能事後定層的證據來源，
+// 必須不用開 kbdiag query 就常駐記錄，且隨診斷匯出一起帶走。
+describe('鍵盤事件 ring buffer', () => {
+  const env = (focus = { tagName: 'TEXTAREA', className: 'chat-in' }) => ({
+    windowObj: {
+      visualViewport: { height: 508, offsetTop: 0 },
+      innerHeight: 844,
+      scrollY: 0,
+      location: { pathname: '/chat/char1' },
+    },
+    documentObj: {
+      documentElement: { scrollTop: 0 },
+      body: { scrollTop: 0 },
+      activeElement: focus,
+      querySelector: () => ({
+        getBoundingClientRect: () => ({ top: 0, bottom: 508 }),
+        classList: { contains: (c) => c === 'kb-open' || c === 'kb-active' },
+      }),
+    },
+  });
+
+  it('記錄 inset、baseline 與 viewport 數值', async () => {
+    const { recordKeyboardEvent, getKeyboardEvents } = await import('../keyboardDiagnostics.js');
+    const before = getKeyboardEvents().length;
+    recordKeyboardEvent(
+      { reason: 'measure:open', topInset: 0, bottomInset: 336, baselineHeight: 844, baselineTop: 0 },
+      env(),
+    );
+    const events = getKeyboardEvents();
+    expect(events.length).toBe(before + 1);
+    const last = events.at(-1);
+    expect(last).toContain('measure:open');
+    expect(last).toContain('inset=0/336');
+    expect(last).toContain('base=844h/0t');
+    expect(last).toContain('vv=508h/0t');
+    expect(last).toContain('state=open/active');
+  });
+
+  it('只記元素 tag 與 class，不碰輸入內容', async () => {
+    const { recordKeyboardEvent, getKeyboardEvents } = await import('../keyboardDiagnostics.js');
+    recordKeyboardEvent(
+      { reason: 'focusin' },
+      env({ tagName: 'TEXTAREA', className: 'chat-in', value: '這是使用者打的秘密內容' }),
+    );
+    const last = getKeyboardEvents().at(-1);
+    expect(last).toContain('focus=textarea.chat-in');
+    expect(last).not.toContain('秘密');
+  });
+
+  it('超過上限時捨棄最舊的一筆', async () => {
+    const { recordKeyboardEvent, getKeyboardEvents } = await import('../keyboardDiagnostics.js');
+    for (let i = 0; i < 80; i++) recordKeyboardEvent({ reason: `bulk-${i}` }, env());
+    const events = getKeyboardEvents();
+    expect(events.length).toBeLessThanOrEqual(60);
+    expect(events.at(-1)).toContain('bulk-79');
+    expect(events.some(e => e.includes('bulk-0 '))).toBe(false);
+  });
+
+  it('沒有 window／document 時安靜跳過，不影響主流程', async () => {
+    const { recordKeyboardEvent, getKeyboardEvents } = await import('../keyboardDiagnostics.js');
+    const before = getKeyboardEvents().length;
+    expect(() => recordKeyboardEvent({ reason: 'x' }, { windowObj: null, documentObj: null })).not.toThrow();
+    expect(getKeyboardEvents().length).toBe(before);
+  });
+});
