@@ -117,6 +117,43 @@ export function deriveTurnTexts(msgs) {
   };
 }
 
+// ── 擷取追蹤 ring buffer（P132）─────────────────────────────────────────────
+// 擷取器在「示範模式／功能關閉／閘門未命中／沒有 API key／模型沒吐出可用 ops／
+// 寫入被略過」六種情況都是靜默 return——實機回報「沒有記進去」時完全無從分辨是哪
+// 一種，只有拋錯那條會進 logError。這裡補上階段軌跡：只記階段名稱與數量，不記
+// 訊息內容、不記模型輸出（§18.6 隱私底線）。存在記憶體，重開 app 即清空。
+const MAX_THREAD_TRACES = 40;
+const threadTraces = [];
+
+// detail 一律只收數字／布林／短枚舉字串；字串再過濾一次字元，避免任何管道把
+// 使用者內容或模型輸出夾帶進診斷匯出。
+function safeTraceValue(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? String(Math.round(value)) : null;
+  if (typeof value === 'boolean') return value ? 'y' : 'n';
+  if (typeof value === 'string') {
+    const clean = value.replace(/[^\w:-]/g, '').slice(0, 24);
+    return clean || null;
+  }
+  return null;
+}
+
+export function recordThreadTrace(stage, detail = {}) {
+  try {
+    const bits = Object.entries(detail)
+      .map(([k, v]) => [k, safeTraceValue(v)])
+      .filter(([, v]) => v !== null)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(' ');
+    const label = safeTraceValue(String(stage)) || '?';
+    threadTraces.push(`[${new Date().toISOString().slice(11, 19)}] ${label}${bits ? ' ' + bits : ''}`);
+    if (threadTraces.length > MAX_THREAD_TRACES) threadTraces.shift();
+  } catch { /* 診斷永遠不能影響主流程 */ }
+}
+
+export function getThreadTraces() {
+  return threadTraces.slice();
+}
+
 // ── 2. 本地日期建構與 round-trip 驗證（§10）──────────────────────────────────
 // 分開解析年月日，一律 new Date(y, m-1, d)，禁止 new Date('YYYY-MM-DD')（UTC 午夜偏移）。
 export function parseLocalDateParts(dateStr) {

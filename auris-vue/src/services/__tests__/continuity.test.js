@@ -12,6 +12,7 @@ import {
   parseThreadOps, normalizeThreadOp, normalizeThreadOps, planThreadApply,
   enqueueThreadTask, _resetThreadQueues, MAX_THREAD_OPS,
   OFFER_MISS_LIMIT, COOLDOWN_DAYS,
+  recordThreadTrace, getThreadTraces,
 } from '../continuity.js';
 
 const DAY = 86400000;
@@ -816,5 +817,44 @@ describe('enqueueThreadTask — per-character 序列化', () => {
     await expect(p1).rejects.toThrow('boom');
     const p2 = enqueueThreadTask('c2', async () => 'ok');
     await expect(p2).resolves.toBe('ok');
+  });
+});
+
+describe('recordThreadTrace（P132 擷取追蹤）', () => {
+  it('記下階段與數字，時間戳在前', () => {
+    recordThreadTrace('call', { open: 2, win: 4 });
+    const last = getThreadTraces().at(-1);
+    expect(last).toMatch(/^\[\d{2}:\d{2}:\d{2}\] call open=2 win=4$/);
+  });
+
+  it('null／undefined 欄位省略，不留 "x=null" 雜訊', () => {
+    recordThreadTrace('applied', { ops: 1, puts: null, skipped: undefined });
+    expect(getThreadTraces().at(-1)).toMatch(/applied ops=1$/);
+  });
+
+  // §18.6：診斷匯出會被整份貼給我，絕不能夾帶使用者訊息或模型輸出。
+  it('中文與符號一律過濾——使用者內容無法經由 detail 洩漏進診斷', () => {
+    recordThreadTrace('no-ops', { reason: '我8/2要去跟唱片公司開會', len: 120 });
+    const last = getThreadTraces().at(-1);
+    expect(last).not.toMatch(/唱片|開會/);
+    expect(last).toContain('len=120');
+  });
+
+  it('階段名稱本身也過濾，且保留 skip:gate 這類冒號枚舉', () => {
+    recordThreadTrace('skip:gate', { reason: 'no-signal' });
+    expect(getThreadTraces().at(-1)).toMatch(/skip:gate reason=no-signal$/);
+  });
+
+  it('超過上限只保留最近 40 筆', () => {
+    for (let i = 0; i < 60; i++) recordThreadTrace('call', { n: i });
+    const traces = getThreadTraces();
+    expect(traces.length).toBe(40);
+    expect(traces.at(-1)).toMatch(/n=59$/);
+  });
+
+  it('回傳複本，外部改動不影響 buffer', () => {
+    const before = getThreadTraces().length;
+    getThreadTraces().push('偽造');
+    expect(getThreadTraces().length).toBe(before);
   });
 });

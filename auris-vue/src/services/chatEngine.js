@@ -15,6 +15,7 @@ import {
   evaluateCandidateTurn, deriveTurnTexts, buildRecentThreadWindow,
   parseThreadOps, normalizeThreadOps, planThreadApply, enqueueThreadTask,
   didMentionContinuityThread, computeMentionPatch, isActionEligible,
+  recordThreadTrace,
 } from './continuity.js';
 
 // 長期記憶注入的 token 上限：記憶越多越稀釋、越燒錢，超量時依相關性截斷（保留最相關的）。
@@ -1414,11 +1415,14 @@ export function stripThreadOpsTail(text) {
 // 再以單一 transaction 原子寫回全部 puts——中途失敗整批 rollback，不留部分結果。錯誤往上拋給
 // 呼叫端 logError（不強制重試：狀態一致 + fingerprint 去重，下次擷取/總結會自然補回）。
 async function applyThreadOps(charId, ops, source) {
-  if (!ops.length) return;
-  await enqueueThreadTask(charId, async () => {
+  if (!ops.length) return { puts: 0, skipped: 0 };
+  // 回傳寫入／略過計數供診斷追蹤：ops 都合規卻一筆都沒寫進去（例如 fingerprint 去重、
+  // 防復活）也要看得出來，否則又是一條靜默路徑。
+  return enqueueThreadTask(charId, async () => {
     const existing = await dbIdx('continuity_threads', 'charId', charId);
-    const { puts } = planThreadApply({ operations: ops, existingThreads: existing, charId, ...source });
+    const { puts, skipped } = planThreadApply({ operations: ops, existingThreads: existing, charId, ...source });
     await dbPutAll('continuity_threads', puts);
+    return { puts: puts.length, skipped: (skipped || []).length };
   });
 }
 
@@ -1426,16 +1430,18 @@ async function applyThreadOps(charId, ops, source) {
 // 不得 await 在送出鏈上。allMsgs 為該角色目前完整訊息（含剛落庫的 user 訊息）。
 export async function extractContinuityThreads(charId, allMsgs) {
   try {
-    if (isDemo()) return;
+    if (isDemo()) return recordThreadTrace('skip:demo');
     const c = await dbGet('characters', charId);
-    if (!c || c.followupAware === false) return;
+    if (!c) return recordThreadTrace('skip:no-char');
+    if (c.followupAware === false) return recordThreadTrace('skip:feature-off');
 
     const sorted = (allMsgs || []).filter(m => m && m.type !== 'hv').slice().sort((a, b) => a.createdAt - b.createdAt);
     const verdict = evaluateCandidateTurn(deriveTurnTexts(sorted));
-    if (!verdict.candidate) return; // 本地閘門未命中：零額外 API 呼叫（§7）
+    // 本地閘門未命中：零額外 API 呼叫（§7）
+    if (!verdict.candidate) return recordThreadTrace('skip:gate', { reason: verdict.reason });
 
     const apiKey = await getSetting('api_key');
-    if (!apiKey) return;
+    if (!apiKey) return recordThreadTrace('skip:no-key');
     const { provider, model, base } = await resolveLLMConfig();
 
     const win = buildRecentThreadWindow(sorted, 4);
@@ -1448,6 +1454,7 @@ export async function extractContinuityThreads(charId, allMsgs) {
       + win.map(w => `[${w.role === 'user' ? '使用者' : (c.name || '角色')}｜${w.msgId}｜${localStamp(w.createdAt)}] ${w.content}`).join('\n')
       + '\n\n只輸出 operations JSON 陣列。';
 
+    recordThreadTrace('call', { reason: verdict.reason, open: open.length, win: win.length });
     const { fullText } = await callLLM({
       provider, model, base, apiKey,
       system, messages: [{ role: 'user', content: userContent }],
@@ -1456,15 +1463,24 @@ export async function extractContinuityThreads(charId, allMsgs) {
 
     // title/detail/result 會永久保存並反覆注入，與角色可見輸出走同一語言正規化防線。
     const normalizedText = await normalizeCharacterOutput(fullText, c.lang);
-    const ops = normalizeThreadOps(parseThreadOps(normalizedText));
-    if (!ops.length) return;
-    await applyThreadOps(charId, ops, {
+    const parsed = parseThreadOps(normalizedText);
+    const ops = normalizeThreadOps(parsed);
+    if (!ops.length) {
+      // 三個數字就足以分辨：回應長度 0＝模型沒吐東西；raw=0＝沒解析到 JSON 陣列；
+      // raw>0 而 ops=0＝模型回了 NONE 或欄位不合規（例如 ADD 少了 title）。
+      return recordThreadTrace('no-ops', {
+        len: (normalizedText || '').length, raw: parsed.length, ops: 0,
+      });
+    }
+    const applied = await applyThreadOps(charId, ops, {
       sourceMsgId: lastMsg?.id || null,
       sourceCreatedAt: lastMsg?.createdAt || Date.now(),
       sourcePreview: (verdict.text || lastMsg?.content || '').replace(/\s+/g, ' ').trim().slice(0, 200),
       now: Date.now(),
     });
+    recordThreadTrace('applied', { ops: ops.length, puts: applied?.puts ?? null, skipped: applied?.skipped ?? null });
   } catch (e) {
+    recordThreadTrace('error');
     logError('continuity', e, { phase: 'extract' }); // 只記錯誤分類，不記內容（§18.6）
   }
 }

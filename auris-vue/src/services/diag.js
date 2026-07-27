@@ -13,6 +13,7 @@
 import { APP_VERSION } from '../version.js';
 import { getSetting, dbCount } from './db.js';
 import { getKeyboardEvents } from './keyboardDiagnostics.js';
+import { getThreadTraces } from './continuity.js';
 
 const ERR_KEY = 'auris_diag_errors';
 const MAX_ERRORS = 30;
@@ -215,6 +216,26 @@ export async function exportDiag() {
   } catch {
     lines.push('（讀取設定失敗：settings_read_failed）');
   }
+  // 排序原則：短而關鍵的段落在前，逐筆序列在後。實機回報常常只貼得下前半段——
+  // P132 就發生過鍵盤事件 60 筆把錯誤區段整個擠掉、白跑一輪回報。
+  const errors = getErrors();
+  lines.push(`── 最近錯誤（${errors.length} 筆，最多 ${MAX_ERRORS}）──`);
+  if (!errors.length) lines.push('（無）');
+  for (const err of errors) {
+    lines.push(`[${err.t} ${err.v} ${err.src}] ${formatDiagError(err)}`);
+  }
+
+  // 待續事件擷取追蹤（P132）：擷取器有六條靜默 return，沒有這段就分不出
+  // 「功能被關掉」「閘門沒過」「模型說沒有要記的」「解析不出 JSON」「寫入被略過」。
+  try {
+    const traces = getThreadTraces();
+    lines.push(`── 待續事件擷取（最近 ${traces.length} 筆）──`);
+    if (!traces.length) lines.push('（無：這次開啟後還沒送出過訊息，或未進入聊天室）');
+    for (const line of traces) lines.push(line);
+  } catch {
+    lines.push('（擷取追蹤讀取失敗）');
+  }
+
   // 鍵盤量測序列（P132）：iOS 鍵盤問題只有實機重現得到，這段是唯一能事後定層的證據。
   try {
     const kbEvents = getKeyboardEvents();
@@ -225,11 +246,5 @@ export async function exportDiag() {
     lines.push('（鍵盤事件讀取失敗）');
   }
 
-  const errors = getErrors();
-  lines.push(`── 最近錯誤（${errors.length} 筆，最多 ${MAX_ERRORS}）──`);
-  if (!errors.length) lines.push('（無）');
-  for (const err of errors) {
-    lines.push(`[${err.t} ${err.v} ${err.src}] ${formatDiagError(err)}`);
-  }
   return lines.join('\n');
 }

@@ -82,7 +82,7 @@ import {
   selectContinuityPromptThreads,
   shouldSuppressContinuityPrompt,
 } from '../chatEngine.js';
-import { _resetThreadQueues, COOLDOWN_DAYS, OFFER_MISS_LIMIT } from '../continuity.js';
+import { _resetThreadQueues, COOLDOWN_DAYS, OFFER_MISS_LIMIT, getThreadTraces } from '../continuity.js';
 
 const NOW = 1784900000000;
 
@@ -305,5 +305,50 @@ describe('待續事件語言落庫防線', () => {
     await extractContinuityThreads('c1', userMessages('我明天要去软件公司面试'));
     const added = state.threads.find(t => t.title === '軟體面試');
     expect(added).toMatchObject({ detail: '這個軟體職位', matchKeywords: ['面試'] });
+  });
+});
+
+// P132：實機回報「沒有記進去」卻查不到任何線索——擷取器的每條靜默 return 都要留下
+// 階段軌跡，否則只能靠猜。這裡逐條驗證每個出口都記得到、且能互相分辨。
+describe('擷取階段追蹤', () => {
+  const lastTrace = () => getThreadTraces().at(-1);
+
+  it('功能被關掉時記 skip:feature-off，且不呼叫模型', async () => {
+    state.character.followupAware = false;
+    await extractContinuityThreads('c1', userMessages('我下週二要去開會'));
+    expect(state.calls).toEqual([]);
+    expect(lastTrace()).toMatch(/skip:feature-off/);
+  });
+
+  it('本地閘門未命中時記 skip:gate 與原因', async () => {
+    // 註：不能拿「今天心情有點悶」當例子——「今天」本身命中時間訊號，閘門刻意略寬
+    await extractContinuityThreads('c1', userMessages('有點累'));
+    expect(state.calls).toEqual([]);
+    expect(lastTrace()).toMatch(/skip:gate reason=no-signal/);
+  });
+
+  it('模型回 NONE 時記 no-ops，raw>0 可與「解析不到 JSON」分辨', async () => {
+    state.reply = JSON.stringify([{ op: 'NONE' }]);
+    await extractContinuityThreads('c1', userMessages('我下週二要去開會'));
+    expect(lastTrace()).toMatch(/no-ops .*raw=1 ops=0/);
+  });
+
+  it('模型沒吐出 JSON 陣列時記 raw=0，與 NONE 明確不同', async () => {
+    state.reply = '這段對話沒有需要記錄的事情。';
+    await extractContinuityThreads('c1', userMessages('我下週二要去開會'));
+    expect(lastTrace()).toMatch(/no-ops .*raw=0 ops=0/);
+  });
+
+  it('成功寫入時記 applied 與實際寫入筆數', async () => {
+    state.reply = JSON.stringify([{ op: 'ADD', title: '開會', eventDate: null }]);
+    await extractContinuityThreads('c1', userMessages('我下週二要去開會'));
+    expect(lastTrace()).toMatch(/applied ops=1 puts=1/);
+  });
+
+  it('呼叫失敗時記 error（與「沒吐出 ops」不會混淆）', async () => {
+    state.callError = new Error('boom');
+    await extractContinuityThreads('c1', userMessages('我下週二要去開會'));
+    expect(lastTrace()).toMatch(/error/);
+    expect(lastTrace()).not.toMatch(/no-ops/);
   });
 });
