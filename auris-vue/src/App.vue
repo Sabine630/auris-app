@@ -53,6 +53,7 @@ import { dueCapsules, markDueResult } from './services/capsules.js';
 import { getCyclePhase } from './services/cycle.js';
 import { localDateKey } from './services/date.js';
 import { runContinuityCleanup } from './services/continuityCleanup.js';
+import { keyboardAccessoryInset } from './services/keyboardAccessory.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
@@ -108,7 +109,8 @@ function releaseScrollRoom() {
 function scrollFocusedIntoView(el) {
   if (!el.isConnected || document.activeElement !== el) return;
   const vv = window.visualViewport;
-  const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+  // iOS 的表單輔助列浮在 visual viewport 內，vv 底邊不是真正的可見底邊。
+  const visibleBottom = (vv ? vv.offsetTop + vv.height : window.innerHeight) - keyboardAccessoryInset();
   const overflow = el.getBoundingClientRect().bottom + KEYBOARD_SAFE_MARGIN - visibleBottom;
   if (overflow <= 0) return;
 

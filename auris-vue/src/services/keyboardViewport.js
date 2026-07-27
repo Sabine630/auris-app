@@ -1,4 +1,5 @@
 import { publishKeyboardDiagnostic } from './keyboardDiagnostics.js';
+import { keyboardAccessoryInset } from './keyboardAccessory.js';
 
 const KEYBOARD_THRESHOLD = 80;
 const VIEWPORT_RESTORED_EPSILON = 40;
@@ -13,12 +14,16 @@ function finiteNumber(value, fallback = 0) {
 // safe-area padding 會反映在 baseTop，卻不會出現在 resting viewportTop。
 // 因此先用 focus 前的 viewportTop 把目前 offset 轉成「頁面內位移」，再計算
 // 上下 inset；不可直接拿 viewportTop - baseTop，否則整頁會上移一個 safe-area。
+//
+// accessoryInset：iOS 表單輔助列浮在 visual viewport 內、不被 vv.height 扣掉，
+// 必須額外從底部讓位，否則輸入列剛好被它整條蓋掉（見 keyboardAccessory.js）。
 export function computeKeyboardInsets({
   baseTop,
   baseBottom,
   baselineViewportTop = 0,
   viewportTop,
-  viewportHeight
+  viewportHeight,
+  accessoryInset = 0
 }) {
   const top = finiteNumber(baseTop);
   const bottom = Math.max(top, finiteNumber(baseBottom, top));
@@ -27,8 +32,9 @@ export function computeKeyboardInsets({
   const visibleTop = Math.max(0, finiteNumber(viewportTop) - restingViewportTop);
   const visibleHeight = Math.max(0, finiteNumber(viewportHeight));
   const visibleBottom = visibleTop + visibleHeight;
+  const accessory = Math.max(0, finiteNumber(accessoryInset));
   const topInset = visibleTop;
-  const bottomInset = Math.max(0, pageHeight - visibleBottom);
+  const bottomInset = Math.max(0, pageHeight - visibleBottom + accessory);
   const availableHeight = Math.max(0, pageHeight - topInset - bottomInset);
 
   return { topInset, bottomInset, availableHeight };
@@ -60,6 +66,7 @@ export function installKeyboardViewport(page, options = {}) {
   const cancelFrame = options.cancelFrame || win.cancelAnimationFrame.bind(win);
   const setTimer = options.setTimer || win.setTimeout.bind(win);
   const clearTimer = options.clearTimer || win.clearTimeout.bind(win);
+  const accessory = options.accessoryInset || keyboardAccessoryInset;
   const inputBar = page.querySelector?.('.keyboard-input-bar');
 
   let baseline = null;
@@ -120,12 +127,14 @@ export function installKeyboardViewport(page, options = {}) {
       return;
     }
 
+    const accessoryInset = accessory(win);
     const { topInset, bottomInset } = computeKeyboardInsets({
       baseTop: baseline.top,
       baseBottom: baseline.bottom,
       baselineViewportTop: baseline.viewportTop,
       viewportTop: vv.offsetTop,
-      viewportHeight: currentHeight
+      viewportHeight: currentHeight,
+      accessoryInset
     });
     page.style.setProperty('--keyboard-top-inset', `${topInset}px`);
     page.style.setProperty('--keyboard-bottom-inset', `${bottomInset}px`);
@@ -136,7 +145,8 @@ export function installKeyboardViewport(page, options = {}) {
       baselineHeight: baseline.viewportHeight,
       baselineTop: baseline.viewportTop,
       topInset,
-      bottomInset
+      bottomInset,
+      accessoryInset
     });
   }
 

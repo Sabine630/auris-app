@@ -97,6 +97,7 @@ export function recordKeyboardEvent(snapshot, options = {}) {
       + ` html=${num(doc.documentElement?.scrollTop)} body=${num(doc.body?.scrollTop)}`
       + ` page=${num(rect?.top)}…${num(rect?.bottom)}`
       + ` inset=${num(snapshot?.topInset)}/${num(snapshot?.bottomInset)}`
+      + ` acc=${num(snapshot?.accessoryInset)}`
       + ` base=${num(snapshot?.baselineHeight)}h/${num(snapshot?.baselineTop)}t`
       + ` state=${page?.classList?.contains('kb-open') ? 'open' : 'closed'}/${page?.classList?.contains('kb-active') ? 'active' : 'idle'}`
       + ` focus=${describeFocus(doc.activeElement)}`
@@ -141,6 +142,7 @@ export function formatKeyboardDiagnosticSnapshot(snapshot, win, doc, config, gua
     `body scroll ${formatNumber(body?.scrollTop)}`,
     `page ${formatNumber(rect?.top)}…${formatNumber(rect?.bottom)}`,
     `inset t ${snapshot?.topInset ?? (styles?.getPropertyValue('--keyboard-top-inset')?.trim() || '0')} · b ${snapshot?.bottomInset ?? (styles?.getPropertyValue('--keyboard-bottom-inset')?.trim() || '0')}`,
+    `accessory ${formatNumber(snapshot?.accessoryInset)}`,
     `baseline h ${formatNumber(snapshot?.baselineHeight)} · top ${formatNumber(snapshot?.baselineTop)}`,
     `state ${page?.classList?.contains('kb-open') ? 'open' : 'closed'} / ${page?.classList?.contains('kb-active') ? 'active' : 'idle'}`,
     `focus ${focus?.tagName?.toLowerCase?.() || 'none'}${focus?.className ? '.' + String(focus.className).trim().replace(/\s+/g, '.') : ''}`,
