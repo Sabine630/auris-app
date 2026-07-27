@@ -127,7 +127,9 @@ export function installKeyboardViewport(page, options = {}) {
       return;
     }
 
-    const accessoryInset = accessory(win);
+    // 這裡已用 focus 前量到的 baseline 判定過鍵盤開啟，直接告知——不可讓 helper
+    // 自己拿 innerHeight 猜（iOS standalone 下它會跟著縮，會誤判成鍵盤沒開）。
+    const accessoryInset = accessory(win, { keyboardOpen: true });
     const { topInset, bottomInset } = computeKeyboardInsets({
       baseTop: baseline.top,
       baseBottom: baseline.bottom,

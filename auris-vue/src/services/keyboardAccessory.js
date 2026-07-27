@@ -18,12 +18,28 @@ const KEYBOARD_OPEN_THRESHOLD = 80;
 
 // 只在「iOS 且軟體鍵盤確實升起」時讓位：接了實體鍵盤時 visual viewport 不縮，
 // 輔助列也不會擋住畫面底部，不該平白挖掉 58px。
-export function keyboardAccessoryInset(win = globalThis.window) {
+//
+// keyboardOpen：呼叫端自己有可信基準時（keyboardViewport 有 focus 前量到的 baseline）
+// 直接傳進來，不要讓這裡自己猜。實機診斷（2026-07-27）證實 iOS standalone 的
+// window.innerHeight 會跟著鍵盤縮到與 vv.height 相同（log 中 vv=448h/win=448h），
+// 拿它當基準會誤判成「鍵盤沒開」→ acc 在 58/0 之間跳、版面跟著抖。
+//
+// 沒有可信基準時（App.vue 一般頁面）改用 documentElement.clientHeight：layout viewport
+// 不隨鍵盤縮放，是這幾個數字裡最穩的。三者取 max 只會高估基準，方向安全——寧可多讓
+// 58px（被輔助列蓋住看不出來），不可少讓（輸入框整條消失）。
+export function keyboardAccessoryInset(win = globalThis.window, { keyboardOpen = null } = {}) {
   if (!win || !isIosDevice(win)) return 0;
+  if (keyboardOpen === false) return 0;
   const vv = win.visualViewport;
   if (!vv) return 0;
+  if (keyboardOpen === true) return IOS_KEYBOARD_ACCESSORY_PX;
+
   const height = Number(vv.height) || 0;
-  const baseline = Math.max(Number(win.innerHeight) || 0, height);
+  const baseline = Math.max(
+    Number(win.document?.documentElement?.clientHeight) || 0,
+    Number(win.innerHeight) || 0,
+    height
+  );
   if (baseline - height <= KEYBOARD_OPEN_THRESHOLD) return 0;
   return IOS_KEYBOARD_ACCESSORY_PX;
 }
