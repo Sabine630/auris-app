@@ -77,13 +77,14 @@ vi.mock('../diag.js', () => ({ logError: vi.fn() }));
 import {
   buildContinuityThreadCtx,
   buildThreadExtractSystem,
+  buildSummaryThreadInstr,
   extractContinuityThreads,
   generateAIResponseStream,
   generateProactiveMessageStream,
   selectContinuityPromptThreads,
   shouldSuppressContinuityPrompt,
 } from '../chatEngine.js';
-import { _resetThreadQueues, COOLDOWN_DAYS, OFFER_MISS_LIMIT, getThreadTraces, planThreadApply } from '../continuity.js';
+import { _resetThreadQueues, COOLDOWN_DAYS, OFFER_MISS_LIMIT, getThreadTraces, planThreadApply, normalizeThreadOps } from '../continuity.js';
 
 const NOW = 1784900000000;
 
@@ -412,5 +413,35 @@ describe('日期落地追蹤', () => {
     const traces = getThreadTraces().join('\n');
     expect(traces).toMatch(/date-bad-format/);
     expect(getThreadTraces().at(-1)).toMatch(/applied .*dated=0/);
+  });
+});
+
+// prompt 必須寫出完整欄位名。實機三次都缺日期，根因就是 eventDate 這個鍵從未出現在
+// prompt 裡——模型猜不到就寫成別的鍵，整個欄位被正規化忽略。
+describe('擷取器欄位規格', () => {
+  it('system prompt 明列 eventDate，並明講不可寫成 date', () => {
+    const sys = buildThreadExtractSystem([], [], 'zh-tw', Date.now());
+    expect(sys).toContain('eventDate');
+    expect(sys).toMatch(/不可寫成 date/);
+  });
+
+  it('每個正規化認得的可編輯欄位名都出現在 prompt 裡', () => {
+    const sys = buildThreadExtractSystem([], [], 'zh-tw', Date.now());
+    for (const key of ['op', 'id', 'title', 'detail', 'eventDate', 'eventTime', 'matchKeywords', 'kind', 'owner', 'result']) {
+      expect(sys).toContain(key);
+    }
+  });
+
+  it('附上可直接照抄的範例，且範例本身通得過正規化', () => {
+    const sys = buildThreadExtractSystem([], [], 'zh-tw', Date.now());
+    const example = sys.match(/範例：(\[.*\])/)?.[1];
+    expect(example).toBeTruthy();
+    const ops = normalizeThreadOps(JSON.parse(example));
+    expect(ops).toHaveLength(1);
+    expect(ops[0]).toMatchObject({ op: 'ADD', eventDate: '2026-08-02', kind: 'event', owner: 'user' });
+  });
+
+  it('總結那條 THREAD_OPS 指令也帶同一份欄位規格', () => {
+    expect(buildSummaryThreadInstr([], [])).toContain('eventDate');
   });
 });

@@ -511,20 +511,35 @@ function clampText(v, max) {
 // 填入 ADD／UPDATE 共用的可編輯欄位。title 一併帶入（缺席不設，ADD 由呼叫端驗必填）。
 // eventDate 三態：字串合法 → 設；明確 null → 設 null（清除舊日期）；缺席／非法字串 → 不動。
 // datePrecision 缺省依有無時間推定。sourcePreview／時間戳／status 一律不收模型值（本地決定）。
+// 模型常見的欄位別名（P132 雙保險）：prompt 已明寫欄位名，但模型偶爾仍會用 date／
+// event_date 這類寫法。只在正牌鍵缺席時才採用別名，且值一樣要過格式驗證——
+// 讀寬一點不會放進任何未驗證的資料，卻能救回整個日期。
+const EVENT_DATE_ALIASES = ['eventDate', 'date', 'event_date', 'eventdate'];
+const EVENT_TIME_ALIASES = ['eventTime', 'time', 'event_time', 'eventtime'];
+
+function pickAlias(raw, keys) {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(raw, key)) return raw[key];
+  }
+  return undefined;
+}
+
 function fillEditableFields(out, raw) {
   const title = clampText(raw.title, MAX_THREAD_TITLE_CHARS);
   if (title) out.title = title;
   const detail = clampText(raw.detail, MAX_THREAD_TEXT_CHARS);
   if (detail) out.detail = detail;
-  if (raw.eventDate === null) {
+  const rawDate = pickAlias(raw, EVENT_DATE_ALIASES);
+  const rawTime = pickAlias(raw, EVENT_TIME_ALIASES);
+  if (rawDate === null) {
     out.eventDate = null; // 明確清除日期（無日期更新）
-  } else if (typeof raw.eventDate === 'string' && !isValidLocalDateString(raw.eventDate)) {
+  } else if (typeof rawDate === 'string' && !isValidLocalDateString(rawDate)) {
     // 模型沒照 YYYY-MM-DD 格式（例如直接回 "8/7"）→ 欄位缺席、日期整個消失。
     // 這條也要留痕，否則「卡片有了但沒日期」分不出是格式錯還是年份錯（P132）。
     recordThreadTrace('date-bad-format');
-  } else if (typeof raw.eventDate === 'string') {
-    out.eventDate = raw.eventDate;
-    out.eventTime = (typeof raw.eventTime === 'string' && isValidLocalTimeString(raw.eventTime)) ? raw.eventTime : null;
+  } else if (typeof rawDate === 'string') {
+    out.eventDate = rawDate;
+    out.eventTime = (typeof rawTime === 'string' && isValidLocalTimeString(rawTime)) ? rawTime : null;
     out.datePrecision = THREAD_PRECISIONS.has(raw.datePrecision) ? raw.datePrecision : (out.eventTime ? 'time' : 'date');
   }
   if (Array.isArray(raw.matchKeywords)) out.matchKeywords = raw.matchKeywords; // 交給 deriveMatchKeywords 過濾

@@ -858,3 +858,32 @@ describe('recordThreadTrace（P132 擷取追蹤）', () => {
     expect(getThreadTraces().length).toBe(before);
   });
 });
+
+// P132 實機：卡片連續三次「標題有、關鍵詞有，就是沒有日期」。根因是 prompt 從未寫出
+// eventDate 這個鍵名（只提過 op／id／matchKeywords），模型只能自己猜。prompt 已補上
+// 欄位規格，這裡是第二道防線：正牌鍵缺席時容忍常見別名，但值一樣要過格式驗證。
+describe('eventDate 欄位別名容錯', () => {
+  const add = (raw) => normalizeThreadOp({ op: 'ADD', title: '開會', ...raw });
+
+  it.each(['date', 'event_date', 'eventdate'])('模型用 %s 當鍵名時仍收得到日期', (key) => {
+    expect(add({ [key]: '2026-08-06' })).toMatchObject({ eventDate: '2026-08-06', datePrecision: 'date' });
+  });
+
+  it('正牌 eventDate 優先，別名不得覆蓋', () => {
+    expect(add({ eventDate: '2026-08-06', date: '2025-01-01' })).toMatchObject({ eventDate: '2026-08-06' });
+  });
+
+  it('別名的值一樣要過格式驗證，不合格照樣不收', () => {
+    expect(add({ date: '8/6' }).eventDate).toBeUndefined();
+    expect(add({ date: 12345 }).eventDate).toBeUndefined();
+  });
+
+  it('時間別名同樣適用，且精度跟著升為 time', () => {
+    expect(add({ date: '2026-08-06', time: '19:30' }))
+      .toMatchObject({ eventDate: '2026-08-06', eventTime: '19:30', datePrecision: 'time' });
+  });
+
+  it('完全沒給日期時維持缺席，不會被別名邏輯憑空補值', () => {
+    expect(add({}).eventDate).toBeUndefined();
+  });
+});
