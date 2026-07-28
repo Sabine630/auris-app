@@ -388,3 +388,29 @@ describe('擷取器日期錨點', () => {
     expect(skipped).not.toContainEqual(expect.objectContaining({ reason: 'date-out-of-range' }));
   });
 });
+
+// 「卡片有了但沒日期」有三種成因（模型沒給／格式不合／年份離譜被丟），實機分不出來。
+// 追蹤要一眼看出日期到底有沒有落地，再由前一筆決定是哪一種。
+describe('日期落地追蹤', () => {
+  it('日期正常落地時 dated=1', async () => {
+    state.reply = JSON.stringify([{ op: 'ADD', title: '去大阪', eventDate: '2026-08-07', matchKeywords: ['大阪'] }]);
+    await extractContinuityThreads('c1', userMessages('我8/7要去一趟大阪'));
+    expect(getThreadTraces().at(-1)).toMatch(/applied .*puts=1 .*dated=1/);
+  });
+
+  it('模型根本沒給日期時 dated=0，且不誤報格式或範圍問題', async () => {
+    state.reply = JSON.stringify([{ op: 'ADD', title: '去大阪', eventDate: null, matchKeywords: ['大阪'] }]);
+    await extractContinuityThreads('c1', userMessages('我8/7要去一趟大阪'));
+    const traces = getThreadTraces();
+    expect(traces.at(-1)).toMatch(/applied .*dated=0/);
+    expect(traces.join('\n')).not.toMatch(/date-bad-format/);
+  });
+
+  it('模型回 "8/7" 這種非 YYYY-MM-DD 格式時留下 date-bad-format', async () => {
+    state.reply = JSON.stringify([{ op: 'ADD', title: '去大阪', eventDate: '8/7', matchKeywords: ['大阪'] }]);
+    await extractContinuityThreads('c1', userMessages('我8/7要去一趟大阪'));
+    const traces = getThreadTraces().join('\n');
+    expect(traces).toMatch(/date-bad-format/);
+    expect(getThreadTraces().at(-1)).toMatch(/applied .*dated=0/);
+  });
+});

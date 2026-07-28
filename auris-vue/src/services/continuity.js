@@ -518,7 +518,11 @@ function fillEditableFields(out, raw) {
   if (detail) out.detail = detail;
   if (raw.eventDate === null) {
     out.eventDate = null; // 明確清除日期（無日期更新）
-  } else if (typeof raw.eventDate === 'string' && isValidLocalDateString(raw.eventDate)) {
+  } else if (typeof raw.eventDate === 'string' && !isValidLocalDateString(raw.eventDate)) {
+    // 模型沒照 YYYY-MM-DD 格式（例如直接回 "8/7"）→ 欄位缺席、日期整個消失。
+    // 這條也要留痕，否則「卡片有了但沒日期」分不出是格式錯還是年份錯（P132）。
+    recordThreadTrace('date-bad-format');
+  } else if (typeof raw.eventDate === 'string') {
     out.eventDate = raw.eventDate;
     out.eventTime = (typeof raw.eventTime === 'string' && isValidLocalTimeString(raw.eventTime)) ? raw.eventTime : null;
     out.datePrecision = THREAD_PRECISIONS.has(raw.datePrecision) ? raw.datePrecision : (out.eventTime ? 'time' : 'date');

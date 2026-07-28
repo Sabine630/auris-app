@@ -198,7 +198,9 @@ export function installGlobalErrorLog() {
 // settings 值一律過 safeLabel——api_model 等欄位是使用者自由輸入，不能原樣匯出。
 export async function exportDiag() {
   const lines = ['── Auris 診斷資訊 ──'];
-  lines.push(`版本：${APP_VERSION}`);
+  // build 時間戳讓「修好了沒」與「拿到新版了沒」分得開（版號在修 bug 期間常不動）。
+  const build = typeof __BUILD_TIME__ === 'string' ? __BUILD_TIME__ : '未知';
+  lines.push(`版本：${APP_VERSION}（build ${build}）`);
   lines.push(`匯出時間：${new Date().toISOString()}`);
   lines.push(`UA：${navigator.userAgent}`);
   try {

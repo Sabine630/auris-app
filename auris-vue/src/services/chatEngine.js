@@ -1439,7 +1439,13 @@ async function applyThreadOps(charId, ops, source) {
     const existing = await dbIdx('continuity_threads', 'charId', charId);
     const { puts, skipped } = planThreadApply({ operations: ops, existingThreads: existing, charId, ...source });
     await dbPutAll('continuity_threads', puts);
-    return { puts: puts.length, skipped: (skipped || []).length };
+    return {
+      puts: puts.length,
+      skipped: (skipped || []).length,
+      // dated：實際帶著日期落地的筆數。不管日期是被範圍檢查丟掉、格式不合被忽略，
+      // 還是模型根本沒給，這個數字都直接回答「卡片上會不會有日期」。
+      dated: puts.filter(p => p.eventDate).length,
+    };
   });
 }
 
@@ -1495,7 +1501,10 @@ export async function extractContinuityThreads(charId, allMsgs) {
       sourcePreview: (verdict.text || lastMsg?.content || '').replace(/\s+/g, ' ').trim().slice(0, 200),
       now: Date.now(),
     });
-    recordThreadTrace('applied', { ops: ops.length, puts: applied?.puts ?? null, skipped: applied?.skipped ?? null });
+    recordThreadTrace('applied', {
+      ops: ops.length, puts: applied?.puts ?? null,
+      skipped: applied?.skipped ?? null, dated: applied?.dated ?? null,
+    });
   } catch (e) {
     recordThreadTrace('error');
     logError('continuity', e, { phase: 'extract' }); // 只記錯誤分類，不記內容（§18.6）
