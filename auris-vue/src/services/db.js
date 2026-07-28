@@ -126,7 +126,19 @@ const REQUIRED_STORES = ['characters', 'messages', 'memories', 'moments', 'diary
 
 // API 連線設定屬本機專屬，不隨備份移動。備份檔可被分享／竄改：若匯入時接受
 // api_base，攻擊者可把端點指向自己的伺服器，本機保留的金鑰之後就會送往該端點。
-const LOCAL_ONLY_SETTINGS = ['api_key', 'api_provider', 'api_base', 'api_model'];
+const LOCAL_ONLY_SETTINGS = ['api_key', 'api_provider', 'api_base', 'api_model', 'tts_providers'];
+
+// 角色的語音綁定（provider + voiceId + 供應商模型 + 驗證狀態）同樣只屬於這台裝置：
+// Voice ID 不跨服務商通用，跟著角色搬到別人手上既沒用、又洩漏對方用哪家服務商。
+// 匯出時剝掉、匯入時丟棄，兩個方向都不放行（語音計畫 §6.2）。
+const CHAR_LOCAL_ONLY_FIELDS = ['voiceProfile'];
+
+export function stripCharVoiceFields(char) {
+  if (!char || typeof char !== 'object') return char;
+  const out = { ...char };
+  for (const f of CHAR_LOCAL_ONLY_FIELDS) delete out[f];
+  return out;
+}
 
 // 訊息圖片只接受 JPEG／PNG／WebP 的 base64 data URL，並核對檔頭與解碼後大小。
 // 匯入的 JSON 若夾帶外部 URL，聊天室一開啟就會對該網址發請求（追蹤像素），
@@ -149,6 +161,7 @@ export async function exportAllData() {
   // 一旦隨備份外流等同把 GCP 專案憑證交出去。OpenAI/Anthropic 等字串金鑰同理。
   // provider/base/model 也一併排除（本機專屬設定，匯入端也會忽略）。
   data.settings = (data.settings || []).filter(r => !LOCAL_ONLY_SETTINGS.includes(r.key));
+  data.characters = (data.characters || []).map(stripCharVoiceFields);
   return {
     aurisExportVersion: 1,
     exportDate: Date.now(),
@@ -177,6 +190,7 @@ export async function importAllData(jsonData) {
     totalRecords += validateStoreRows(s, rows);
     let cleaned = rows;
     if (s === 'settings') cleaned = rows.filter(r => !LOCAL_ONLY_SETTINGS.includes(r.key));
+    if (s === 'characters') cleaned = rows.map(stripCharVoiceFields);
     if (s === 'messages') cleaned = rows.map(stripUnsafeImage);
     plan.push([s, cleaned]);
   }
@@ -276,7 +290,7 @@ export async function exportCharacterData(charId) {
   return {
     aurisCharExportVersion: 1,
     exportDate: Date.now(),
-    character: char,
+    character: stripCharVoiceFields(char),
     messages,
     memories,
     chatMems,
@@ -296,7 +310,7 @@ export async function importCharacterData(jsonData) {
   const newCharId = 'char_' + base;
 
   // 寫入角色（換新 ID，名稱後加「(匯入)」避免混淆）
-  const char = { ...jsonData.character, id: newCharId, name: (jsonData.character.name || '未命名') + '（匯入）' };
+  const char = { ...stripCharVoiceFields(jsonData.character), id: newCharId, name: (jsonData.character.name || '未命名') + '（匯入）' };
   await dbPut('characters', char);
 
   // 重新對應 charId 並賦予新 ID，用 index 確保同毫秒不衝突；圖片欄位過濾外部 URL
