@@ -61,6 +61,13 @@
             <template v-else>
               <div class="ann-title">更新指引</div>
 
+              <!-- P132 升 IndexedDB v8，且升版是單向的：退回舊版程式會開不了 App。
+                   這個警告必須排在最前面，使用者才會在動手更新前看到。 -->
+              <div class="ann-guide-section ann-guide-warn">
+                <div class="ann-guide-label">⚠️ 這一版更新後無法退回舊版</div>
+                <div class="ann-guide-text">本次調整了手機裡的資料庫結構。更新完成後若改用舊版網址或舊版本，App 會開不起來。<strong>請務必先備份再更新。</strong></div>
+              </div>
+
               <div class="ann-guide-section">
                 <div class="ann-guide-label">更新前請先備份</div>
                 <div class="ann-guide-text">設定 → 匯出資料 → 儲存 JSON 檔案到手機</div>
@@ -230,6 +237,14 @@ function close() {
 }
 
 .ann-guide-section { margin-bottom: 12px; }
+/* 單向升級警告：整塊框起來，不能只靠一個 emoji 讓人略過。 */
+.ann-guide-warn {
+  border: 1px solid var(--rose);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--rose) 8%, transparent);
+}
+.ann-guide-warn .ann-guide-label { font-weight: 500; letter-spacing: .02em; }
 .ann-guide-label {
   font-size: 11px;
   font-weight: 400;
