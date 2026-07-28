@@ -604,8 +604,11 @@ export function planThreadApply({
     if (op.op === 'ADD') {
       const kind = op.kind || 'event';
       const owner = op.owner || 'user';
-      // 事件日超出來源日合理範圍 → 視為無日期（不信任離譜時間，§10.3）
+      // 事件日超出來源日合理範圍 → 視為無日期（不信任離譜時間，§10.3）。
+      // 這條丟棄一定要留痕：實機上模型把「8/2」算成 2025 年（來源日前 361 天）被丟掉，
+      // 卡片顯示「尚未指定日期」卻查不出原因，只能靠猜。
       const finalDate = dateInRange(op.eventDate) ? op.eventDate : null;
+      if (op.eventDate && !finalDate) skipped.push({ op: 'ADD', reason: 'date-out-of-range', title: op.title });
       const eventTime = finalDate ? (op.eventTime || null) : null;
       const datePrecision = finalDate ? (op.datePrecision || (eventTime ? 'time' : 'date')) : 'unknown';
       const matchKeywords = deriveMatchKeywords({

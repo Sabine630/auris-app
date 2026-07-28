@@ -76,13 +76,14 @@ vi.mock('../diag.js', () => ({ logError: vi.fn() }));
 
 import {
   buildContinuityThreadCtx,
+  buildThreadExtractSystem,
   extractContinuityThreads,
   generateAIResponseStream,
   generateProactiveMessageStream,
   selectContinuityPromptThreads,
   shouldSuppressContinuityPrompt,
 } from '../chatEngine.js';
-import { _resetThreadQueues, COOLDOWN_DAYS, OFFER_MISS_LIMIT, getThreadTraces } from '../continuity.js';
+import { _resetThreadQueues, COOLDOWN_DAYS, OFFER_MISS_LIMIT, getThreadTraces, planThreadApply } from '../continuity.js';
 
 const NOW = 1784900000000;
 
@@ -350,5 +351,40 @@ describe('擷取階段追蹤', () => {
     await extractContinuityThreads('c1', userMessages('我下週二要去開會'));
     expect(lastTrace()).toMatch(/error/);
     expect(lastTrace()).not.toMatch(/no-ops/);
+  });
+});
+
+// P132 實機：卡片出現了但「尚未指定日期」——使用者說「我8/2要去跟唱片公司開會」，
+// 模型卻把年份算成 2025（來源日前 361 天），被 §10.3 的合理範圍檢查靜默改成 null。
+describe('擷取器日期錨點', () => {
+  it('system prompt 明確給出今天的日期與星期，並禁止憑印象假設年份', () => {
+    const sys = buildThreadExtractSystem([], [], 'zh-tw', new Date(2026, 6, 28, 8, 21).getTime());
+    expect(sys).toContain('今天是 2026-07-28（星期二）');
+    expect(sys).toMatch(/不得憑印象假設/);
+  });
+
+  it('明講「只說月日時取今天之後最近的那一天」，涵蓋使用者只寫 8/2 的情形', () => {
+    const sys = buildThreadExtractSystem([], [], 'zh-tw', Date.now());
+    expect(sys).toContain('只說月日');
+  });
+
+  it('年份算錯而被丟棄的日期會留下 date-out-of-range，不再靜默', () => {
+    const srcMs = new Date(2026, 6, 28).getTime();
+    const { puts, skipped } = planThreadApply({
+      operations: [{ op: 'ADD', title: '跟唱片公司開會', eventDate: '2025-08-02', matchKeywords: ['開會'] }],
+      existingThreads: [], charId: 'c1', sourceCreatedAt: srcMs, now: srcMs,
+    });
+    expect(puts[0].eventDate).toBe(null);
+    expect(skipped).toContainEqual(expect.objectContaining({ reason: 'date-out-of-range' }));
+  });
+
+  it('年份正確時照常收下，不會誤報 date-out-of-range', () => {
+    const srcMs = new Date(2026, 6, 28).getTime();
+    const { puts, skipped } = planThreadApply({
+      operations: [{ op: 'ADD', title: '跟唱片公司開會', eventDate: '2026-08-02', matchKeywords: ['開會'] }],
+      existingThreads: [], charId: 'c1', sourceCreatedAt: srcMs, now: srcMs,
+    });
+    expect(puts[0].eventDate).toBe('2026-08-02');
+    expect(skipped).not.toContainEqual(expect.objectContaining({ reason: 'date-out-of-range' }));
   });
 });

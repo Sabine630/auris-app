@@ -30,14 +30,22 @@ describe('dayPeriod — 時段分界', () => {
 describe('timeAnchorLine', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('格式：M/D（星期X）時段 HH:MM', () => {
+  it('格式：YYYY/M/D（星期X）時段 HH:MM', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 24, 7, 24)); // 6/24 07:24
     const line = timeAnchorLine();
-    expect(line).toMatch(/^\d{1,2}\/\d{1,2}（星期[日一二三四五六]）.+\s\d{2}:\d{2}$/);
-    expect(line).toContain('6/24');
+    expect(line).toMatch(/^\d{4}\/\d{1,2}\/\d{1,2}（星期[日一二三四五六]）.+\s\d{2}:\d{2}$/);
+    expect(line).toContain('2026/6/24');
     expect(line).toContain('清晨'); // dayPeriod(7)
     expect(line).toContain('07:24');
+  });
+
+  // P132 實機：時間錨沒有年份，模型就照訓練資料的年份印象推算——把 2026/8/2 講成
+  // 「星期六」（那是 2025/8/2），待續事件的日期也一起算成 2025 年後被丟掉。
+  it('必須帶年份，否則模型只能憑印象猜年份（實機把 2026/8/2 說成星期六）', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 28, 8, 21));
+    expect(timeAnchorLine()).toContain('2026');
   });
 });
 
