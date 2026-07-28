@@ -45,7 +45,59 @@ export const STORE_RECORD_LIMITS = Object.freeze({
   chat_memories: 20000,
   wishes: 20000,
   notes: 20000,
+  continuity_threads: 20000,
 });
+
+// P131 待續事件：狀態機與列舉由本地決定，匯入的值必須落在白名單內，
+// 否則一筆被竄改的 status 會讓 thread 永遠選不到、也永遠清不掉。
+// 這些列舉與日期驗證是「continuity 領域詞彙」的單一真相來源：本檔是零依賴的
+// 資安 leaf 模組，故詞彙落在這裡，由 services/continuity.js import 沿用，
+// 不得在兩處各抄一份（違反防呆原則 3：漂移）。
+export const THREAD_KINDS = new Set(['event', 'promise', 'open_question']);
+export const THREAD_OWNERS = new Set(['user', 'shared']);
+export const THREAD_STATUSES = new Set(['planned', 'waiting_result', 'resolved', 'cancelled', 'expired']);
+export const THREAD_PRECISIONS = new Set(['date', 'time', 'unknown']);
+export const MAX_THREAD_KEYWORDS = 3;
+export const MAX_THREAD_KEYWORD_CHARS = 8;
+export const MIN_THREAD_KEYWORD_CHARS = 2;   // §13.4：主題名詞至少 2 字，擋「我」這類單字誤消耗
+export const MAX_THREAD_TITLE_CHARS = 200;   // thread 標題專用上限（遠嚴於泛用 20 萬字欄位上限）
+export const MAX_THREAD_TEXT_CHARS = 4000;   // detail／sourcePreview／result 專用上限
+
+// §13.4 提及判定停用詞：泛用詞不能當主題名詞，否則角色隨口說「工作」「時候」就誤判已提及。
+// 涵蓋時間詞、狀態詞、人稱、情緒/關心語意詞。runtime（continuity.js 的 matchKeywords 過濾與
+// title 推導）與匯入驗證共用此單一清單，避免漂移——continuity.js 已規定領域詞彙以本檔為準。
+export const THREAD_KEYWORD_STOPWORDS = new Set([
+  // 時間詞
+  '今天', '明天', '後天', '大後天', '昨天', '前天', '早上', '中午', '下午', '晚上',
+  '下週', '下星期', '這週', '本週', '上週', '下個月', '這個月', '上個月',
+  '月底', '月初', '月中', '週末', '平日', '最近', '之後', '以後', '現在', '時候',
+  // 狀態/泛用名詞
+  '工作', '事情', '事', '結果', '狀況', '情況', '東西', '問題', '樣子', '一下',
+  '時間', '地方', '感覺', '心情', '打算', '計畫', '安排',
+  // 人稱
+  '我', '你', '他', '她', '我們', '你們', '他們', '對方', '使用者', '自己', '大家',
+  // 泛用副詞（不是主題名詞）
+  '一起', '一樣',
+  // 關心語意詞（診斷用，不能當主題）
+  '怎麼樣', '順利', '還好', '如何', '消息', '加油',
+]);
+
+// 只接受本地日曆 YYYY-MM-DD，且必須 round-trip 回同一組年月日：
+// 2026-02-30 會被 Date 自動滾成 3 月 2 日，這裡要判為無效。
+// 一律分開解析後用 new Date(y, m-1, d)，不得用 new Date('YYYY-MM-DD')（UTC 午夜會偏移日期）。
+export function isValidLocalDateString(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const dt = new Date(y, mo - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d;
+}
+
+export function isValidLocalTimeString(value) {
+  const m = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!m) return false;
+  return Number(m[1]) <= 23 && Number(m[2]) <= 59;
+}
 
 const REQUIRED_STRING_FIELDS = Object.freeze({
   characters: ['name'],
@@ -61,6 +113,7 @@ const REQUIRED_STRING_FIELDS = Object.freeze({
   chat_memories: ['charId', 'content'],
   wishes: ['charId', 'text'],
   notes: ['charId', 'text'],
+  continuity_threads: ['charId', 'title'],
 });
 
 const IMAGE_KEYS = new Set(['image', 'avatar']);
@@ -216,6 +269,56 @@ function requireString(rec, store, field, index) {
   }
 }
 
+function validateThreadRow(rec, index) {
+  const bad = (field) => new Error(`匯入資料「continuity_threads」第 ${index + 1} 筆的「${field}」格式錯誤`);
+
+  // continuity thread 沒有角色或可見標題就無法管理；只檢查 typeof 會放過空字串／純空白。
+  if (!rec.charId.trim()) throw bad('charId');
+  if (!rec.title.trim()) throw bad('title');
+  if (!THREAD_KINDS.has(rec.kind)) throw bad('kind');
+  if (!THREAD_OWNERS.has(rec.owner)) throw bad('owner');
+  if (!THREAD_STATUSES.has(rec.status)) throw bad('status');
+  if (rec.datePrecision !== undefined && !THREAD_PRECISIONS.has(rec.datePrecision)) throw bad('datePrecision');
+
+  // 日期／時間可為 null（無日期事件），有值就必須是合法的本地日曆值。
+  if (rec.eventDate != null && !isValidLocalDateString(rec.eventDate)) throw bad('eventDate');
+  if (rec.eventTime != null && !isValidLocalTimeString(rec.eventTime)) throw bad('eventTime');
+
+  // 時間戳欄位：有值必須是有限數。updatedAt 一併鎖住——否則 "never" 這類字串會讓 §15
+  // 無日期清理的 (now - updatedAt) 變 NaN、事件永不過期。
+  for (const field of ['followUpAfter', 'lastPromptedAt', 'closedAt', 'cooldownUntil', 'updatedAt']) {
+    if (rec[field] != null && !Number.isFinite(rec[field])) throw bad(field);
+  }
+  // 計數欄位：必須是非負整數，擋負數／小數污染冷卻與消耗判定。
+  for (const field of ['promptedCount', 'offeredCount']) {
+    if (rec[field] !== undefined && (!Number.isInteger(rec[field]) || rec[field] < 0)) throw bad(field);
+  }
+  // title 為 required string（已於 requireString 檢型），這裡再限長，避免 20 萬字標題。
+  if (rec.title.length > MAX_THREAD_TITLE_CHARS) throw bad('title');
+  for (const field of ['detail', 'sourcePreview', 'result']) {
+    if (rec[field] != null) {
+      if (typeof rec[field] !== 'string') throw bad(field);
+      if (rec[field].length > MAX_THREAD_TEXT_CHARS) throw bad(field);
+    }
+  }
+  if (rec.sourceMsgId != null && typeof rec.sourceMsgId !== 'string') throw bad('sourceMsgId');
+  if (rec.enabled !== undefined && typeof rec.enabled !== 'boolean') throw bad('enabled');
+
+  // matchKeywords 是消耗判定的必要衍生資料；缺少或空陣列會讓事件永遠判定「未提及」。
+  if (!Array.isArray(rec.matchKeywords)
+    || rec.matchKeywords.length === 0
+    || rec.matchKeywords.length > MAX_THREAD_KEYWORDS) throw bad('matchKeywords');
+  for (const kw of rec.matchKeywords) {
+    if (typeof kw !== 'string') throw bad('matchKeywords');
+    // runtime 提及判定會去空白後比對，帶空白的關鍵詞永遠命不中——直接拒絕（含前後與內部空白），
+    // 逼匯入資料與 runtime 正規化一致；再套相同的 2–8 字與停用詞規則。
+    const t = kw.replace(/\s+/g, '');
+    if (t !== kw) throw bad('matchKeywords');
+    if (t.length < MIN_THREAD_KEYWORD_CHARS || t.length > MAX_THREAD_KEYWORD_CHARS) throw bad('matchKeywords');
+    if (THREAD_KEYWORD_STOPWORDS.has(t)) throw bad('matchKeywords');
+  }
+}
+
 export function validateStoreRows(store, rows) {
   if (!Array.isArray(rows)) throw new Error(`備份檔「${store}」格式錯誤`);
   const rowLimit = STORE_RECORD_LIMITS[store] || 20000;
@@ -242,6 +345,7 @@ export function validateStoreRows(store, rows) {
       && (!Array.isArray(rec.charIds) || rec.charIds.some(id => typeof id !== 'string'))) {
       throw new Error(`匯入資料「groups」第 ${i + 1} 筆的「charIds」格式錯誤`);
     }
+    if (store === 'continuity_threads') validateThreadRow(rec, i);
   }
   return rows.length;
 }
@@ -269,6 +373,7 @@ export function validateCharacterImport(jsonData) {
     ['dreams', 'dreams'],
     ['wishes', 'wishes'],
     ['notes', 'notes'],
+    ['threads', 'continuity_threads'],
   ];
   let total = 1;
   for (const [field, store] of sections) {

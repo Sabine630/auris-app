@@ -5,50 +5,54 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P127 更新公告</div>
+      <div class="ann-badge">P132 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
           <div class="ann-page" :key="page">
 
-            <!-- 第一頁：近期新功能 -->
+            <!-- 第一頁：新功能 -->
             <template v-if="page === 0">
-              <div class="ann-title">近期更新</div>
+              <div class="ann-title">新功能</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">回憶月報 📖</div>
-                  <div class="ann-item-desc">每月替你們整理聊天統計、心情與收藏金句，再由角色寫一封回顧短信。到「我們的回憶 → 歷月回顧」也能手動生成，並存成主題配色的月報圖卡。</div>
+                  <div class="ann-item-title">待續的事 📌</div>
+                  <div class="ann-item-desc">你提到的未來事、約定、還沒回答的問題（「我下週三要面試」「說好禮拜六一起看電影」），他會記下來，在該關心的時候主動問結果——不用你再提一次。聊天室的記憶抽屜多了「待續的事」分頁，可以查看、修改、標記完成或回到來源訊息；不想讓某個角色記，在角色設定關掉就好。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">寫給未來的時間膠囊 ⏳</div>
-                  <div class="ann-item-desc">封存一段想對未來說的話，也可以請角色偷偷寫一封信。等約定日期到來，他會主動提醒你；拆封當天聊天時，他也記得這件事。</div>
+                  <div class="ann-item-title">睡前模式 🌙</div>
+                  <div class="ann-item-desc">聊天室選單一鍵進入。畫面轉為低刺激的暖色濾光，他會改用低聲短句陪你，不開刺激話題，也可以講平靜的睡前故事。你道晚安他會溫柔收尾；久沒回應（大概睡著了）他會自己輕聲道晚安。隔天再聊，他記得昨晚。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">我們的默契 🤝</div>
-                  <div class="ann-item-desc">角色會在整理記憶時，順手記下你們的口頭禪、專屬稱呼、暗號與共同的梗。可在聊天室的記憶抽屜查看、修改或關閉，讓相處方式自然累積。</div>
+                  <div class="ann-item-title">關係里程碑 🎉</div>
+                  <div class="ann-item-desc">在一起 100、200、300、520、1000 天，關係頁會提前倒數，當天他也會自然提起、陪你一起紀念。</div>
                 </div>
               </div>
             </template>
 
-            <!-- 第二頁：使用方式 -->
+            <!-- 第二頁：修復與改善 -->
             <template v-else-if="page === 1">
-              <div class="ann-title">更安心、更穩定</div>
+              <div class="ann-title">修復與改善</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">iOS 鍵盤顯示修復 📱</div>
-                  <div class="ann-item-desc">iPhone 加入主畫面的 PWA 在聊天打字時，頂部畫面缺塊、頁面被偷偷捲動的問題已正式修復，輸入體驗更穩定。</div>
+                  <div class="ann-item-title">背景功能其實一直沒在跑 🔧</div>
+                  <div class="ann-item-desc">使用 Anthropic 時，記憶總結、日記、貼文、「我想你」、每日一問可能長期都是空轉的——不會報錯，只是靜靜地什麼都沒做。現在已修復。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">備份還原更安全 🛟</div>
-                  <div class="ann-item-desc">匯入前會檢查檔案大小、資料筆數、文字長度、圖片格式與備份欄位，異常檔案會直接拒絕、不會開始寫入；API key 也不會寫進備份檔或被匯入覆蓋。</div>
+                  <div class="ann-item-title">不再冒出簡體字 🇹🇼</div>
+                  <div class="ann-item-desc">角色回覆統一轉成台灣繁體用語（角色設定為其他語言的除外）。轉換用完立刻釋放，不額外消耗 token，也不佔記憶體。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">診斷資訊更重視隱私 🔒</div>
-                  <div class="ann-item-desc">第三方與網路錯誤只保存安全分類；本地錯誤也會先遮蔽金鑰與網址。複製診斷資訊時不會包含對話內容或 API key。</div>
+                  <div class="ann-item-title">回覆混入英文思考內容 💭</div>
+                  <div class="ann-item-desc">部分模型會把內部推理當成回覆的一部分吐出來，現在會在顯示前剝除，串流時也不會先閃一下。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">日記、主題與 Vertex 修復 ✨</div>
-                  <div class="ann-item-desc">角色日記不再無故中英夾雜（尊重角色語言設定與合理例外）；重新開啟 App 時更早套用正確主題；Vertex AI 切換 service account 不再共用舊 token。</div>
+                  <div class="ann-item-title">iPhone 打字看不到輸入框 ⌨️</div>
+                  <div class="ann-item-desc">鍵盤上方那條工具列會蓋住輸入框的問題已修復，聊天室與設定頁都適用。角色也不會再把日期的星期幾算錯。</div>
+                </div>
+                <div class="ann-item">
+                  <div class="ann-item-title">安全性更新 🔒</div>
+                  <div class="ann-item-desc">修補已知的相依套件弱點，並修正貼文標籤解析的效能風險。</div>
                 </div>
               </div>
             </template>
@@ -56,6 +60,13 @@
             <!-- 第三頁：更新指引 -->
             <template v-else>
               <div class="ann-title">更新指引</div>
+
+              <!-- P132 升 IndexedDB v8，且升版是單向的：退回舊版程式會開不了 App。
+                   這個警告必須排在最前面，使用者才會在動手更新前看到。 -->
+              <div class="ann-guide-section ann-guide-warn">
+                <div class="ann-guide-label">⚠️ 這一版更新後無法退回舊版</div>
+                <div class="ann-guide-text">本次調整了手機裡的資料庫結構。更新完成後若改用舊版網址或舊版本，App 會開不起來。<strong>請務必先備份再更新。</strong></div>
+              </div>
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">更新前請先備份</div>
@@ -82,7 +93,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P127</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P132</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
@@ -97,16 +108,15 @@
 
       <!-- 分頁指示點 -->
       <div class="ann-dots">
-        <div class="ann-dot" :class="{ active: page === 0 }" @click="page = 0"></div>
-        <div class="ann-dot" :class="{ active: page === 1 }" @click="page = 1"></div>
-        <div class="ann-dot" :class="{ active: page === 2 }" @click="page = 2"></div>
+        <div v-for="i in PAGE_COUNT" :key="i" class="ann-dot"
+             :class="{ active: page === i - 1 }" @click="page = i - 1"></div>
       </div>
 
       <!-- 導航按鈕 -->
       <div class="ann-actions">
         <button v-if="page > 0" class="ann-btn ann-btn-prev" @click="page--">← 上一頁</button>
         <div v-else style="flex:1"></div>
-        <button v-if="page < 2" class="ann-btn ann-btn-next" @click="page++">下一頁 →</button>
+        <button v-if="page < PAGE_COUNT - 1" class="ann-btn ann-btn-next" @click="page++">下一頁 →</button>
         <button v-else class="ann-btn ann-btn-done" @click="close">我知道了</button>
       </div>
     </div>
@@ -117,6 +127,8 @@
 import { ref } from 'vue';
 
 const emit = defineEmits(['close']);
+// 頁數集中在此：指示點與「下一頁／我知道了」都依它算，加頁時不會漏改其中一處。
+const PAGE_COUNT = 3;
 const page = ref(0);
 
 function close() {
@@ -225,6 +237,14 @@ function close() {
 }
 
 .ann-guide-section { margin-bottom: 12px; }
+/* 單向升級警告：整塊框起來，不能只靠一個 emoji 讓人略過。 */
+.ann-guide-warn {
+  border: 1px solid var(--rose);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--rose) 8%, transparent);
+}
+.ann-guide-warn .ann-guide-label { font-weight: 500; letter-spacing: .02em; }
 .ann-guide-label {
   font-size: 11px;
   font-weight: 400;

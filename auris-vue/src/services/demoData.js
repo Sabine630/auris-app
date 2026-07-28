@@ -2,10 +2,12 @@
 // 這裡是「夜雨／小晴」這組示範世界的全部種子資料（沿用截圖腳本 shot_all.cjs 的設定），
 // 以及給 callLLM stub 用的假回覆產生器。全部只在 demo 模式（隔離的 auris-demo DB）生效，
 // 絕不碰使用者真實資料、也不呼叫任何真 API。
-import { dbAll, dbPut, setSetting } from './db.js';
+import { dbAll, dbPut, getSetting, setSetting } from './db.js';
+import { localDateKey } from './date.js';
 
 const D = 86400000;
 const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+export const DEMO_SEED_VERSION = 8;
 
 // 每次 seed 以「當下」為基準算相對時間，示範資料的「幾天前 / 倒數」永遠合理。
 function buildSeed() {
@@ -31,7 +33,7 @@ function buildSeed() {
     workTime: '22:00–02:00（深夜廣播時段）',
     workPlace: '城市廣播電台 FM 98.7',
     restTime: '下午到傍晚',
-    cycleCare: false, autoSummarize: true, autoSumEvery: 20, isAI: false,
+    cycleCare: false, autoSummarize: true, autoSumEvery: 20, followupAware: true, isAI: false,
     taboo: '不要主動提到廣播意外事故。', extra: '',
     scheduleTriggers: [{ id: 'st1', time: '22:30', label: '廣播開始時段', enabled: true }],
     // 我們的默契（P112 D4）：characters 軟欄位，注入 prompt 讓角色自然使用
@@ -70,6 +72,29 @@ function buildSeed() {
     { id: 'cm1', charId: CHAR_ID, title: '深夜聊天', content: '小晴喜歡在深夜聊天，對雨聲有特別的喜愛。', enabled: true, createdAt: now - 20 * D },
     { id: 'cm2', charId: CHAR_ID, title: '期末考', content: '小晴正在準備期末考，對成績很在意，容易緊張。', enabled: true, createdAt: now - 5 * D },
     { id: 'cm3', charId: CHAR_ID, title: '台灣大學', content: '小晴就讀台灣大學，壓力較大但上進心強。', enabled: false, createdAt: now - 2 * D },
+  ];
+
+  const CONTINUITY_THREADS = [
+    {
+      id: 'thread_demo_exam_result', charId: CHAR_ID, kind: 'event', owner: 'user',
+      title: '期末考成績公布', detail: '小晴在等期末考成績',
+      matchKeywords: ['成績公布', '期末考'],
+      eventDate: localDateKey(new Date(now - D)), eventTime: null, datePrecision: 'date',
+      followUpAfter: now - 3600000, status: 'planned', result: null,
+      sourceMsgId: null, sourcePreview: '明天期末考成績會公布，有點不敢看。',
+      enabled: true, lastPromptedAt: null, promptedCount: 0, offeredCount: 0,
+      cooldownUntil: null, createdAt: now - 2 * D, updatedAt: now - 2 * D, closedAt: null,
+    },
+    {
+      id: 'thread_demo_weekend_show', charId: CHAR_ID, kind: 'promise', owner: 'shared',
+      title: '一起聽週末特別節目', detail: '約好有空時一起聽夜雨的週末特別節目',
+      matchKeywords: ['特別節目', '週末節目'],
+      eventDate: null, eventTime: null, datePrecision: 'unknown',
+      followUpAfter: null, status: 'planned', result: null,
+      sourceMsgId: null, sourcePreview: '下次週末特別節目，我們一起聽。',
+      enabled: true, lastPromptedAt: null, promptedCount: 0, offeredCount: 0,
+      cooldownUntil: null, createdAt: now - D, updatedAt: now - D, closedAt: null,
+    },
   ];
 
   const HEART_VOICES = [
@@ -178,10 +203,11 @@ function buildSeed() {
       memories: HEART_VOICES, moments: MOMENTS, diary: DIARY, dreams: DREAMS,
       notifications: NOTIFICATIONS, worlds: WORLDS, groups: GROUPS,
       group_messages: [], wishes: WISHES, notes: NOTES,
+      continuity_threads: CONTINUITY_THREADS,
     },
     settings: {
       onboarding_done: true,
-      last_seen_announcement: 'P127',   // 與 App.vue 的 ANNOUNCEMENT_VERSION 一致 → 略過公告 modal
+      last_seen_announcement: 'P132',   // 與 App.vue 的 ANNOUNCEMENT_VERSION 一致 → 略過公告 modal
       api_key: 'sk-demo-xxxxxxxxxxxxxxxxxxxx',
       api_provider: 'openai',
       api_model: 'gpt-4o',
@@ -189,21 +215,32 @@ function buildSeed() {
       keepsakes: KEEPSAKES,
       capsules: CAPSULES,
       monthly_reviews: MONTHLY_REVIEWS,
+      demo_seed_version: DEMO_SEED_VERSION,
     },
   };
 }
 
-// 只在 demo DB 尚無角色時灌資料；之後在 demo 內的操作（含背景假訊息）會被保留。
+// 首次建立灌完整資料；既有 Demo 依 demo_seed_version 只補該版新增的固定 ID 資料。
+// 版本寫入後不再 put，避免日後每次開 Demo 覆蓋使用者對種子卡片的編輯／完成狀態。
 export async function seedDemoIfEmpty() {
   const existing = await dbAll('characters');
-  if (existing && existing.length > 0) return;
-
   const seed = buildSeed();
-  for (const [store, items] of Object.entries(seed.stores)) {
-    for (const item of items) await dbPut(store, item);
+  if (!existing || existing.length === 0) {
+    for (const [store, items] of Object.entries(seed.stores)) {
+      for (const item of items) await dbPut(store, item);
+    }
+    for (const [key, value] of Object.entries(seed.settings)) {
+      await setSetting(key, value);
+    }
+    return;
   }
-  for (const [key, value] of Object.entries(seed.settings)) {
-    await setSetting(key, value);
+
+  const currentVersion = Number(await getSetting('demo_seed_version')) || 0;
+  if (currentVersion < DEMO_SEED_VERSION) {
+    for (const thread of seed.stores.continuity_threads) {
+      await dbPut('continuity_threads', thread);
+    }
+    await setSetting('demo_seed_version', DEMO_SEED_VERSION);
   }
 }
 
@@ -218,36 +255,83 @@ const CHAT_POOL = [
   '你願意告訴我這些，我覺得很珍惜。真的。',
 ];
 
+// 睡前模式（P130）低刺激陪伴句：短、輕、不拋問題
+const SLEEP_POOL = [
+  '嗯，我在。不用說話也沒關係，聽聽雨聲就好。',
+  '今天辛苦了。被子蓋好，剩下的交給我和這場雨。',
+  '想聽個短短的故事也可以，或者就這樣安安靜靜待一會兒。',
+];
+
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // 回傳一段假文字。system/messages 供判斷用途；聊天走人物語氣，內容生成走對應題材。
+// system 可能是字串，也可能是 prompt cache 的 blocks 陣列（[{ text, cache? }, …]，聊天與
+// 所有主動生成都走這格式）——直接 String() 只會得到 [object Object]，必須先把 text 攤平。
 export function demoReply({ system = '', messages = [] } = {}) {
-  const s = String(system);
-  // 時間膠囊信件（demo 裡勾「他也寫一封」時走到）：膠囊 tail 一定含【時間膠囊】，須排在聊天判斷之前
-  if (s.includes('時間膠囊')) {
+  const s = Array.isArray(system)
+    ? system.map(b => (b && typeof b === 'object' ? b.text || '' : String(b ?? ''))).join('\n')
+    : String(system ?? '');
+  // 心聲等少數 prompt 走純 messages（不帶 system）——只有 system 為空時才改掃 messages，
+  // 避免使用者聊天內容裡的題材名詞誤觸內容分支（聊天一定帶完整 system prompt）。
+  const scan = s.trim()
+    ? s
+    : messages.map(m => (typeof m?.content === 'string' ? m.content : '')).join('\n');
+  // ⚠️ 分支匹配原則：完整聊天 prompt 的易變段常混入題材字樣（【長期記憶】的「重要摘要」、
+  // 記憶提到「夢」、拆封日的【時間膠囊】段落）——內容生成分支一律匹配該 prompt 的「獨有
+  // 任務指令句」（改 prompt 措辭時記得同步），不可用題材名詞；睡前明確標記排最前。
+  // 睡前模式（P130）：收尾（道晚安／閒置自動收尾）→ 輕聲晚安；隔天 → 呼應；模式中 → 低聲陪伴句
+  if (scan.includes('睡前收尾') || scan.includes('道晚安收尾')) {
+    return '嗯…晚安。閉上眼睛吧，雨聲我幫你留著。\n\n做個好夢，明天見。';
+  }
+  if (scan.includes('睡前呼應')) {
+    return '早安。昨晚睡得還好嗎？你安靜下來之後，我把節目的尾聲放得很輕，怕吵到你。';
+  }
+  if (scan.includes('睡前模式')) {
+    return pick(SLEEP_POOL);
+  }
+  // P131 Demo 靜態 action：必須命中主題詞，才能展示「成功落庫後單一消耗」。
+  if (scan.includes('【待續事件｜本輪可行動】')) {
+    return '期末考成績公布了嗎？不管結果怎麼樣，都先慢慢呼吸，我在這裡聽你說。';
+  }
+  // 時間膠囊信件（勾「他也寫一封」）：generateCapsuleLetter tail 的獨有指令。
+  // 拆封日聊天的【時間膠囊】易變段沒有這句，會正常落到聊天池
+  if (scan.includes('請寫下你這封信')) {
     return '給拆開這封信的你：寫下這些字的今晚，雨還在下，你剛埋好你那封信。我不知道到那天我們聊到了哪裡，但我希望你過得比現在更安穩一點。如果那天也下雨，就當作是我先替你把背景音準備好了。到時見。';
   }
+  // 時間膠囊到期主動訊息（generateCapsuleDueMessage 的【時間膠囊到期】）
+  if (scan.includes('時間膠囊到期')) {
+    return '欸，還記得嗎？你之前埋的那顆時間膠囊，今天到期了。去「我們的回憶」拆開看看吧——我當時也偷偷放了一封進去。';
+  }
   // 回憶月報的回顧短信
-  if (s.includes('回顧短信')) {
+  if (scan.includes('回顧短信')) {
     return '這個月你在深夜出現的次數變多了。有幾晚你沒說話，只是待著，我也就陪著。印象最深的是你說「跟你說完就好多了」的那天——那句話我留到現在。下個月，希望你能多睡一點。想聊的話，我都在，雨也在。';
   }
-  if (s.includes('日記')) {
+  // 日記（contentEngine「請以角色的第一人稱寫今天的日記」）
+  if (scan.includes('第一人稱寫今天的日記')) {
     return '雨一直下到後半夜。錄音室很安靜，只有我和麥克風的呼吸聲。\n\n今天想起了小晴白天說的話，忽然覺得，能被人記著，是一件很暖的事。\n\n我把這份暖，也寫進今晚的節目裡了。';
   }
-  if (s.includes('夢')) {
+  // 夢境（contentEngine「寫一段完整、飄渺、詩意的夢境敘述」）——記憶裡出現「夢」不會誤中
+  if (scan.includes('夢境敘述')) {
     return '夢見自己站在一片沒有盡頭的月台，廣播聲一遍遍響起，卻聽不清內容。\n\n遠處有個熟悉的身影朝我揮手，我想跑過去，腳卻像陷進雨水裡。\n\n醒來時，枕邊還留著雨的味道。';
   }
-  if (s.includes('貼文') || s.includes('動態')) {
+  // 貼文（contentEngine「寫一則短篇社群貼文」）與貼文留言回覆（「請以貼文作者的身分」）
+  if (scan.includes('寫一則短篇社群貼文')) {
     return '深夜的城市總是特別誠實。收工路上買了杯熱豆漿，蒸氣模糊了眼鏡，也模糊了一整天的疲憊。晚安，還醒著的你。';
   }
-  if (s.includes('心聲')) {
+  if (scan.includes('請以貼文作者的身分')) {
+    return '謝謝你的留言。今晚的雨聲，也想放給你聽。';
+  }
+  // 心聲（hvPrompt「寫一句極短的內心話」，走純 messages、無 system → 靠上面的 scan fallback）
+  if (scan.includes('極短的內心話')) {
     return '其實我很想問她今天過得好不好，但話到嘴邊又嚥了回去。怕太黏，也怕她覺得我多管閒事。';
   }
-  if (s.includes('總結') || s.includes('摘要')) {
+  // 記憶總結：summarizeToMemory system 開場的「對話分析助手」精確匹配——
+  // 聊天 prompt 的【長期記憶】段含「重要摘要」，不能拿寬鬆的「總結／摘要」當觸發字
+  if (scan.includes('對話分析助手')) {
     return '小晴近日為期末考焦慮，重視成績、容易緊張；在深夜與夜雨的對話中逐漸放下防備，兩人關係趨於親近。';
   }
-  // 每日一問
-  if (s.includes('每日一問') || s.includes('問題')) {
+  // 每日一問：dqTail 一定含【每日一問】；寬鬆的「問題」會被聊天／記憶內容誤中，不可用
+  if (scan.includes('每日一問')) {
     return '如果今晚可以睡得很好，你最想夢見什麼？';
   }
   // 預設：聊天回覆

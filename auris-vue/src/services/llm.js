@@ -7,6 +7,7 @@ import { fetchWithTimeout, getVertexToken, getDefModel, isReasoningModel } from 
 import { isDemo } from './demoMode.js';
 import { demoReply } from './demoData.js';
 import { logError } from './diag.js';
+import { createThinkingStreamFilter, stripThinking } from './thinkingFilter.js';
 
 const VERTEX_REGION = 'us-central1';
 
@@ -79,6 +80,18 @@ export async function parseSSEStream(response, provider, onChunk) {
   return { truncated };
 }
 
+// Anthropic 非串流回應的 content 是 block 陣列，可能混入 thinking／redacted_thinking／
+// tool_use。只取 content[0] 會在模型先吐 thinking block 時整段變空字串——P132 實機病灶：
+// 擷取器、總結、日記、貼文等所有非串流背景任務全部悄悄拿到 ''，不拋錯、不留紀錄，
+// 待續的事因此永遠是空的（串流那條有正確過濾 text_delta，所以聊天看起來一切正常）。
+function anthropicText(content) {
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter(b => b?.type === 'text' && typeof b.text === 'string')
+    .map(b => b.text)
+    .join('');
+}
+
 // system 可為字串或 blocks 陣列 [{ text, cache?: true }]；非 anthropic 一律攤平成單一字串。
 function systemToString(system) {
   if (typeof system === 'string') return system || '';
@@ -133,9 +146,19 @@ function applyImage(messages, image, provider) {
 // 回傳 { fullText, truncated }
 // 失敗一律記進診斷 ring buffer（provider/model＋HTTP status／錯誤分類）；第三方
 // response message 不會保存。使用者主動中斷（AbortError）不算失敗、不記。
+// 統一出口：所有 provider、串流與非串流的結果都在這裡剝掉模型的思考區塊（P132）。
+// 串流時額外包一層 stateful filter，避免 <thinking> 先閃在畫面上再被清掉。
 export async function callLLM(opts) {
   try {
-    return await callLLMInner(opts);
+    const filter = opts.stream && opts.onChunk
+      ? createThinkingStreamFilter(opts.onChunk)
+      : null;
+    const inner = filter
+      ? { ...opts, onChunk: chunk => filter.push(chunk) }
+      : opts;
+    const result = await callLLMInner(inner);
+    filter?.flush();
+    return { ...result, fullText: stripThinking(result?.fullText) };
   } catch (e) {
     if (e?.name !== 'AbortError') {
       logError('llm', e, { provider: opts.provider, model: opts.model });
@@ -238,7 +261,7 @@ async function callLLMInner({
     const data = await r.json();
     const errObj = Array.isArray(data) ? data[0]?.error : data.error;
     if (!r.ok || errObj) throw new Error(errObj?.message || JSON.stringify(errObj) || `HTTP Error ${r.status}`);
-    return { fullText: data.content?.[0]?.text || '', truncated: data.stop_reason === 'max_tokens' };
+    return { fullText: anthropicText(data.content), truncated: data.stop_reason === 'max_tokens' };
   }
 
   // ── OpenAI 相容格式（openai / google AI Studio / openrouter）───────────────

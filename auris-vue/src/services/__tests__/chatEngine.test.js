@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { dayPeriod, timeAnchorLine, shouldBusyRead } from '../chatEngine.js';
+import {
+  dayPeriod, timeAnchorLine, shouldBusyRead, isGoodnightText, sleepRecallState,
+  SLEEP_RECALL_MIN_MS, SLEEP_RECALL_MAX_MS,
+  buildMemorySummarySystemPrompt, buildSummaryThreadInstr, buildThreadExtractSystem,
+  THREAD_FINAL_STATE_RULE,
+} from '../chatEngine.js';
 
 describe('dayPeriod — 時段分界', () => {
   it('4→深夜、5→清晨（清晨下界）', () => {
@@ -25,14 +30,22 @@ describe('dayPeriod — 時段分界', () => {
 describe('timeAnchorLine', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('格式：M/D（星期X）時段 HH:MM', () => {
+  it('格式：YYYY/M/D（星期X）時段 HH:MM', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 24, 7, 24)); // 6/24 07:24
     const line = timeAnchorLine();
-    expect(line).toMatch(/^\d{1,2}\/\d{1,2}（星期[日一二三四五六]）.+\s\d{2}:\d{2}$/);
-    expect(line).toContain('6/24');
+    expect(line).toMatch(/^\d{4}\/\d{1,2}\/\d{1,2}（星期[日一二三四五六]）.+\s\d{2}:\d{2}$/);
+    expect(line).toContain('2026/6/24');
     expect(line).toContain('清晨'); // dayPeriod(7)
     expect(line).toContain('07:24');
+  });
+
+  // P132 實機：時間錨沒有年份，模型就照訓練資料的年份印象推算——把 2026/8/2 講成
+  // 「星期六」（那是 2025/8/2），待續事件的日期也一起算成 2025 年後被丟掉。
+  it('必須帶年份，否則模型只能憑印象猜年份（實機把 2026/8/2 說成星期六）', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 28, 8, 21));
+    expect(timeAnchorLine()).toContain('2026');
   });
 });
 
@@ -83,7 +96,7 @@ describe('shouldBusyRead', () => {
 });
 
 // ── 專屬默契（P112 D4）──────────────────────────────────────────────────────
-import { parseSummaryBonds, mergeBonds, BOND_CAP } from '../chatEngine.js';
+import { parseSummaryBonds, mergeBonds, stripThreadOpsTail, BOND_CAP } from '../chatEngine.js';
 
 describe('parseSummaryBonds — 總結尾端 BONDS 行解析', () => {
   it('正常解析：摘要與新梗分離、BONDS 行不進摘要', () => {
@@ -112,6 +125,41 @@ describe('parseSummaryBonds — 總結尾端 BONDS 行解析', () => {
   });
 });
 
+describe('stripThreadOpsTail — 移除尾端 THREAD_OPS（P131，避免打斷 BONDS 錨定）', () => {
+  it('切掉 THREAD_OPS 後，BONDS 仍能被錨定句尾的 parser 解析', () => {
+    const raw = '兩人聊了面試。\nBONDS: ["互道晚安"]\nTHREAD_OPS: [{"op":"ADD","title":"面試","matchKeywords":["面試"]}]';
+    const body = stripThreadOpsTail(raw);
+    expect(body).toBe('兩人聊了面試。\nBONDS: ["互道晚安"]');
+    const { summary, bonds } = parseSummaryBonds(body);
+    expect(summary).toBe('兩人聊了面試。');
+    expect(bonds).toEqual(['互道晚安']);
+  });
+  it('沒有 THREAD_OPS 時原樣返回', () => {
+    expect(stripThreadOpsTail('只有摘要。')).toBe('只有摘要。');
+  });
+});
+
+describe('待續擷取 prompt — 同批對話以最後狀態為準', () => {
+  const open = [{ id: 't1', title: '週一面試', eventDate: '2026-07-27', status: 'planned' }];
+  const closed = [];
+
+  it.each([
+    ['即時擷取', () => buildThreadExtractSystem(open, closed)],
+    ['總結補漏', () => buildSummaryThreadInstr(open, closed)],
+  ])('%s 共用明確規則：無既有 thread 不得先 ADD，已有才終止', (_label, build) => {
+    const prompt = build();
+    expect(prompt).toContain(THREAD_FINAL_STATE_RULE);
+    expect(prompt).toContain('沒有既有 thread 時回 NONE、不得 ADD');
+    expect(prompt).toContain('已有既有 thread 時，才用該 id 回 CANCEL 或 RESOLVE');
+    expect(prompt).toContain('id=t1');
+  });
+
+  it('擷取器與摘要 prompt 都帶角色語言規則', () => {
+    expect(buildThreadExtractSystem(open, closed, 'ja')).toContain('自然な日本語');
+    expect(buildMemorySummarySystemPrompt('zh-tw')).toContain('繁體中文（台灣用語）');
+  });
+});
+
 describe('mergeBonds — 新梗合併', () => {
   it('去重（完全相同文字）、去空白、截 40 字、預設 enabled', () => {
     const existing = [{ id: 'b1', text: '老梗', enabled: false, createdAt: 1 }];
@@ -132,5 +180,59 @@ describe('mergeBonds — 新梗合併', () => {
 
   it('existing 非陣列（舊資料無此欄位）視同空陣列', () => {
     expect(mergeBonds(undefined, ['梗'])).toHaveLength(1);
+  });
+});
+
+describe('isGoodnightText — 晚安收尾語偵測（P130 睡前模式）', () => {
+  it('常見道晚安句型為 true', () => {
+    expect(isGoodnightText('晚安')).toBe(true);
+    expect(isGoodnightText('那我要睡了，明天見')).toBe(true);
+    expect(isGoodnightText('我先去睡囉')).toBe(true);
+    expect(isGoodnightText('該睡了')).toBe(true);
+    expect(isGoodnightText('祝你好夢')).toBe(true);
+    expect(isGoodnightText('good night')).toBe(true);
+  });
+
+  it('失眠求陪聊、問對方睡沒不是道晚安', () => {
+    expect(isGoodnightText('我睡不著')).toBe(false);
+    expect(isGoodnightText('你睡了嗎')).toBe(false);
+    expect(isGoodnightText('今天好累')).toBe(false);
+    expect(isGoodnightText('')).toBe(false);
+    expect(isGoodnightText(null)).toBe(false);
+  });
+});
+
+describe('sleepRecallState — 隔天「昨晚睡前」呼應判定（P130）', () => {
+  const at = (y, mo, d, h, mi = 0) => new Date(y, mo - 1, d, h, mi);
+
+  it('無 flag → 不注入不清除', () => {
+    expect(sleepRecallState(null, at(2026, 7, 19, 9))).toEqual({ inject: false, clear: false });
+    expect(sleepRecallState(undefined, at(2026, 7, 19, 9))).toEqual({ inject: false, clear: false });
+  });
+
+  it('昨晚 23 點收尾、今早 8 點 → 注入並清 flag', () => {
+    const ended = at(2026, 7, 18, 23).getTime();
+    expect(sleepRecallState(ended, at(2026, 7, 19, 8))).toEqual({ inject: true, clear: true });
+  });
+
+  it('23:50 收尾、00:10 又來聊 → 跨日但未滿 3 小時，不注入也不清（flag 留到早上）', () => {
+    const ended = at(2026, 7, 18, 23, 50).getTime();
+    expect(sleepRecallState(ended, at(2026, 7, 19, 0, 10))).toEqual({ inject: false, clear: false });
+  });
+
+  it('同一天內（沒跨日）→ 不注入不清', () => {
+    const ended = at(2026, 7, 19, 1).getTime();
+    expect(sleepRecallState(ended, at(2026, 7, 19, 9))).toEqual({ inject: false, clear: false });
+  });
+
+  it('超過 36 小時 → 過期只清 flag 不呼應', () => {
+    const ended = at(2026, 7, 17, 22).getTime();
+    expect(sleepRecallState(ended, at(2026, 7, 19, 12))).toEqual({ inject: false, clear: true });
+    expect(sleepRecallState(1000, new Date(1000 + SLEEP_RECALL_MAX_MS))).toEqual({ inject: false, clear: true });
+  });
+
+  it('門檻常數健全性：3 小時 / 36 小時', () => {
+    expect(SLEEP_RECALL_MIN_MS).toBe(3 * 3600 * 1000);
+    expect(SLEEP_RECALL_MAX_MS).toBe(36 * 3600 * 1000);
   });
 });

@@ -1,7 +1,7 @@
 # 🎨 Auris 完整開發進度總覽
 
-**最後更新**：2026-07-18
-**當前版本**：P128（CodeQL 首掃修復——貼文 hashtag ReDoS 與 CI 權限收斂）
+**最後更新**：2026-07-28
+**當前版本**：P132（實機驗收修正——待續事件記得住、思考洩漏與 iOS 鍵盤遮蔽）
 **狀態**：上線後持續優化中
 
 ---
@@ -1746,7 +1746,7 @@ P82「拆多則短泡泡」預設每則回覆最多切 3 泡泡，實際偏碎�
 
 ---
 
-### P128 CodeQL 首掃修復——貼文 hashtag ReDoS 與 CI 權限收斂（2026-07-18，當前版本）
+### P128 CodeQL 首掃修復——貼文 hashtag ReDoS 與 CI 權限收斂（2026-07-18）
 
 **背景**：安全基線第 3 批快贏項啟用 CodeQL default setup 後，首掃回報 2 個發現：`js/redos`（high，`contentEngine.js` 貼文 hashtag 收尾 regex `/(?:\n\s*#\w+\s*)+$/` 重複群組內外 `\s*` 有歧義性回溯，惡意 LLM 輸出可卡死主執行緒）與 `actions/missing-workflow-permissions`（medium，ci.yml 未宣告 GITHUB_TOKEN 權限）。本批把兩個發現清零。
 
@@ -1763,6 +1763,115 @@ P82「拆多則短泡泡」預設每則回覆最多切 3 泡泡，實際偏碎�
 | `services/__tests__/contentEngine.test.js` | 新增 extractPostTags 行為與 ReDoS 防回歸測試 |
 
 ---
+
+### P129 關係里程碑慶祝——100／200／300／520／1000 天（2026-07-19）
+
+**功能**（A1 定案規格，安全基線收尾後第一個產品功能批）：只慶「在一起」天數，相識日不做，與 P69 年度紀念日機制兩軌互補。三個呈現點：
+- 關係主頁「即將到來」：下一個里程碑進入 90 天窗口開始倒數（🎉 icon＋目標日期）
+- 里程碑當天：hero 天數卡亮「🎉 N 天里程碑」badge（當天不在「即將到來」重複出現）
+- 聊天 prompt：`getPersonalDateCtx` 注入「今天是你們在一起的第 N 天🎉」，讓角色自然提起慶祝
+
+**天數規則與共用化**：交往日當天＝第 0 天，經過 100 個完整本地日曆日才是「100 天」。新增 `date.js` 的 `calendarDaysSince()` 並讓關係頁與 chatEngine 共用（`services/milestones.js` 的 `getMilestoneInfo()`）——順手修掉舊算法 `new Date('YYYY-MM-DD')` 相減的 UTC 隱患（UTC+8 凌晨 0–8 點天數少 1，會與里程碑判定差一天）。交往日無效或在未來一律回 null：畫面不顯示、prompt 不注入，填錯不炸。零 schema 變更、零額外 AI 成本。
+
+**驗證**：新增 `milestones.test.js` 9 項邊界測試（99/100/101、519/520、1000/1001、第 0 天、凌晨時區回歸、未來／無效日期），全套 Vitest 242/242 通過；production build 通過。demo 角色 togetherDate 為 137 天前，教學示範自然展示 200 天倒數；示範模式關係頁教學文案同步。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/date.js` | 新增 `calendarDaysSince()`：本地日曆日差，無效回 null、未來回負數 |
+| `services/milestones.js` | **新增**：`MILESTONE_DAYS` 與 `getMilestoneInfo()`（days／isToday／next 倒數） |
+| `views/RelationView.vue` | hero 🎉 badge、「即將到來」里程碑倒數；天數計算改共用函式 |
+| `services/chatEngine.js` | `getPersonalDateCtx` 注入里程碑；年度紀念日天數改共用函式 |
+| `services/demoGuideContent.js` | 關係頁教學補里程碑說明 |
+| `services/__tests__/milestones.test.js` | **新增**：9 項邊界測試 |
+
+---
+
+### P130 睡前模式——低刺激陪伴與隔天呼應（2026-07-19）
+
+**功能**（E2 定案規格，2026-07-08 決議）：聊天室選單一鍵進入「睡前模式」（非新頁）。模式中：
+- 介面罩一層低刺激濾光（暗色＋暖色調降藍光，`pointer-events:none` 不擋操作；選單彈出時維持正常亮度），header 狀態顯示「睡前模式 🌙」
+- prompt 注入睡前指示：低聲短句、不開刺激話題，可輕聲陪聊或講平靜的睡前故事
+- 使用者道晚安（`isGoodnightText` 偵測，排除「睡不著」）→ 該輪回覆加溫柔收尾指令，回完記 flag 結束模式
+- 閒置 15 分鐘（大概睡著了）→ 角色自動輕聲道晚安收尾（`generateSleepClosingStream`，kind `sleepEnd`），記 flag 結束模式
+- 模式中途關 app：下次進房未滿 15 分鐘閒置就恢復模式；已超過則靜默收尾記 flag（不補生成——事後冒出的「晚安」時間戳會出戲）
+- 睡前模式中停用「已讀不回」擲骰（陪睡不該人間蒸發）；手動關閉模式＝取消，不記 flag
+
+**隔天呼應**：收尾 flag（角色軟欄位 `sleepEndedAt`）由 `sleepRecallState()` 判定——跨日且至少隔 3 小時才注入「昨晚睡前」呼應（23:50 收尾、00:10 又來聊不會被問「睡得好嗎」），注入即銷 flag（一次性）；超過 36 小時過期只清不呼應。呼應走 `buildAIChatSetup` 共用路徑，背景主動訊息也能自然帶出「昨晚睡得好嗎」。零 schema 變更（`sleepModeAt`／`sleepEndedAt` 為 characters 軟欄位）。
+
+**驗證**：新增 8 項測試 case（涵蓋晚安偵測正反例、隔天呼應跨日／3 小時／36 小時邊界等 13 個檢查情境），全套 Vitest 250/250 通過；production build 通過。驗收修正批（同日）：進房恢復睡前模式改續算剩餘閒置時間（原本會重算完整 15 分鐘）；隔天呼應 flag 改為回覆成功落庫後才銷毀（原本 API 失敗也會消耗），所有可見訊息生成器（含五個背景生成器）統一走 `consumeSleepRecall`；demo 沙盒補睡前假回覆與教學文案。第二批：空白回應不消耗呼應 flag（`fullText.trim()`＋`msgs.length` 雙 gate）；`demoReply` 攤平 prompt-cache blocks 陣列再做關鍵字判斷（原 `String(system)` 得到 `[object Object]`，睡前分支永遠不命中），新增 `demoData.test.js` 6 項測試。第三批：`demoReply` 分支重排——【睡前…】明確標記移到最前（完整聊天 prompt 易變段含【長期記憶】「重要摘要」，原「總結／摘要」寬鬆分支會把睡前陪伴／收尾攔走回成關係摘要）；記憶總結改用 `summarizeToMemory` system 開場「對話分析助手」精確匹配、每日一問移除寬鬆的「問題」觸發字；補 4 項帶真實 prompt 的誤命中回歸測試。第四批（demo 補強，P130 驗收後的低優先項）：內容生成分支全面改用各 prompt 的**獨有任務指令句**匹配（拆封日聊天不再誤回膠囊信件、記憶含「夢」不誤回夢境腳本；膠囊到期通知與貼文留言回覆各自獨立分支；心聲 prompt 走純 messages，加「system 為空才掃 messages」fallback 讓心聲分支真正命中），`demoData.test.js` 增至 16 項（全套 266/266）。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/chatEngine.js` | `isGoodnightText`／`sleepRecallState` 純函式；`buildAIChatSetup` 注入睡前指示／收尾指令／隔天呼應；新增 `generateSleepClosingStream` |
+| `views/ChatRoomView.vue` | 選單「睡前模式」開關、`.sleep-dim` 濾光遮罩、header 狀態、閒置 15 分鐘計時、進房恢復／靜默收尾、睡前停用已讀不回 |
+| `services/__tests__/chatEngine.test.js` | 新增 isGoodnightText／sleepRecallState 8 項測試 |
+| `services/demoData.js`、`services/demoGuideContent.js` | demo 沙盒睡前假回覆（陪伴／收尾／隔天呼應）與聊天室教學文案（驗收修正批） |
+
+---
+
+### P131 待續的事——角色記得住你說過的未來事（2026-07-25）
+
+**功能**：使用者在對話中提到明確的未來事件、約定或待回覆的問題（「我下週三要面試」「說好禮拜六一起看電影」），角色會記下來，並在該關心的時候主動問起結果。記憶抽屜新增第三個分頁「待續的事」，可查看、編輯、標記完成、取消或刪除，並「回到來源訊息」。角色編輯頁有「記住待續的事」開關（預設開）。
+
+**分五個批次施工**（計畫書 `docs/P131 待續記憶核心計畫書.md`，經三輪審查定案）：
+
+1. **DB v8**：新增 `continuity_threads` store（index：`charId`、`followUpAfter`、複合 `charId_status`），備份匯出／匯入相容、清除聊天記錄時連動
+2. **純函式核心** `services/continuity.js`：本地候選閘門（regex 訊號，未命中則零 API 呼叫）、日期建構與 round-trip 驗證（禁用 `new Date('YYYY-MM-DD')` 的 UTC 午夜偏移）、operation schema 與狀態機、fingerprint 去重、matchKeywords 停用詞過濾與提及判定、每日清理分類
+3. **即時擷取**：使用者訊息落庫後 fire-and-forget 呼叫擷取器（小窗口 4 則、非串流），並補上總結時的補漏路徑
+4. **注入與單一消耗**：每輪最多注入一條「可行動」事件＋兩條背景；回覆確實提及才轉 `waiting_result`，未提及只累加 `offeredCount`，連續 3 輪未中即冷卻 7 天
+5. **管理介面與 Demo**：記憶抽屜分頁、卡片編輯／封存查看、demo 沙盒資料與教學文案
+
+**同批的繁體輸出防線**：角色輸出強制轉台灣繁體（`services/outputLanguage.js`）。為兼顧「不耗 token、不佔記憶體」兩個要求，最終採**用完即釋放的 Worker**——完整 OpenCC 字典（約 1 MB）只在轉換當下載入，`terminate()` 後整份釋放，主執行緒零常駐；Worker 不可用時退回主執行緒且刻意不快取 converter。`services/proseMask.js` 保護網址／程式碼等不該轉換的片段。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/continuity.js` | 新增（671 行）：待續記憶純函式核心 |
+| `services/continuityCleanup.js` | 新增：每日清理（有日期逾期 14 天、無日期 90 天未更新 → expired；關閉逾 30 天 → 刪除） |
+| `services/db.js` | DB v8：`continuity_threads` store 與三個 index |
+| `services/chatEngine.js` | 擷取器入口、per-character queue、prompt 注入與單一消耗、總結補漏 |
+| `services/outputLanguage.js`、`services/zhTwWorker.js`、`services/proseMask.js` | 新增：繁體輸出防線（即用即釋放 Worker） |
+| `views/ChatRoomView.vue` | 記憶抽屜「待續的事」分頁、卡片 CRUD、回到來源訊息、清除連動 |
+| `views/CharEditView.vue` | 「記住待續的事」開關（`followupAware`） |
+| `services/importValidation.js` | thread 領域詞彙白名單與匯入 schema 驗證 |
+
+---
+
+### P132 實機驗收修正——待續事件記得住、思考洩漏與 iOS 鍵盤遮蔽（2026-07-28，當前版本）
+
+P131 上測試版後實機驗收，回報三件事：回覆混入英文思考內容、鍵盤彈出後看不到輸入框、待續的事完全沒有紀錄。查下去發現「沒有紀錄」是**四個問題疊在一起**，每修掉一個症狀都沒變，所以查了很多輪。
+
+**1. 模型思考區塊洩漏**（`services/thinkingFilter.js`）
+部分模型會把 `<thinking>…</thinking>` 當一般文字吐出。統一在 `callLLM` 出口剝除，串流另包一層 stateful filter（標籤可能被切在任意 chunk 邊界），避免先閃在畫面上再被清掉。這段文字同時污染了需要解析 JSON 的背景任務——`parseThreadOps` 從「第一個 `[`」找陣列，思考內容裡出現方括號就整批靜默丟掉。
+
+**2. iOS 鍵盤輔助列遮住輸入列**（`services/keyboardAccessory.js`）
+實機錄影判讀：輸入列位置其實正確，是 iOS 鍵盤上方那條「∧ ∨ ✓」表單輔助列**浮在 visual viewport 之內**（`visualViewport.height` 只扣鍵盤、不扣它），正好整條蓋住。無 Web API 可量，以實機量到的 58px 讓位，只在 iOS 且軟體鍵盤確實升起時生效。判定基準不可用 `window.innerHeight`——診斷證實它在 iOS standalone 會跟著縮到與 `vv.height` 同高，會誤判成鍵盤沒開而讓 inset 抖動；改用 layout viewport（`documentElement.clientHeight`），呼叫端有可信基準時直接傳入。一般頁面（非 `.keyboard-page`）另補鍵盤避讓：以 visual viewport 實際可見底邊判斷、只捲該頁自己的容器，空間不足時暫補底部 padding、失焦還原。
+
+**3. 待續事件完全沒有紀錄**——四個成因疊加：
+
+| 成因 | 症狀 |
+|------|------|
+| `llm.js` Anthropic **非串流**出口只取 `content[0].text` | 模型先吐 thinking block 時整段變空字串。串流那條有正確過濾 `text_delta`，所以聊天看起來完全正常，只有背景的非串流任務（擷取、總結、日記、貼文、我想你、每日一問）全部悄悄失效 |
+| `timeAnchorLine()` 沒有年份 | 模型照訓練資料的年份印象推算，把 2026/8/2 說成「星期六」（那是 2025/8/2），擷取器吐出 2025 年的日期，超出合理範圍被靜默改成 null |
+| 擷取器 prompt **從未寫出 `eventDate` 這個鍵名** | prompt 只提過 `op`／`id`／`matchKeywords`，`title` 靠模型猜得中，日期欄位猜錯鍵名就整個被正規化忽略。卡片有了、關鍵詞有了，就是沒有日期 |
+| 擷取器有六條靜默 return | 以上全部不拋錯、不留紀錄，實機回報時完全無從分辨 |
+
+**4. 診斷可觀測性**：擷取階段追蹤 ring buffer（只記階段與數量，中文與符號一律過濾，不夾帶使用者內容）；鍵盤量測序列 ring buffer；匯出改成「錯誤 → 擷取追蹤 → 鍵盤事件」排序（原本 60 筆鍵盤紀錄會把錯誤區段擠出可貼上的範圍）；`vite define` 注入 build 時間戳，修 bug 期間連推多個 `[skip-ver]` 也分得出手機上是哪一版。
+
+**驗證**：全套 Vitest 533 綠。關鍵修正皆先寫出「在舊程式碼上會失敗」的測試再修（Anthropic 3 red、時間錨與日期範圍 5 red、欄位規格與別名 8 red）。Anthropic 非串流那條另以 Playwright 攔截 https 請求當假端點，走完整條鏈做 A/B——修正前 DB 與抽屜皆空，修正後落庫並顯示卡片、日期與來源引文。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/thinkingFilter.js` | 新增：思考區塊剝除（含串流 stateful filter） |
+| `services/keyboardAccessory.js` | 新增：iOS 表單輔助列讓位（58px，僅 iOS＋軟體鍵盤升起） |
+| `services/llm.js` | Anthropic 非串流改串接所有 `type==='text'` block；`callLLM` 出口統一剝除思考 |
+| `services/chatEngine.js` | `timeAnchorLine()` 補年份；擷取器與總結 prompt 補「今天是」錨點與 `THREAD_OPS_SCHEMA` 欄位規格；擷取六個出口全部留下階段追蹤 |
+| `services/continuity.js` | 擷取追蹤 ring buffer；`eventDate` 別名容錯（`date`／`event_date`）；日期被丟棄時記 `date-out-of-range`／`date-bad-format` |
+| `services/keyboardViewport.js` | `computeKeyboardInsets` 加 `accessoryInset`，併入 `--keyboard-bottom-inset` |
+| `services/keyboardDiagnostics.js`、`services/diag.js` | 鍵盤事件 ring buffer；匯出段落重排；build 時間戳 |
+| `App.vue` | 一般頁面鍵盤避讓改用 visual viewport 可見底邊 |
+| `vite.config.js` | `define` 注入 `__BUILD_TIME__` |
+
+---
 ## 🎨 當前技術棧（Vue 版現況）
 
 ```
@@ -1771,7 +1880,7 @@ P82「拆多則短泡泡」預設每則回覆最多切 3 泡泡，實際偏碎�
 建置    Vite，HMR 開發；GitHub Actions 直接部署 auris-vue/dist
 狀態    自製 globalStore（reactive，characters/theme/keyboardOffset/chatFormatStyle）
 CSS     CSS Variables 主題系統（6 主題）、Flexbox/Grid、safe-area-inset
-資料    IndexedDB（auris，v7，14 個 store）為主；localStorage 存診斷／主題快取，sessionStorage 存 demo 旗標
+資料    IndexedDB（auris，v8，14 個資料 store＋settings）為主；localStorage 存診斷／主題快取，sessionStorage 存 demo 旗標
 API     OpenAI 相容 + Anthropic 原生 + Google AI Studio / Vertex AI 原生；串流 SSE（P47）
 ```
 
@@ -1782,7 +1891,8 @@ API     OpenAI 相容 + Anthropic 原生 + Google AI Studio / Vertex AI 原生�
 | `db.js` | IndexedDB CRUD、export/import、settings 讀寫 |
 | `importValidation.js` | 匯入檔案大小、raster MIME／base64／magic bytes、JSON 資源上限與 v1 store schema 驗證（P127） |
 | `api.js` | `fetchWithTimeout`、`sendLLMRequest`（統一 LLM 入口）、`getVertexToken`、`getDefModel`（各家預設款）、`isReasoningModel`（推理型模型 temperature 相容判斷） |
-| `date.js` | `localDateKey(d)`：本地時區 `YYYY-MM-DD`，全站「每天一次」判定共用（P97） |
+| `date.js` | `localDateKey(d)`：本地時區 `YYYY-MM-DD`，全站「每天一次」判定共用（P97）；`calendarDaysSince()`：本地日曆日差（P129） |
+| `milestones.js` | 關係里程碑（P129）：`MILESTONE_DAYS`（100/200/300/520/1000）與 `getMilestoneInfo()`，關係頁與 chatEngine 共用 |
 | `chatEngine.js` | 對話引擎：串流回覆、群組、主動訊息、記憶總結（含自動）、Heart Voice、生理期關心、世界書注入、作息／時間流逝感知、圖片識別 |
 | `contentEngine.js` | 內容生成：貼文／日記／夢境／留言回覆 |
 | `format.js` | 共用 `formatContent`（escape + 換行清洗）全站 v-html 渲染點引用；`splitReply`（依空行把回覆切多則短泡泡，P82）|
@@ -1800,13 +1910,22 @@ API     OpenAI 相容 + Anthropic 原生 + Google AI Studio / Vertex AI 原生�
 | `shareCard.js` | 對話分享卡：canvas 生成主題配色美圖卡＋share/下載（P106）；月報卡面 `renderMonthCard`（P111） |
 | `reviewEngine.js` | 回憶月報：本地統計＋角色回顧短信生成＋每月自動生成，存 settings `monthly_reviews`（P111） |
 | `capsules.js` | 時間膠囊：埋/拆/到期判定 CRUD，存 settings `capsules`（P111） |
+| `continuity.js` | 待續記憶純函式核心（P131）：候選閘門、日期驗證、operation schema 與狀態機、fingerprint 去重、提及判定、清理分類；擷取階段追蹤 ring buffer（P132） |
+| `continuityCleanup.js` | 待續事件每日清理：逾期轉 expired、關閉逾 30 天刪除（P131） |
+| `outputLanguage.js` | 角色輸出強制台灣繁體（P131）：完整 OpenCC 字典走**用完即釋放的 Worker**（`zhTwWorker.js`），主執行緒零常駐；`proseMask.js` 保護網址／程式碼片段 |
+| `thinkingFilter.js` | 剝除模型輸出的 `<thinking>` 區塊（P132），串流另有 stateful filter 防閃現 |
+| `keyboardViewport.js` | `.keyboard-page` 的 visual viewport 控制器（P115）：只縮當前頁、不動 `.phone` |
+| `keyboardRootScrollGuard.js` | iOS standalone root scroll 歸零守衛（P124） |
+| `keyboardAccessory.js` | iOS 表單輔助列讓位（P132）：輔助列浮在 visual viewport 內、`vv.height` 不扣它，以實機量到的 58px 從底部讓出 |
 
 ### 元件（`auris-vue/src/components/`）
 `BottomNav.vue`（底部導覽、鍵盤隱藏）、`AnnouncementModal.vue`（更新公告三頁式 modal）、`DemoTeachingPanel.vue`（教學示範模式的浮動教學鈕＋螢幕感知面板，P102）
 
-### IndexedDB（`auris`，v7，14 個 store）
-characters / messages / memories / moments / diary / dreams / worlds / groups / group_messages / notifications / chat_memories / wishes / notes / settings。
-> v7（P98）：`messages` 加複合索引 `charId_createdAt`（背景派發 cursor／計數用）。升版只能新增 store 或索引；修改既有結構需刪掉重建會清空資料。詳見 `ARCHITECTURE.md`。
+### IndexedDB（`auris`，v8，14 個資料 store＋settings）
+characters / messages / memories / moments / diary / dreams / worlds / groups / group_messages / notifications / chat_memories / wishes / notes / **continuity_threads** / settings。
+> v7（P98）：`messages` 加複合索引 `charId_createdAt`（背景派發 cursor／計數用）。
+> v8（P131）：新增 `continuity_threads`（index：`charId`、`followUpAfter`、複合 `charId_status`）。
+> 升版只能新增 store 或索引；修改既有結構需刪掉重建會清空資料。版號**只能往上加不得下修**——使用者資料庫升到 v8 後若載入只認 v7 的程式，瀏覽器會丟 VersionError 導致 App 完全打不開。詳見 `ARCHITECTURE.md`。
 
 ---
 

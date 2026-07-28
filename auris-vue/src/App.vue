@@ -52,10 +52,12 @@ import { runMonthlyReviews } from './services/reviewEngine.js';
 import { dueCapsules, markDueResult } from './services/capsules.js';
 import { getCyclePhase } from './services/cycle.js';
 import { localDateKey } from './services/date.js';
+import { runContinuityCleanup } from './services/continuityCleanup.js';
+import { keyboardAccessoryInset } from './services/keyboardAccessory.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
-const ANNOUNCEMENT_VERSION = 'P127';
+const ANNOUNCEMENT_VERSION = 'P132';
 const showAnnouncement = ref(false);
 
 // ── 全域 confirm modal ─────────────────────────────────────────────────────
@@ -82,17 +84,69 @@ window.openAnnouncement_ = () => { showAnnouncement.value = true; };
 const route = useRoute();
 const router = useRouter();
 const time = ref('');
-let focusScrollTimer = null;
+// 一般頁面（非 .keyboard-page）的鍵盤避讓。
+// iOS 鍵盤只縮 visual viewport，layout viewport 不變，所以 scrollIntoView({block:'nearest'})
+// 會判定輸入框「已經可見」而不捲動——它就留在鍵盤後面（P132 實機：API 設定頁的自訂
+// 模型欄位打字時完全看不到）。改成用 visualViewport 的實際可見底邊判斷，只捲該頁自己的
+// .page 捲動容器；捲動空間不足時暫時補底部 padding，失焦即還原。
+// 不碰 .phone 的高度／transform／paddingBottom（P83／P85 已證實那條路會出事）。
+const KEYBOARD_SAFE_MARGIN = 12;
+const FOCUS_SETTLE_DELAYS_MS = [120, 320, 600];
+let focusScrollTimers = [];
+let paddedScroller = null;
+
+function clearFocusScrollTimers() {
+  for (const timer of focusScrollTimers) clearTimeout(timer);
+  focusScrollTimers = [];
+}
+
+function releaseScrollRoom() {
+  if (!paddedScroller) return;
+  paddedScroller.style.removeProperty('padding-bottom');
+  paddedScroller = null;
+}
+
+function scrollFocusedIntoView(el) {
+  if (!el.isConnected || document.activeElement !== el) return;
+  const vv = window.visualViewport;
+  // iOS 的表單輔助列浮在 visual viewport 內，vv 底邊不是真正的可見底邊。
+  const visibleBottom = (vv ? vv.offsetTop + vv.height : window.innerHeight) - keyboardAccessoryInset();
+  const overflow = el.getBoundingClientRect().bottom + KEYBOARD_SAFE_MARGIN - visibleBottom;
+  if (overflow <= 0) return;
+
+  const scroller = el.closest('.page') || document.scrollingElement;
+  if (!scroller) return;
+  // 內容不夠長時捲不動（輸入框本來就在頁尾）——先補足所需的捲動餘裕再捲。
+  const room = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
+  if (room < overflow) {
+    paddedScroller = scroller;
+    // 手機版 media query 有 `.page{padding-bottom:0!important}`，inline style 蓋不過去，
+    // 必須同樣以 important 寫入（releaseScrollRoom 會整個移除）。
+    scroller.style.setProperty('padding-bottom', `${Math.ceil(overflow - room)}px`, 'important');
+  }
+  scroller.scrollBy({ top: overflow, behavior: 'smooth' });
+}
 
 function onGlobalFocusIn(e) {
   const t = e.target;
   if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
   if (t.id === 'lock-in' || t.closest?.('.keyboard-page')) return;
-  if (focusScrollTimer) clearTimeout(focusScrollTimer);
-  focusScrollTimer = setTimeout(() => {
-    focusScrollTimer = null;
-    try { t.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {}
-  }, 300);
+  clearFocusScrollTimers();
+  // 鍵盤是動畫升起的，單次 timer 常常量到還沒縮小的 viewport；比照 keyboardViewport
+  // 的 settle 策略做幾次有限重試，不做常駐輪詢。
+  focusScrollTimers = FOCUS_SETTLE_DELAYS_MS.map(delay =>
+    setTimeout(() => scrollFocusedIntoView(t), delay));
+}
+
+function onGlobalFocusOut(e) {
+  if (e.target?.closest?.('.keyboard-page')) return;
+  clearFocusScrollTimers();
+  // 鍵盤收起後才還原，避免切換輸入框時版面跳動。
+  focusScrollTimers = [setTimeout(() => {
+    const active = document.activeElement;
+    if (active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA') return;
+    releaseScrollRoom();
+  }, 250)];
 }
 
 const showNav = computed(() => {
@@ -450,6 +504,9 @@ onMounted(async () => {
   // 回憶月報（P111 D1）：每月首次開 app 背景補生成上個月的「我們的這個月」＋通知
   runMonthlyReviews();
 
+  // P131：每日清理逾期待續事件；失敗不阻塞啟動，且不寫每日 key，下次開 App 會重試。
+  runContinuityCleanup().catch(() => {});
+
   // 主動訊息（背景靜默；P79 起改為分時段、一次一則，不再開 app 同時全冒出來）
   // P81：用 runAllProactive 序列化＋上鎖，定時先跑完再跑環境，整輪最多一則，杜絕競態疊訊息。
   runAllProactive();
@@ -463,11 +520,14 @@ onMounted(async () => {
 
   // iOS PWA keyboard: scroll focused input into view after keyboard animates in
   document.addEventListener('focusin', onGlobalFocusIn);
+  document.addEventListener('focusout', onGlobalFocusOut);
 });
 
 onUnmounted(() => {
   document.removeEventListener('focusin', onGlobalFocusIn);
-  if (focusScrollTimer) clearTimeout(focusScrollTimer);
+  document.removeEventListener('focusout', onGlobalFocusOut);
+  clearFocusScrollTimers();
+  releaseScrollRoom();
   clearInterval(timer);
   clearInterval(schedTimer);
 });

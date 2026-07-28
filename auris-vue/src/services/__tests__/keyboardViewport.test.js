@@ -37,6 +37,24 @@ describe('computeKeyboardInsets', () => {
     })).toEqual({ topInset: 156, bottomInset: 140, availableHeight: 500 });
   });
 
+  it('iOS 表單輔助列的高度要從底部額外讓出（否則輸入列剛好被它蓋住）', () => {
+    expect(computeKeyboardInsets({
+      baseTop: 48,
+      baseBottom: 844,
+      viewportTop: 0,
+      viewportHeight: 500,
+      accessoryInset: 58
+    })).toEqual({ topInset: 0, bottomInset: 354, availableHeight: 442 });
+  });
+
+  it('accessoryInset 為 0／無效值時與原本行為完全相同', () => {
+    const base = { baseTop: 48, baseBottom: 844, viewportTop: 0, viewportHeight: 500 };
+    const expected = { topInset: 0, bottomInset: 296, availableHeight: 500 };
+    expect(computeKeyboardInsets({ ...base, accessoryInset: 0 })).toEqual(expected);
+    expect(computeKeyboardInsets({ ...base, accessoryInset: -30 })).toEqual(expected);
+    expect(computeKeyboardInsets({ ...base, accessoryInset: NaN })).toEqual(expected);
+  });
+
   it('無效與負值不會產生 NaN 或負高度', () => {
     expect(computeKeyboardInsets({ baseTop: NaN, baseBottom: -10, viewportTop: -20, viewportHeight: -1 }))
       .toEqual({ topInset: 0, bottomInset: 0, availableHeight: 0 });
@@ -90,7 +108,7 @@ function fakePage() {
   });
 }
 
-function controllerHarness() {
+function controllerHarness(extraOptions = {}) {
   vi.useFakeTimers();
   const page = fakePage();
   const vv = Object.assign(new FakeTarget(), { height: 852, offsetTop: 0 });
@@ -103,7 +121,9 @@ function controllerHarness() {
     clearTimeout
   });
   const doc = { activeElement: null };
-  const destroy = installKeyboardViewport(page, { windowObj: win, documentObj: doc, visualViewport: vv });
+  const destroy = installKeyboardViewport(page, {
+    windowObj: win, documentObj: doc, visualViewport: vv, ...extraOptions
+  });
   const textarea = { tagName: 'TEXTAREA', inPage: true, inInputBar: true };
   return { page, vv, win, destroy, textarea };
 }
@@ -136,6 +156,25 @@ describe('installKeyboardViewport', () => {
     expect(page.styles.get('--keyboard-top-inset')).toBe('180px');
     expect(page.styles.get('--keyboard-bottom-inset')).toBe('116px');
     expect(page.classes.has('kb-open')).toBe(true);
+    destroy();
+    vi.useRealTimers();
+  });
+
+  it('iOS 輔助列高度會一併寫進 --keyboard-bottom-inset，關鍵盤後不殘留', () => {
+    const { page, vv, destroy, textarea } = controllerHarness({ accessoryInset: () => 58 });
+    page.emit('pointerdown', textarea);
+    page.emit('focusin', textarea);
+    vv.height = 500;
+    vv.emit('resize');
+    vi.runAllTimers();
+    // 純鍵盤遮蔽 296px + 輔助列 58px
+    expect(page.styles.get('--keyboard-bottom-inset')).toBe('354px');
+
+    vv.height = 852;
+    vv.emit('resize');
+    page.emit('focusout', textarea);
+    vi.runAllTimers();
+    expect(page.styles.has('--keyboard-bottom-inset')).toBe(false);
     destroy();
     vi.useRealTimers();
   });

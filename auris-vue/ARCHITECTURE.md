@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-18（P128）
+> 最後更新：2026-07-28（P132）
 
 ---
 
@@ -41,7 +41,7 @@ graph TD
         Chat[chatEngine.js<br/>聊天 AI 生成]
     end
     
-    DB --> IndexedDB[(IndexedDB: auris<br/>v7)]
+    DB --> IndexedDB[(IndexedDB: auris<br/>v8)]
 ```
 
 ---
@@ -73,12 +73,12 @@ graph TD
 
 ## 3. IndexedDB 資料庫
 
-**資料庫名稱**：`auris`　**版本**：v7
+**資料庫名稱**：`auris`　**版本**：v8
 
 | 資料表 | keyPath | 索引 | 說明 |
 |--------|---------|------|------|
-| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80、`examples` 範例對話 few-shot P88、`weatherAware` 天氣感開關 P95、`busyRead` 已讀不回開關 P96、`bonds` 專屬默契 P112） |
-| `messages` | `id` | `charId`, `createdAt`, `charId_createdAt`（複合，P98） | 單人聊天訊息（軟欄位：`image` 圖片 base64 P65、`reaction` 表情 P62、`readAt` 已讀時間戳 P96、`type:'touch'`＋`touchAction` 輕觸動作訊息 P96、`kind:'touch'` 輕觸回應 P96）。複合索引 `charId_createdAt`（v7）供背景派發用 cursor 取「某角色最新 N 則」與計數，取代全量 getAll |
+| `characters` | `id` | `worldId` | 角色完整設定（軟欄位：作息 `workTime`/`workPlace`/`restTime` P62、`scheduleTriggers` 時段 P66、`autoSummarize`/`autoSumEvery`/`lastAutoSumAt` P62、`proactiveMute` 主動訊息總開關 P80、`examples` 範例對話 few-shot P88、`weatherAware` 天氣感開關 P95、`busyRead` 已讀不回開關 P96、`bonds` 專屬默契 P112、`sleepModeAt`/`sleepEndedAt` 睡前模式 P130、`followupAware` 記住待續的事開關 P131） |
+| `messages` | `id` | `charId`, `createdAt`, `charId_createdAt`（複合，P98） | 單人聊天訊息（軟欄位：`image` 圖片 base64 P65、`reaction` 表情 P62、`readAt` 已讀時間戳 P96、`type:'touch'`＋`touchAction` 輕觸動作訊息 P96、`kind:'touch'` 輕觸回應 P96、`kind:'sleepEnd'` 睡前收尾 P130）。複合索引 `charId_createdAt`（v7）供背景派發用 cursor 取「某角色最新 N 則」與計數，取代全量 getAll |
 | `memories` | `id` | `charId` | Heart Voice 心聲記錄 |
 | `moments` | `id` | `charId`, `createdAt` | 貼文（含 likes/comments） |
 | `diary` | `id` | `charId`, `date` | 日記（`date` 格式：YYYY-MM-DD） |
@@ -90,6 +90,7 @@ graph TD
 | `chat_memories` | `id` | `charId` | 長期記憶條目（P48）|
 | `wishes` | `id` | `charId` | 共同願望清單項目（P77）；schema：`{ id, charId, text, done, createdAt }` |
 | `notes` | `id` | `charId` | 共同備忘錄項目（P77）；schema 同 `wishes` |
+| `continuity_threads` | `id` | `charId`, `followUpAfter`, `charId_status`（複合，v8） | 待續事件（P131）；schema：`{ id, charId, kind, owner, title, detail, eventDate, eventTime, datePrecision, matchKeywords, enabled, status, followUpAfter, lastPromptedAt, promptedCount, offeredCount, cooldownUntil, sourceMsgId, sourceCreatedAt, sourcePreview, result, closedAt, createdAt, updatedAt }`。`status`：planned／waiting_result／resolved／cancelled／expired |
 | `settings` | `key` | — | 系統設定（key-value） |
 
 ### Settings 常用 key
@@ -189,6 +190,9 @@ API 請求的底層工具（供 `llm.js` 引用）。
 
 ### `services/tokens.js`（P88）
 `estimateTokens(text)`：token 粗估（CJK≈0.6、英數≈0.25 tok/字）。前端無各家真實 tokenizer，採保守啟發式（寧可高估），供記憶用量顯示與注入預算控管（如 `MEM_TOKEN_BUDGET`）。
+
+### `services/milestones.js`（P129）
+關係里程碑：`MILESTONE_DAYS = [100, 200, 300, 520, 1000]`（A1 定案，只慶「在一起」，週年由年度紀念日機制涵蓋）。`getMilestoneInfo(togetherDate, now)` 回 `{ days, isToday, next: { target, daysLeft } | null }`；無效或未來日期回 `null`。天數基準＝`date.js` 的 `calendarDaysSince()`（本地日曆日、交往日當天為第 0 天）——RelationView 與 chatEngine 的 `getPersonalDateCtx` **必須共用此模組**，不得各算一套（舊版 `new Date('YYYY-MM-DD')` 相減是 UTC 午夜基準，凌晨會差一天，P129 已修）。
 
 ### `services/cycle.js`（P59）
 生理期週期計算，全本地、不上傳。
@@ -320,6 +324,33 @@ iOS PWA 鍵盤問題的可證偽實機診斷層。正常網址保持惰性；只
 | `generateMonthlyReview(charId, ym, { notify })` | 門檻月訊息 ≥ 100（排除 hv）否則回 `skipped`；生成信 150–250 字＋金句（該月收藏至多 3 則）；同月重生覆蓋 |
 | `runMonthlyReviews()` | 每月首開自動生成上月月報（App.vue 掛入）；標記 `monthly_review_run_<YM>` 全數成功才寫 |
 
+### `services/continuity.js` 與 `continuityCleanup.js`（P131）
+待續事件的**純函式核心**——不碰 IO，IO 包裝在 `chatEngine`／`App.vue`。領域詞彙（`kind`／`owner`／`status`／`precision` 白名單、日期字串驗證）沿用 `importValidation.js` 的單一真相來源，不重抄。
+
+| 函式 | 用途 |
+|------|------|
+| `looksLikeThreadCandidate(text)` | 本地閘門：低成本 regex 判定是否值得呼叫擷取器。**刻意略寬**——未命中就零 API 呼叫，命中才進 queue 由擷取器嚴格判斷（故「今天天氣真好」也會命中） |
+| `evaluateCandidateTurn({...})` | §8 錨定規則：rule1 本輪自身命中／rule2 確認詞＋上一則角色訊息命中／rule3 與上一則 user 相接才命中（拆句）。命中判定必須錨定在本輪新訊息，不得把最近數則合併後 regex |
+| `parseThreadOps` / `normalizeThreadOps` | 從模型輸出取第一個平衡的 JSON 陣列；逐筆驗證欄位、濾掉不合規與 NONE。`eventDate` 容忍 `date`／`event_date` 別名（P132），但值一律要過 `YYYY-MM-DD` 驗證 |
+| `planThreadApply({...})` | 寫前重讀後的原子套用計畫：回傳 `puts`（要寫回的 thread）與 `skipped`（略過原因）。ADD 靠 fingerprint 去重、UPDATE/RESOLVE/CANCEL 天生冪等；事件日超出來源日 −14／+366 天視為無日期 |
+| `enqueueThreadTask(charId, task)` | per-character 序列化 queue，保證同角色不會並發套用 |
+| `didMentionContinuityThread` / `computeMentionPatch` | 回覆是否確實提及該 thread → 單一消耗（轉 `waiting_result`）或只累加 `offeredCount` |
+| `isActionEligible` | 冷卻與可用性判定（連續 `OFFER_MISS_LIMIT`=3 輪未中 → 冷卻 `COOLDOWN_DAYS`=7 天） |
+| `recordThreadTrace` / `getThreadTraces` | 擷取階段追蹤 ring buffer（P132，40 筆、記憶體）；detail 值一律過濾成數字／布林／短枚舉，不夾帶使用者內容 |
+| `classifyThreadCleanup`（`continuityCleanup.js`） | 每日清理分類：有日期逾期 14 天／無日期 90 天未更新 → `expired`；`closedAt` 逾 30 天 → 刪除 |
+
+### `services/outputLanguage.js`（P131）
+角色輸出強制台灣繁體。**記憶體是這裡的主要約束**：完整 OpenCC 字典（`from/cn` 的 STPhrases 約 980 KB＋`to/twp`）只在轉換當下於 `zhTwWorker.js`（`type:'module'`）內載入，`terminate()` 後整份釋放，主執行緒零常駐。Worker 不可用時退回主執行緒，並**刻意不快取** converter——曾因模組層快取造成約 22 MB 常駐。字典載入失敗一律 try/catch 回退原文，不得吞掉整則回覆。`proseMask.js` 遮罩網址／程式碼等不該轉換的片段。
+> 曾評估「精簡自製字典」以省體積，獨立語料比對顯示與完整 OpenCC 有數千處差異——長詞條同時擔負「阻擋較短詞在錯誤位置命中」的作用，刪不得。該路線已放棄，勿再嘗試。
+
+### `services/thinkingFilter.js`（P132）
+剝除模型輸出的 `<thinking|think|reasoning|antthinking>` 區塊。統一掛在 `callLLM` 出口，所有 provider、串流與非串流一次乾淨。`createThinkingStreamFilter` 為串流用的 stateful 過濾器（標籤可能被切在任意 chunk 邊界，先扣住可能是標籤前綴的尾巴）。全是思考時保留原文，不偽裝成空白回應。
+> 這段文字不只難看——它會污染需要解析 JSON 的背景任務（`parseThreadOps` 從第一個 `[` 找陣列，思考內容裡的方括號會讓整批事件靜默丟掉）。
+
+### `services/keyboardAccessory.js`（P132）
+iOS 鍵盤上方的表單輔助列（「∧ ∨ ✓」）浮在 visual viewport **之內**，`visualViewport.height` 不扣它，貼齊 vv 底邊的輸入列會被整條蓋住。無 Web API 可量，以實機量到的 `IOS_KEYBOARD_ACCESSORY_PX = 58` 讓位，僅 iOS 且軟體鍵盤確實升起時生效。
+> **不可用 `window.innerHeight` 當基準**：實機診斷證實它在 iOS standalone 會跟著縮到與 `vv.height` 同高，會誤判成鍵盤沒開。呼叫端有可信基準時傳 `keyboardOpen`，否則用 `documentElement.clientHeight`（layout viewport 不隨鍵盤縮放）。三者取 max 只會高估基準，方向安全——寧可多讓 58px（被輔助列蓋住看不出來），不可少讓（輸入框整條消失）。
+
 ### `services/capsules.js`（P111）
 時間膠囊——寫給未來的信 CRUD，存 settings `capsules`（見 §3）。角色回信與到期主動訊息的生成在 `chatEngine.js`（`generateCapsuleLetter`／`generateCapsuleDueMessage`），拆封當天 context 注入由 chatEngine 直讀 settings（避免循環依賴）。
 
@@ -345,6 +376,7 @@ AI 內容與對話生成邏輯：
   - `generateMissYouMessage`（P74）／`generateDailyQuestion`（P74）— 「我想你」短訊與「每日一問」，非串流，由 `App.vue` `runProactiveDispatch` 觸發
   - `generateTouchResponseStream`（P96）— 輕觸互動回應：動作訊息已入 history，追加「對動作本身反應、1～2 句」指示串流生成，落庫 `kind:'touch'`
   - `generateBusyReplyStream`（P96）／`shouldBusyRead(c)`（P96）／`processDueBusyReply(charId)`（P96）— 已讀不回三件組：補回生成（追加「稍早在忙、已讀沒回，現在補回」指示）；觸發擲骰（基礎 15%、`workTime` 解析出 HH:MM–HH:MM 且命中提至 40%、深夜不觸發）；背景補發（到期的 pending 非串流補生成＋未讀＋通知＋`new-proactive-msg` 廣播）。三者共用新抽出的 `streamWithSystem()` 串流 helper
+  - `generateSleepClosingStream`（P130）／`isGoodnightText`／`sleepRecallState`（P130）— 睡前模式三件組：閒置收尾生成（「對方可能睡著了，輕聲道晚安」指令以 user turn 併入，落庫 `kind:'sleepEnd'`）；晚安偵測（排除「睡不著」）；隔天呼應判定（跨日＋3 小時起注入、36 小時過期，注入即銷 `sleepEndedAt` flag）。模式注入與呼應皆在 `buildAIChatSetup` 易變段（依 `characters.sleepModeAt`/`sleepEndedAt` 軟欄位）
   - **主動訊息共用層**（P79–P81）：`isRecentlyActive(allMsgs)`（最後一則非 hv 距今 < 5 分鐘＝熱聊）、`buildProactiveHistory(history, task, active)`（指令放對話最尾端＋熱聊/冷場分支）、`PROACTIVE_KINDS`／`hasUnrepliedProactive(charId)`（防堆疊閘門）、`proactiveTimeAnchor()`（P81，**不依賴 `timeAware`**，強制注入當下時段，杜絕「早上問午餐」）、`PROACTIVE_NO_NARRATION`（P81，禁止主動訊息寫場景旁白）；5 個主動生成函式皆套用。4 個背景生成器寫入訊息後 `dispatchEvent('new-proactive-msg')`，供開著的 `ChatRoomView` 即時 `loadMessages`（P81）
   - **世界書注入**（P65）：`buildAIChatSetup` 掃描近 10 則訊息，命中詞條名稱／別名才把對應 `worlds` 詞條注入 system prompt（`worldCtx`），不觸發不佔 token
   - **圖片識別**（P65）：`sendUserMessage` 加 `image` 參數、`generateAIResponseStream` 加 `imageBase64`，`buildImgHistory()` 依 provider 轉成 Anthropic／OpenAI／Vertex 各自的圖片 content 格式
@@ -494,7 +526,7 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 
 ## 10. 維護注意事項
 
-1. **刪除關聯資料**：在刪除角色時，必須同步清除所有帶有該 `charId` 的資料表：`messages`, `memories`, `chat_memories`, `moments`, `diary`, `dreams`, `notifications`, `wishes`, `notes`（見 `CharManageView.confirmDelete`）。
+1. **刪除關聯資料**：在刪除角色時，必須同步清除所有帶有該 `charId` 的資料表：`messages`, `memories`, `chat_memories`, `moments`, `diary`, `dreams`, `notifications`, `wishes`, `notes`, `continuity_threads`（見 `CharManageView.confirmDelete`）。
 2. **新增設定項目**：直接透過 `setSetting('new_key', value)` 新增即可，不需修改資料庫結構。
 3. **空狀態原則**：遇到尚未開發或空列表時，按鈕一律使用 `.empty-cta` 而非 `.btn-primary`，且未完成的功能應掛上 `@click="$toast('尚在開發，敬請期待')"`。
 4. **`.page` 內不要用 `position:fixed`**（P107 教訓）：active `.page` 自 P115 已移除 transform 合成層，但 fixed 後代在路由進退場／多層捲動下仍容易改變 containing block、跟著內容跑位。一般可捲動頁的底部管理列可用 `position:sticky; bottom:0`；但**有 iOS 鍵盤的聊天／留言頁禁止 sticky**（P115），必須用 `.keyboard-page` 單一捲動區＋普通 flex `.keyboard-input-bar`。全螢幕遮罩／sheet 類請 `Teleport to="body"`。
@@ -513,6 +545,37 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P132（2026-07-28）實機驗收修正——待續事件記得住、思考洩漏與 iOS 鍵盤遮蔽
+
+- **`llm.js` Anthropic 非串流出口**：原本只取 `data.content[0].text`。Anthropic 的 `content` 是 block 陣列，模型先吐 `thinking` block 時 `content[0]` 沒有 `.text` → `fullText` 變空字串。串流那條有正確過濾 `text_delta`，所以聊天正常，**只有非串流的背景任務全部悄悄失效**（待續事件擷取、記憶總結、日記、貼文、我想你、每日一問）。改為串接所有 `type==='text'` 的 block，忽略 `thinking`／`redacted_thinking`／`tool_use`。
+- **新增 `services/thinkingFilter.js`**：`stripThinking` 剝除 `<thinking|think|reasoning|antthinking>` 區塊（含被 max_tokens 截斷的未閉合殘段）；`createThinkingStreamFilter` 為串流用的 stateful 過濾器，緩衝可能跨 chunk 邊界的標籤，避免思考先閃在畫面上。統一掛在 `callLLM` 出口，所有 provider、串流與非串流一次乾淨。全是思考時保留原文，不偽裝成空白回應。
+- **新增 `services/keyboardAccessory.js`**：iOS 鍵盤上方的表單輔助列（「∧ ∨ ✓」）浮在 visual viewport **之內**，`visualViewport.height` 只扣鍵盤不扣它，於是任何貼齊 vv 底邊的輸入列都被整條蓋住。無 Web API 可量（不在 DOM、iOS 無 VirtualKeyboard API），以實機量到的 58px 從底部讓出，僅 iOS 且軟體鍵盤確實升起時生效。**判定基準不可用 `window.innerHeight`**——實機診斷證實它在 iOS standalone 會跟著縮到與 `vv.height` 同高（log 中 `vv=448h/win=448h`），會誤判成鍵盤沒開、inset 在 403/345 之間抖動；改用 layout viewport（`documentElement.clientHeight`），`keyboardViewport` 有 focus 前的 baseline 時直接以 `keyboardOpen` 傳入。`computeKeyboardInsets` 新增 `accessoryInset` 併進 `--keyboard-bottom-inset`。
+- **`App.vue` 一般頁面鍵盤避讓**：非 `.keyboard-page` 的頁面（如 API 設定）原本靠 `scrollIntoView({block:'nearest'})`，但 iOS 鍵盤只縮 visual viewport、layout viewport 不變，它會判定「已可見」而不捲動。改以 visual viewport 實際可見底邊（再扣輔助列）判斷，只捲該頁自己的 `.page` 容器；捲動空間不足時暫補底部 padding（手機版 media query 有 `.page{padding-bottom:0!important}`，必須以 important 寫入），失焦 250ms 後還原。不碰 `.phone` 的高度／transform／paddingBottom（P83／P85 已證實會出事）。
+- **待續事件日期修復**：`timeAnchorLine()` 補上年份——原本只給「7/28（星期二）」，模型照訓練資料的年份印象推算，把 2026/8/2 說成「星期六」（那是 2025/8/2），擷取器吐出的日期落在來源日前 361 天，被 §10.3 合理範圍檢查靜默改成 null。擷取器與總結 prompt 另加「今天是 YYYY-MM-DD（星期X）」錨點與「只說月日時取今天之後最近的那一天」。
+- **新增 `THREAD_OPS_SCHEMA`**：prompt 原本只寫過 `op`／`id`／`matchKeywords` 三個鍵名，`eventDate` **從未出現過**，模型只能自己猜（猜成 `date` 之類就整個被 `normalizeThreadOp` 忽略）——這是「卡片有了、關鍵詞有了，就是沒有日期」的根因。現明列所有可編輯欄位並附可照抄的範例，即時擷取與總結補漏共用同一份；`fillEditableFields` 另容忍 `date`／`event_date`／`eventdate` 與對應時間別名作為第二道防線（正牌鍵優先、值一樣要過格式驗證）。測試釘住「prompt 必含每個正規化認得的欄位名」與「prompt 裡的範例本身要通得過正規化」，防規格與實作漂移。
+- **可觀測性**：`continuity.js` 加擷取階段追蹤 ring buffer（40 筆、記憶體、只記階段與數量，detail 值一律過濾成數字／布林／短枚舉，中文與符號剃除）；擷取器六條靜默 return 全部留痕，`no-ops` 附 `len`／`raw`／`ops` 可分辨「模型沒回應／解析不到 JSON／回 NONE／欄位不合規」，`applied` 附 `dated` 直接回答日期有無落地；日期被丟棄記 `date-out-of-range`／`date-bad-format`。`keyboardDiagnostics.js` 加鍵盤量測序列 ring buffer（60 筆，只記數值與元素 tag/class）。`exportDiag` 段落改為「錯誤 → 擷取追蹤 → 鍵盤事件」——逐筆序列放最後，避免長序列把錯誤區段擠出可貼上的範圍。`vite.config.js` 以 `define` 注入 `__BUILD_TIME__`，診斷開頭顯示 build 時間，修 bug 期間連推多個 `[skip-ver]` 也分得出實機版本。
+- 全套 Vitest 533 通過。關鍵修正皆先寫「在舊程式碼上會失敗」的測試再修；Anthropic 那條另以 Playwright 攔截 https 請求當假端點做完整鏈 A/B。
+
+### P131（2026-07-25）待續的事——角色記得住你說過的未來事
+
+- **DB v8**：新增 `continuity_threads` store（keyPath `id`；index `charId`、`followUpAfter`、複合 `charId_status`）。備份匯出／匯入相容、清除聊天記錄時連動；`importValidation.js` 補 thread 領域詞彙白名單（`kind`：event／promise／open_question，`owner`：user／shared）與 v1 schema 驗證。
+- **新增 `services/continuity.js`（純函式核心，671 行）**：本地候選閘門（`looksLikeThreadCandidate` regex 訊號＋`evaluateCandidateTurn` §8 錨定規則，未命中則零額外 API 呼叫）、日期建構與 round-trip 驗證（一律 `new Date(y, m-1, d)`，禁用 `new Date('YYYY-MM-DD')` 的 UTC 午夜偏移）、`followUpAfter` 計算、operation schema 與狀態機、fingerprint 去重與防復活、`matchKeywords` 停用詞過濾與提及判定、每日清理分類。IO 包裝在 `chatEngine`／`App.vue`，純函式才好單元測試也不牽進聊天鏈。
+- **新增 `services/continuityCleanup.js`**：有日期者 `followUpAfter` 逾期 14 天、無日期者 90 天未更新 → `expired`；`closedAt` 逾 30 天 → 刪除結構化紀錄。
+- **擷取與注入**：`extractContinuityThreads` 由 ChatRoomView 在使用者訊息落庫後 fire-and-forget 呼叫（小窗口 4 則、非串流、`temperature:0`），不 await 在送出鏈上；總結時另有補漏路徑（`buildSummaryThreadInstr`）。注入每輪最多一條「可行動」＋兩條背景；回覆**確實提及**才轉 `waiting_result`（單一消耗），未提及只累加 `offeredCount`，連續 3 輪未中即冷卻 7 天。寫入走 per-character queue（`enqueueThreadTask`）＋寫前重讀＋單一 transaction 原子套用，中途失敗整批 rollback。
+- **UI**：記憶抽屜新增第三分頁「待續的事」（卡片 CRUD、標記完成／取消、封存查看、回到來源訊息）；CharEditView 新增「記住待續的事」開關（`followupAware`，預設開，關閉後既有資料仍可查看管理）。
+- **同批的繁體輸出防線**：新增 `services/outputLanguage.js`＋`zhTwWorker.js`＋`proseMask.js`。完整 OpenCC 字典（`from/cn` STPhrases 約 980 KB＋`to/twp`）只在轉換當下於 Worker 內載入，`terminate()` 後整份釋放，主執行緒零常駐記憶體；Worker 不可用時退回主執行緒且**刻意不快取** converter（曾因模組層快取造成約 22 MB 常駐）。字典載入失敗時 try/catch 回退原文，不得吞掉整則回覆。`proseMask.js` 遮罩網址／程式碼等不該轉換的片段。曾嘗試「精簡自製字典」以省體積，但獨立語料比對顯示與完整 OpenCC 有數千處差異（長詞條同時擔負「阻擋較短詞在錯位置命中」的作用，刪不得），已放棄該路線。
+
+### P130（2026-07-19）睡前模式——低刺激陪伴與隔天呼應
+
+- `characters` 新增軟欄位 `sleepModeAt`（模式進行中時間戳）／`sleepEndedAt`（收尾 flag，供隔天呼應），零 schema 變更。ChatRoomView 選單開關：模式中 `.sleep-dim` 濾光遮罩（`pointer-events:none`、z-index 低於選單）、header 狀態「睡前模式 🌙」、停用已讀不回擲骰。
+- `chatEngine.buildAIChatSetup` 依 `sleepModeAt` 於易變段注入睡前指示；末則使用者訊息命中 `isGoodnightText`（排除「睡不著」）再加收尾指令，回完由 View 記 flag 結束模式。閒置 15 分鐘由房內計時器呼叫新增的 `generateSleepClosingStream`（kind `sleepEnd`、指令以 user turn 併入維持 role 交替）自動道晚安；中途關 app 下次進房恢復或靜默收尾。
+- 隔天呼應：`sleepRecallState(sleepEndedAt)` 純函式判定（跨日＋至少 3 小時才注入、36 小時過期只清）；flag 由 `consumeSleepRecall` 在訊息**成功落庫後**才銷毀（API 失敗／拒絕／空回應不消耗），所有可見訊息生成器（一般／主動／輕觸／補回＋cycleCare／schedule／missYou／dailyQuestion／capsuleDue）統一接線，避免背景訊息呼應後一般回覆再呼應第二次。進房恢復模式續算剩餘閒置時間（不重算 15 分鐘）。空白回應不消耗 flag（`fullText.trim()`＋`msgs.length` 雙 gate）；demo 的 `demoReply` 攤平 system blocks 陣列再判斷關鍵字，且【睡前…】明確標記排最前、總結分支改「對話分析助手」精確匹配（聊天 prompt 的【長期記憶】段含「重要摘要」，寬鬆觸發字會誤攔），新增 `demoData.test.js`（16 項）：內容生成分支一律匹配各 prompt 的獨有任務指令句（非題材名詞），心聲等純 messages prompt 由「system 為空才掃 messages」fallback 命中。`chatEngine.test.js` 新增 8 項測試（全套 266/266）。
+
+### P129（2026-07-19）關係里程碑慶祝
+
+- 新增 `services/milestones.js`（`MILESTONE_DAYS`／`getMilestoneInfo`）與 `date.js` 的 `calendarDaysSince()`；RelationView（hero 🎉 badge＋「即將到來」倒數，90 天窗口）與 chatEngine（紀念日注入加里程碑條目）共用同一天數計算。
+- 修掉舊 `new Date('YYYY-MM-DD')` 相減的 UTC 隱患（UTC+8 凌晨天數少 1）。零 schema 變更；`milestones.test.js` 9 項邊界測試。
 
 ### P128（2026-07-18）CodeQL 首掃修復——貼文 hashtag ReDoS 與 CI 權限收斂
 

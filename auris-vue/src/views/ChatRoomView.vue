@@ -11,7 +11,7 @@
       </div>
       <div class="chat-hd-info">
         <div class="chat-hd-name" id="chat-name">{{ cName }}</div>
-        <div class="chat-hd-status" id="chat-status">在線</div>
+        <div class="chat-hd-status" id="chat-status">{{ sleepActive ? '睡前模式 🌙' : '在線' }}</div>
       </div>
       <div class="chat-hd-mem" @click="openMemDrawer" :title="enabledMemCount ? `${enabledMemCount} 筆記憶已開啟` : '記憶抽屜'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -153,6 +153,9 @@
       </button>
     </div>
 
+    <!-- 睡前模式 dim 遮罩（P130）：低刺激濾光，pointer-events:none 不擋任何操作 -->
+    <div class="sleep-dim" v-if="sleepActive"></div>
+
     <!-- Options Menu -->
     <div class="menu-overlay" v-if="showMenu" @click="showMenu = false"></div>
     <div class="bottom-menu" :style="{ display: showMenu ? 'block' : 'none' }">
@@ -187,6 +190,12 @@
             <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
           </svg>
           <span>我們的願望・備忘</span>
+        </div>
+        <div class="menu-item" @click="toggleSleepMode">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/><path d="M19 3l.4 1.2L20.6 4.6l-1.2.4L19 6.2l-.4-1.2-1.2-.4 1.2-.4z"/>
+          </svg>
+          <span>{{ sleepActive ? '結束睡前模式' : '睡前模式' }}</span>
         </div>
         <div class="menu-item" @click="openDataMenu">
           <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text);stroke-width:1.5;fill:none">
@@ -239,7 +248,16 @@
           清除後所有與「{{ cName }}」的對話記錄將無法復原。
         </div>
       </div>
-      <div style="display:flex;gap:10px;padding:0 16px 20px">
+      <div style="padding:0 16px 4px">
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border-radius:12px;background:var(--surface);border:.5px solid var(--border);cursor:pointer" @click="clearAlsoThreads = !clearAlsoThreads">
+          <div class="chat-item-checkbox show" :class="{ checked: clearAlsoThreads }" style="flex-shrink:0;margin-top:1px"></div>
+          <div style="text-align:left">
+            <div style="font-size:13px;font-weight:400;color:var(--text)">同時清除待續的事</div>
+            <div style="font-size:11px;color:var(--text-3);font-weight:300;line-height:1.5;margin-top:2px">還沒結束的事件與約定。不清除的話會保留下來，只是回不到原本的訊息。</div>
+          </div>
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;padding:12px 16px 20px">
         <button @click="showClearConfirm = false"
           style="flex:1;padding:12px;border-radius:12px;background:var(--surface);color:var(--text);border:.5px solid var(--border);font-size:14px;font-weight:400;cursor:pointer">取消</button>
         <button @click="confirmClearChat"
@@ -256,7 +274,7 @@
           <div class="mem-add-btn" v-if="memTab === 'mem'" @click="startAddMem" title="手動新增記憶">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </div>
-          <div class="mem-add-btn" v-else-if="bonds.length < BOND_CAP" @click="startAddBond" title="手動新增默契">
+          <div class="mem-add-btn" v-else-if="memTab === 'bond' && bonds.length < BOND_CAP" @click="startAddBond" title="手動新增默契">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </div>
           <div class="mem-drawer-close" @click="showMemDrawer = false">
@@ -265,10 +283,13 @@
         </div>
       </div>
 
-      <!-- 記憶｜我們的默契 分頁（P112 D4） -->
+      <!-- 記憶｜我們的默契｜待續的事 分頁 -->
       <div class="mem-seg">
-        <div class="mem-seg-btn" :class="{ active: memTab === 'mem' }" @click="memTab = 'mem'">記憶</div>
-        <div class="mem-seg-btn" :class="{ active: memTab === 'bond' }" @click="memTab = 'bond'">我們的默契</div>
+        <div class="mem-seg-btn" :class="{ active: memTab === 'mem' }" @click="switchMemTab('mem')">記憶</div>
+        <div class="mem-seg-btn" :class="{ active: memTab === 'bond' }" @click="switchMemTab('bond')">我們的默契</div>
+        <div class="mem-seg-btn" :class="{ active: memTab === 'thread' }" @click="switchMemTab('thread')">
+          待續的事<span v-if="hasNewThreads" class="thread-new-dot"></span>
+        </div>
       </div>
 
       <template v-if="memTab === 'mem'">
@@ -333,7 +354,7 @@
       </template>
 
       <!-- 我們的默契（P112 D4）：口頭禪/專屬稱呼/暗號，AI 總結時自動收集、注入對話 -->
-      <template v-else>
+      <template v-else-if="memTab === 'bond'">
         <div class="bond-cap-hint" v-if="bonds.length >= BOND_CAP">默契滿 {{ BOND_CAP }} 條了，整理一下才能收新的</div>
 
         <div class="mem-new-form" v-if="showNewBondForm">
@@ -378,6 +399,100 @@
 
         <div class="mem-footer">
           <span>{{ enabledBondCount }}/{{ BOND_CAP }} 條・已開啟的會自然融入他的說話方式</span>
+        </div>
+      </template>
+
+      <!-- P131 待續的事：進行中預設顯示，最近封存折疊查看 -->
+      <template v-else>
+        <div class="thread-feature-off" v-if="character?.followupAware === false">
+          角色設定中的「記住待續的事」目前已關閉；既有資料仍可查看與管理。
+        </div>
+
+        <div class="mem-list" v-if="openThreads.length">
+          <div class="thread-card" v-for="t in openThreads" :key="t.id">
+            <template v-if="editingThreadId === t.id">
+              <div class="thread-edit-body">
+                <input class="mem-edit-title" v-model="editThreadTitle" maxlength="200" placeholder="待續標題">
+                <textarea class="mem-edit-content" v-model="editThreadDetail" rows="3" maxlength="4000" placeholder="補充內容（選填）"></textarea>
+                <label class="thread-date-field">
+                  <span>日期</span>
+                  <input type="date" v-model="editThreadDate">
+                </label>
+                <div class="mem-edit-actions">
+                  <button class="mem-edit-cancel" @click="editingThreadId = null">取消</button>
+                  <button class="mem-edit-save" @click="saveEditThread(t)" :disabled="!editThreadTitle.trim()">儲存</button>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="thread-card-head">
+                <label class="mem-toggle">
+                  <input type="checkbox" :checked="t.enabled !== false" @change="toggleThread(t)">
+                  <span class="mem-toggle-track"></span>
+                </label>
+                <div class="thread-card-main">
+                  <div class="thread-title">{{ t.title }}</div>
+                  <div class="thread-meta">
+                    <span>{{ formatThreadDate(t) }}</span>
+                    <span class="thread-status" :class="'status-' + t.status">{{ threadStatusLabel(t.status) }}</span>
+                  </div>
+                </div>
+                <button class="thread-icon-btn" @click="startEditThread(t)" title="編輯">✎</button>
+                <button class="thread-icon-btn danger" @click="deleteThread(t)" title="刪除">×</button>
+              </div>
+              <div class="thread-detail" v-if="t.detail">{{ t.detail }}</div>
+              <div class="thread-source" v-if="t.sourcePreview">「{{ t.sourcePreview }}」</div>
+              <div class="thread-actions">
+                <button v-if="threadSourceAvailable[t.id]" @click="goToThreadSource(t)">回到來源訊息</button>
+                <button @click="finishThread(t)">標記完成</button>
+                <button class="danger" @click="cancelThread(t)">取消事件</button>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div v-else class="thread-empty">
+          還沒有待續的事。聊天中提到明確的未來事件或確認約定後，會顯示在這裡。
+        </div>
+
+        <button v-if="archivedThreads.length" class="thread-archive-toggle" @click="showArchivedThreads = !showArchivedThreads">
+          {{ showArchivedThreads ? '收起最近封存' : `查看最近封存（${archivedThreads.length}）` }}
+        </button>
+        <div class="mem-list thread-archive-list" v-if="showArchivedThreads && archivedThreads.length">
+          <div class="thread-card archived" v-for="t in archivedThreads" :key="t.id">
+            <div class="thread-card-head">
+              <div class="thread-card-main">
+                <div class="thread-title">{{ t.title }}</div>
+                <div class="thread-meta">
+                  <span>{{ formatThreadDate(t) }}</span>
+                  <span class="thread-status" :class="'status-' + t.status">{{ threadStatusLabel(t.status) }}</span>
+                </div>
+              </div>
+              <button class="thread-icon-btn" @click="startEditThread(t)" title="編輯">✎</button>
+              <button class="thread-icon-btn danger" @click="deleteThread(t)" title="刪除">×</button>
+            </div>
+            <template v-if="editingThreadId === t.id">
+              <div class="thread-edit-body">
+                <input class="mem-edit-title" v-model="editThreadTitle" maxlength="200">
+                <textarea class="mem-edit-content" v-model="editThreadDetail" rows="3" maxlength="4000"></textarea>
+                <label class="thread-date-field"><span>日期</span><input type="date" v-model="editThreadDate"></label>
+                <div class="mem-edit-actions">
+                  <button class="mem-edit-cancel" @click="editingThreadId = null">取消</button>
+                  <button class="mem-edit-save" @click="saveEditThread(t)" :disabled="!editThreadTitle.trim()">儲存</button>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="thread-detail" v-if="t.detail">{{ t.detail }}</div>
+              <div class="thread-source" v-if="t.sourcePreview">「{{ t.sourcePreview }}」</div>
+              <div class="thread-actions">
+                <button v-if="threadSourceAvailable[t.id]" @click="goToThreadSource(t)">回到來源訊息</button>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div class="mem-footer">
+          <span>{{ openThreads.length }} 件進行中・資料只保存在此裝置</span>
         </div>
       </template>
     </div>
@@ -466,11 +581,12 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting, stripUnsafeImage } from '../services/db.js';
+import { dbGet, dbIdx, dbDel, dbPut, getSetting, setSetting, stripUnsafeImage, clearChatData } from '../services/db.js';
 import { readImportJsonFile, validateChatImport } from '../services/importValidation.js';
-import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive, BOND_CAP } from '../services/chatEngine.js';
+import { sendUserMessage, generateAIResponseStream, generateProactiveMessageStream, generateTouchResponseStream, generateBusyReplyStream, generateSleepClosingStream, shouldBusyRead, summarizeToMemory, hasUnrepliedProactive, isGoodnightText, extractContinuityThreads, BOND_CAP } from '../services/chatEngine.js';
 import { formatContent, splitReply } from '../services/format.js';
 import { estimateTokens } from '../services/tokens.js';
+import { computeFollowUpAfter, computeKeywordRefreshPatch } from '../services/continuity.js';
 import { addKeepsake } from '../services/keepsakes.js';
 import { renderShareCard, shareCardImage } from '../services/shareCard.js';
 import { localDateKey } from '../services/date.js';
@@ -492,6 +608,7 @@ const refusalNotice = ref(false); // 上游模型拒絕生成時顯示「重新�
 const showMenu = ref(false);
 const showDataMenu = ref(false);
 const showClearConfirm = ref(false);
+const clearAlsoThreads = ref(false);   // P131：待續的事，預設不勾
 
 // 全文搜尋
 const searchOpen = ref(false);
@@ -606,6 +723,7 @@ async function doTouchAction(action) {
     window.toast_('錯誤：' + err.message);
   } finally {
     isTyping.value = false;
+    if (sleepActive.value) armSleepTimer(); // 睡前模式：輕觸也算有動靜，重置閒置收尾計時
     if (pendingProactiveReload) reloadAfterProactive();
     scheduleProactive();
   }
@@ -634,6 +752,26 @@ const newBondText = ref('');
 const editingBondId = ref(null);
 const editBondText = ref('');
 const enabledBondCount = computed(() => bonds.value.filter(b => b.enabled).length);
+
+// ── 待續的事（P131）──
+const threads = ref([]);
+const threadSeenAt = ref(0);
+const threadSourceAvailable = ref({});
+const editingThreadId = ref(null);
+const editThreadTitle = ref('');
+const editThreadDetail = ref('');
+const editThreadDate = ref('');
+const showArchivedThreads = ref(false);
+const OPEN_THREAD_STATUSES = new Set(['planned', 'waiting_result']);
+const openThreads = computed(() => threads.value
+  .filter(t => OPEN_THREAD_STATUSES.has(t.status))
+  .sort((a, b) => (a.followUpAfter ?? Infinity) - (b.followUpAfter ?? Infinity)
+    || (b.updatedAt || 0) - (a.updatedAt || 0)));
+const archivedThreads = computed(() => threads.value
+  .filter(t => !OPEN_THREAD_STATUSES.has(t.status))
+  .sort((a, b) => (b.closedAt || b.updatedAt || 0) - (a.closedAt || a.updatedAt || 0)));
+const hasNewThreads = computed(() =>
+  threads.value.some(t => (t.createdAt || 0) > threadSeenAt.value));
 
 // ── Image Attachment State ──
 const pendingImage = ref(null); // base64 string，同時用於 API 和存 DB
@@ -685,6 +823,71 @@ const enabledTokenEstimate = computed(() =>
   chatMems.value.filter(m => m.enabled).reduce((acc, m) => acc + estimateTokens(m.content), 0)
 );
 
+// ── 睡前模式（P130 E2）───────────────────────────────────────────────────
+// 聊天室模式開關：進行中介面 dim、prompt 注入睡前指示（chatEngine 依 c.sleepModeAt 判斷）。
+// 說晚安（回覆完）或閒置 15 分鐘（自動收尾一句晚安）→ 記 sleepEndedAt flag、結束模式，
+// 隔天首次互動由 chatEngine 注入「昨晚睡前」呼應。手動關閉＝取消，不記 flag。
+const sleepActive = ref(false);
+let sleepTimer = null;
+const SLEEP_IDLE_MS = 15 * 60 * 1000;
+
+async function patchCharSleep(patch) {
+  const fresh = await dbGet('characters', charId);
+  if (!fresh) return;
+  Object.assign(fresh, patch);
+  await dbPut('characters', fresh);
+  character.value = fresh;
+}
+
+async function toggleSleepMode() {
+  showMenu.value = false;
+  if (sleepActive.value) {
+    clearTimeout(sleepTimer);
+    sleepActive.value = false;
+    await patchCharSleep({ sleepModeAt: null });
+    window.toast_('已結束睡前模式');
+  } else {
+    sleepActive.value = true;
+    await patchCharSleep({ sleepModeAt: Date.now(), sleepEndedAt: null });
+    armSleepTimer();
+    window.toast_('已進入睡前模式 🌙');
+  }
+}
+
+function armSleepTimer(delayMs = SLEEP_IDLE_MS) {
+  clearTimeout(sleepTimer);
+  sleepTimer = setTimeout(fireSleepClosing, delayMs);
+}
+
+// 閒置到點：角色輕聲道晚安收尾（生成期間 sleepModeAt 仍在，收尾語氣才有睡前情境），
+// 完成後才記 flag 結束模式。生成中則 30 秒後重試（等當輪回覆結束重新計時反而更晚收尾）。
+async function fireSleepClosing() {
+  if (!sleepActive.value) return;
+  if (isTyping.value || isProactiveGenerating.value) {
+    sleepTimer = setTimeout(fireSleepClosing, 30000);
+    return;
+  }
+  isTyping.value = true;
+  try {
+    const rawMsgs = messages.value.filter(m => m.type !== 'hv');
+    await streamSegmentedReply((handlers) => generateSleepClosingStream(charId, rawMsgs, handlers));
+  } catch (err) {
+    console.error('Sleep closing error:', err);
+  } finally {
+    isTyping.value = false;
+    sleepActive.value = false;
+    await patchCharSleep({ sleepModeAt: null, sleepEndedAt: Date.now() });
+    if (pendingProactiveReload) reloadAfterProactive();
+  }
+}
+
+// 說晚安收尾：AI 回完（未被拒絕）才落 flag，避免模式提早結束讓收尾回覆失去睡前語氣。
+async function endSleepAfterGoodnight() {
+  clearTimeout(sleepTimer);
+  sleepActive.value = false;
+  await patchCharSleep({ sleepModeAt: null, sleepEndedAt: Date.now() });
+}
+
 // ── Proactive Timer State (P49) ──
 let proactiveTimer = null;
 let proactiveController = null;
@@ -716,6 +919,21 @@ onMounted(async () => {
 
   await loadMessages();
   await loadChatMems();
+
+  // 睡前模式續上（P130）：上次模式開著就離開／關 app——閒置未滿 15 分鐘視為還在睡前時光，
+  // 恢復模式與計時；已超過則視為當晚已睡著，靜默收尾記 flag（不補生成訊息——事後才冒出一句
+  // 「晚安」時間戳會是現在，隔天中午看到很出戲；呼應的溫度交給隔天首次互動）。
+  if (c.sleepModeAt) {
+    const lastAt = messages.value.length ? messages.value[messages.value.length - 1].createdAt : 0;
+    const idleSince = Math.max(c.sleepModeAt, lastAt);
+    const idleMs = Date.now() - idleSince;
+    if (idleMs >= SLEEP_IDLE_MS) {
+      await patchCharSleep({ sleepModeAt: null, sleepEndedAt: idleSince });
+    } else {
+      sleepActive.value = true;
+      armSleepTimer(SLEEP_IDLE_MS - idleMs); // 續算剩餘時間——已閒置 14 分鐘只再等 1 分鐘，不是重來 15 分鐘
+    }
+  }
   // 由通知帶 ?msg=訊息id 進來 → 捲到該則並高亮（無則維持 loadMessages 的捲到底）
   if (route.query.msg) scrollToMessage(route.query.msg);
   scheduleProactive();
@@ -737,6 +955,7 @@ onMounted(async () => {
 onUnmounted(() => {
   stopKeyboardViewport?.();
   clearTimeout(proactiveTimer);
+  clearTimeout(sleepTimer); // sleepModeAt 留在角色欄位，下次進房恢復或靜默收尾
   clearTimeout(busyTimer); // pending key 留在 settings，由下次進房或 App.vue 背景派發接手
   proactiveController?.abort();
   window.removeEventListener('new-heart-voice', onHeartVoice);
@@ -765,8 +984,38 @@ async function loadChatMems() {
   chatMems.value = mems;
 }
 
+async function loadThreads() {
+  const rows = await dbIdx('continuity_threads', 'charId', charId);
+  threads.value = rows;
+  threadSeenAt.value = Number(await getSetting(`continuity_seen_${charId}`)) || 0;
+
+  const availability = {};
+  await Promise.all(rows.map(async (thread) => {
+    if (!thread.sourceMsgId) return;
+    try {
+      const msg = await dbGet('messages', thread.sourceMsgId);
+      availability[thread.id] = !!msg && msg.charId === charId;
+    } catch (_) {
+      availability[thread.id] = false;
+    }
+  }));
+  threadSourceAvailable.value = availability;
+}
+
+async function markThreadsSeen() {
+  const seenAt = Date.now();
+  threadSeenAt.value = seenAt;
+  await setSetting(`continuity_seen_${charId}`, seenAt);
+}
+
+async function switchMemTab(tab) {
+  memTab.value = tab;
+  if (tab === 'thread') await markThreadsSeen();
+}
+
 async function openMemDrawer() {
   await loadChatMems();
+  await loadThreads();
   // 默契可能剛被背景自動總結默默補了新條目——開抽屜時從 DB 讀最新（P112 D4）
   try {
     const fresh = await dbGet('characters', charId);
@@ -776,6 +1025,7 @@ async function openMemDrawer() {
     }
   } catch (_) {}
   showMemDrawer.value = true;
+  if (memTab.value === 'thread') await markThreadsSeen();
 }
 
 async function toggleMem(mem) {
@@ -881,6 +1131,114 @@ async function saveEditBond(b) {
   b.text = text;
   await persistBonds();
   editingBondId.value = null;
+}
+
+function threadStatusLabel(status) {
+  return {
+    planned: '待關心',
+    waiting_result: '等待後續',
+    resolved: '已完成',
+    cancelled: '已取消',
+    expired: '已過期',
+  }[status] || status;
+}
+
+function formatThreadDate(thread) {
+  if (!thread.eventDate) return '尚未指定日期';
+  return thread.eventTime ? `${thread.eventDate} ${thread.eventTime}` : thread.eventDate;
+}
+
+function startEditThread(thread) {
+  editingThreadId.value = thread.id;
+  editThreadTitle.value = thread.title || '';
+  editThreadDetail.value = thread.detail || '';
+  editThreadDate.value = thread.eventDate || '';
+}
+
+async function saveEditThread(thread) {
+  const fresh = await dbGet('continuity_threads', thread.id);
+  if (!fresh || fresh.charId !== charId) return;
+  const title = editThreadTitle.value.trim();
+  const detail = editThreadDetail.value.trim();
+  if (!title) return;
+
+  const now = Date.now();
+  const topicChanged = title !== fresh.title || detail !== (fresh.detail || '');
+  const date = editThreadDate.value || null;
+  const dateChanged = date !== (fresh.eventDate || null);
+  const next = { ...fresh, title, detail, updatedAt: now };
+
+  if (topicChanged) {
+    const patch = computeKeywordRefreshPatch({ title, detail }, now);
+    if (!patch.matchKeywords.length) {
+      window.toast_('標題需要包含可辨識的主題，例如「面試」或「回診」');
+      return;
+    }
+    Object.assign(next, patch);
+  }
+  if (dateChanged) {
+    next.eventDate = date;
+    next.eventTime = null;
+    next.datePrecision = date ? 'date' : 'unknown';
+    next.followUpAfter = computeFollowUpAfter({
+      eventDate: date, eventTime: null, datePrecision: next.datePrecision,
+    });
+    next.lastPromptedAt = null;
+    if (next.status === 'waiting_result') next.status = 'planned';
+  }
+
+  await dbPut('continuity_threads', next);
+  editingThreadId.value = null;
+  await loadThreads();
+}
+
+async function toggleThread(thread) {
+  const fresh = await dbGet('continuity_threads', thread.id);
+  if (!fresh || fresh.charId !== charId) return;
+  fresh.enabled = fresh.enabled === false;
+  fresh.updatedAt = Date.now();
+  await dbPut('continuity_threads', fresh);
+  await loadThreads();
+}
+
+async function closeThread(thread, status) {
+  const fresh = await dbGet('continuity_threads', thread.id);
+  if (!fresh || fresh.charId !== charId || !OPEN_THREAD_STATUSES.has(fresh.status)) return;
+  const now = Date.now();
+  fresh.status = status;
+  fresh.closedAt = now;
+  fresh.updatedAt = now;
+  await dbPut('continuity_threads', fresh);
+  await loadThreads();
+}
+
+async function finishThread(thread) {
+  await closeThread(thread, 'resolved');
+}
+
+async function cancelThread(thread) {
+  if (!await window.confirm_(`確定取消「${thread.title}」？`)) return;
+  await closeThread(thread, 'cancelled');
+}
+
+async function deleteThread(thread) {
+  if (!await window.confirm_(`確定刪除「${thread.title}」？`)) return;
+  const fresh = await dbGet('continuity_threads', thread.id);
+  if (!fresh || fresh.charId !== charId) return;
+  await dbDel('continuity_threads', thread.id);
+  if (editingThreadId.value === thread.id) editingThreadId.value = null;
+  await loadThreads();
+}
+
+async function goToThreadSource(thread) {
+  if (!thread.sourceMsgId) return;
+  const msg = await dbGet('messages', thread.sourceMsgId);
+  if (!msg || msg.charId !== charId) {
+    threadSourceAvailable.value[thread.id] = false;
+    return;
+  }
+  showMemDrawer.value = false;
+  scrollToMessage(thread.sourceMsgId);
 }
 
 // ── Proactive Timer Functions ──
@@ -1247,8 +1605,15 @@ async function sendMsg() {
   autoResize();
   scrollToBottom();
 
-  // 已讀不回擲骰（P96）：帶圖／編輯重傳／已有 pending 時不觸發，維持既有即回體驗
-  if (!imgToSend && !wasEditing && !hadBusyPending && shouldBusyRead(character.value)) {
+  // P131：待續事件擷取——背景 fire-and-forget，窗口以本輪剛落庫的 user 訊息為錨點。
+  // 不 await、不進送出/回覆鏈；本地閘門未命中則零額外 API 呼叫。失敗自行吞掉。
+  extractContinuityThreads(charId, messages.value.filter(m => m.type !== 'hv')).catch(() => {});
+
+  // 睡前模式中使用者有動靜 → 重置閒置收尾計時
+  if (sleepActive.value) armSleepTimer();
+
+  // 已讀不回擲骰（P96）：帶圖／編輯重傳／已有 pending／睡前模式（陪睡不該人間蒸發）不觸發
+  if (!imgToSend && !wasEditing && !hadBusyPending && !sleepActive.value && shouldBusyRead(character.value)) {
     await queueBusyReply(userMsg);
     return;
   }
@@ -1273,6 +1638,12 @@ async function sendMsg() {
       window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
     } else if (truncated) {
       window.toast_('⚠ 回覆可能被截斷，可長按訊息「重新生成回覆」');
+    }
+    // 睡前模式：這則是道晚安且角色已回完收尾 → 記 flag 結束模式（隔天呼應接手）
+    if (sleepActive.value && !refused && msgs.length && isGoodnightText(content)) {
+      await endSleepAfterGoodnight();
+    } else if (sleepActive.value) {
+      armSleepTimer(); // 回覆完才起算 15 分鐘閒置
     }
   } catch (err) {
     console.error('Chat error:', err);
@@ -1385,19 +1756,14 @@ function openDataMenu() {
 
 function clearChat() {
   showDataMenu.value = false;
+  clearAlsoThreads.value = false;   // 每次開啟都回到預設不勾
   showClearConfirm.value = true;
 }
 
 async function confirmClearChat() {
-  const msgs = await dbIdx('messages', 'charId', charId);
-  for (const m of msgs) {
-    await dbDel('messages', m.id);
-  }
-  // 訊息已清空 → chat 型通知指向的訊息都不存在了，一併刪掉避免點進來連到不存在的訊息。
-  const notifs = await dbIdx('notifications', 'charId', charId);
-  for (const n of notifs) {
-    if (n.type === 'chat') await dbDel('notifications', n.id);
-  }
+  // 共用 helper（見 db.js）。聊天室入口維持既有範圍：只刪 messages 與 chat 通知，
+  // 不動 memories——與聊天列表入口的差異是刻意保留的現況，不在 P131 內變更。
+  await clearChatData([charId], { alsoThreads: clearAlsoThreads.value });
   messages.value = [];
   showClearConfirm.value = false;
   scheduleProactive(); // 依清空後的狀態重排主動計時器（clearTimeout 會先取消對舊對話排定的那一輪）
@@ -1743,6 +2109,21 @@ async function retryAfterRefusal() {
   letter-spacing: .04em;
 }
 
+/* ── 睡前模式 dim 遮罩（P130）── */
+/* 低刺激濾光：整頁罩一層暗色＋暖色調降藍光，pointer-events:none 完全不擋操作；
+   z-index 低於 .menu-overlay(999)，選單／抽屜彈出時仍維持正常亮度可讀 */
+.sleep-dim {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 500;
+  background:
+    radial-gradient(ellipse 120% 90% at 50% 20%, rgba(24, 18, 48, .22), rgba(10, 7, 26, .5) 90%),
+    rgba(64, 40, 8, .1);
+  animation: sleepDimIn .8s ease;
+}
+@keyframes sleepDimIn { from { opacity: 0 } to { opacity: 1 } }
+
 /* ── 輕觸互動（P96）── */
 /* 頭像要接長按手勢：擋掉 iOS 長按 <img> 的原生圖片預覽（touch-callout）與選取/拖曳，
    並讓 img 不吃事件（pointer-events:none）→ 觸控落在容器 div 上，才不會又跳系統預覽又開選單 */
@@ -2001,6 +2382,7 @@ async function retryAfterRefusal() {
   flex-shrink: 0;
 }
 .mem-seg-btn {
+  position: relative;
   padding: 6px 14px;
   border-radius: 999px;
   border: .5px solid var(--border-2);
@@ -2024,6 +2406,134 @@ async function retryAfterRefusal() {
   color: var(--rose);
   text-align: center;
 }
+.thread-new-dot {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rose);
+}
+.thread-feature-off {
+  margin: 10px 16px 2px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.thread-card {
+  margin: 8px 16px;
+  padding: 12px;
+  border: .5px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.thread-card.archived { opacity: .82; }
+.thread-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+.thread-card-main { flex: 1; min-width: 0; }
+.thread-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.thread-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 10px;
+}
+.thread-status {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--rose-pale, rgba(201,136,122,.12));
+  color: var(--rose);
+}
+.thread-status.status-resolved { color: #51805f; background: rgba(81,128,95,.12); }
+.thread-status.status-cancelled,
+.thread-status.status-expired { color: var(--text-3); background: var(--bg); }
+.thread-detail {
+  margin: 9px 0 0 45px;
+  color: var(--text-2, var(--text));
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.thread-source {
+  margin: 7px 0 0 45px;
+  color: var(--text-3);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.thread-icon-btn {
+  width: 25px;
+  height: 25px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.thread-icon-btn.danger { color: var(--red); font-size: 18px; }
+.thread-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+.thread-actions button,
+.thread-archive-toggle {
+  padding: 6px 9px;
+  border: .5px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--text-3);
+  font-size: 10px;
+  cursor: pointer;
+}
+.thread-actions button.danger { color: var(--red); }
+.thread-edit-body { width: 100%; }
+.thread-date-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.thread-date-field input {
+  flex: 1;
+  padding: 7px 9px;
+  border: .5px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--text);
+}
+.thread-empty {
+  padding: 28px 20px;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.7;
+  text-align: center;
+}
+.thread-archive-toggle {
+  display: block;
+  margin: 8px auto;
+}
+.thread-archive-list { flex: none; overflow: visible; }
 
 .mem-drawer-hd {
   display: flex;

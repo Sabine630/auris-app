@@ -424,6 +424,13 @@
             </div>
             <div class="toggle" :class="{ on: char.autoSummarize }" @click="char.autoSummarize = !char.autoSummarize"><div class="toggle-knob"></div></div>
           </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-name">記住待續的事</div>
+              <div class="toggle-desc">辨識你提到的未來事件與已確認約定，之後在適合的對話自然接回；只存在本機，可隨時查看與刪除</div>
+            </div>
+            <div class="toggle" :class="{ on: char.followupAware !== false }" @click="char.followupAware = !(char.followupAware !== false)"><div class="toggle-knob"></div></div>
+          </div>
           <div class="slider-row" v-if="char.autoSummarize">
             <div class="slider-header">
               <span class="slider-label">每幾則自動總結</span>
@@ -521,7 +528,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dbGet, dbPut, dbDel, dbIdx } from '../services/db.js';
+import { dbGet, dbPut, deleteCharacterCascade } from '../services/db.js';
 import { globalStore } from '../store/index.js';
 
 const route = useRoute();
@@ -603,6 +610,7 @@ const char = ref({
   dailyQuestionEnabled: false,
   autoSummarize: false,
   autoSumEvery: 30,
+  followupAware: true,
   lang: 'zh-tw'
 });
 
@@ -737,13 +745,8 @@ async function saveChar() {
 
 async function doDeleteChar() {
   confirmDeletePrompt.value = false;
-  await dbDel('characters', charId.value);
-  // 連同角色所有衍生資料一併清除（與 CharManageView 一致），含 notifications，避免孤兒資料與死通知。
-  const stores = ['messages', 'memories', 'chat_memories', 'moments', 'diary', 'dreams', 'notifications', 'wishes', 'notes'];
-  for (const store of stores) {
-    const items = await dbIdx(store, 'charId', charId.value);
-    for (const item of items) await dbDel(store, item.id);
-  }
+  // 連同角色所有衍生資料一併清除（store 清單集中在 db.js，避免各處漏改留下孤兒資料）
+  await deleteCharacterCascade(charId.value);
   await globalStore.loadCharacters();
   router.push('/char-manage');
 }

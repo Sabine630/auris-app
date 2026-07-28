@@ -151,6 +151,13 @@
             <div style="font-size:11px;color:var(--text-3);font-weight:300;line-height:1.5;margin-top:2px">這些是角色過去產生的內容。若想徹底重新開始，可一併清除以免之後對不上。</div>
           </div>
         </label>
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border-radius:12px;background:var(--surface);border:.5px solid var(--border);cursor:pointer;margin-top:8px" @click="clearAlsoThreads = !clearAlsoThreads">
+          <div class="chat-item-checkbox show" :class="{ checked: clearAlsoThreads }" style="flex-shrink:0;margin-top:1px"></div>
+          <div style="text-align:left">
+            <div style="font-size:13px;font-weight:400;color:var(--text)">同時清除待續的事</div>
+            <div style="font-size:11px;color:var(--text-3);font-weight:300;line-height:1.5;margin-top:2px">還沒結束的事件與約定。不清除的話會保留下來，只是回不到原本的訊息。</div>
+          </div>
+        </label>
       </div>
       <div style="display:flex;gap:10px;padding:12px 16px 20px">
         <button @click="showClearConfirm = false"
@@ -167,7 +174,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { globalStore } from '../store/index.js';
-import { dbIdx, dbGet, dbPut, dbDel, dbAll } from '../services/db.js';
+import { dbIdx, dbGet, dbPut, dbAll, clearChatData, deleteCharacterCascade } from '../services/db.js';
 
 const router = useRouter();
 
@@ -186,6 +193,7 @@ const showClearConfirm = ref(false);
 const clearTargetIds = ref([]);
 const clearTargetName = ref('');
 const clearAlsoContent = ref(false);
+const clearAlsoThreads = ref(false);   // P131：待續的事，預設不勾
 const clearing = ref(false);
 
 const swipedId = ref(null);
@@ -337,13 +345,8 @@ async function batchDelete() {
   }
   if (!await window.confirm_(`確定要刪除 ${selectedChats.value.length} 個角色嗎？所有對話記錄也會一併刪除。`)) return;
   
-  const stores = ['messages', 'memories', 'chat_memories', 'moments', 'diary', 'dreams', 'notifications', 'wishes', 'notes'];
   for (const charId of selectedChats.value) {
-    await dbDel('characters', charId);
-    for (const store of stores) {
-      const items = await dbIdx(store, 'charId', charId);
-      for (const item of items) await dbDel(store, item.id);
-    }
+    await deleteCharacterCascade(charId);
   }
   manageMode.value = false;
   await loadChatData();
@@ -366,6 +369,7 @@ function openClearModal(ids, name) {
   clearTargetIds.value = ids;
   clearTargetName.value = name;
   clearAlsoContent.value = false;
+  clearAlsoThreads.value = false;
   swipedId.value = null;
   showClearConfirm.value = true;
 }
@@ -375,25 +379,14 @@ async function confirmClear() {
   clearing.value = true;
   try {
     // 「清空」一律清掉聊天訊息與對話記憶；
-    // 日記/夢境/貼文是綁角色而非綁單次對話，只有使用者主動勾選才連帶清除，
+    // 日記/夢境/貼文/待續的事是綁角色而非綁單次對話，只有使用者主動勾選才連帶清除，
     // 避免「我只想清訊息，結果日記也沒了」的二次誤刪。
-    const baseStores = ['messages', 'memories'];
-    const contentStores = ['diary', 'dreams', 'moments'];
-    const stores = clearAlsoContent.value ? [...baseStores, ...contentStores] : baseStores;
-    // 清掉某個 store 時，指向該 store 的通知也要一併清掉，否則點進去會連到已不存在的內容。
-    // 基本清空一律刪訊息與對話記憶 → chat（指向已刪訊息）與 hv（心聲存在 memories）通知永遠要清；
-    // post/diary/dream 綁日記/夢境/貼文，只有勾選連帶清除時才刪，對應通知也才清。
-    const notifTypesToClear = ['chat', 'hv'];
-    if (clearAlsoContent.value) notifTypesToClear.push('post', 'diary', 'dream');
+    await clearChatData(clearTargetIds.value, {
+      includeMemories: true,
+      alsoContent: clearAlsoContent.value,
+      alsoThreads: clearAlsoThreads.value,
+    });
     for (const id of clearTargetIds.value) {
-      for (const store of stores) {
-        const items = await dbIdx(store, 'charId', id);
-        for (const item of items) await dbDel(store, item.id);
-      }
-      const notifs = await dbIdx('notifications', 'charId', id);
-      for (const n of notifs) {
-        if (notifTypesToClear.includes(n.type)) await dbDel('notifications', n.id);
-      }
       const c = await dbGet('characters', id);
       if (c) {
         c.unreadCount = 0;
