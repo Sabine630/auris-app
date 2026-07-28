@@ -5,6 +5,7 @@ import ChatRoomView from '../views/ChatRoomView.vue';
 import MomentsView from '../views/MomentsView.vue';
 import DiaryView from '../views/DiaryView.vue';
 import SettingsView from '../views/SettingsView.vue';
+import VoiceSettingsView from '../views/VoiceSettingsView.vue';
 import ApiView from '../views/ApiView.vue';
 import LockView from '../views/LockView.vue';
 import OnboardingView from '../views/OnboardingView.vue';
@@ -32,6 +33,7 @@ const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: HomeView },
     { path: '/api', name: 'api', component: ApiView },
+    { path: '/voice', name: 'voice', component: VoiceSettingsView },
     { path: '/lock', name: 'lock', component: LockView },
     { path: '/onboarding', name: 'onboarding', component: OnboardingView },
     { path: '/chat-list', name: 'chat-list', component: ChatListView },

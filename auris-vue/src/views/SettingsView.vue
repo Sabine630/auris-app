@@ -44,6 +44,11 @@
         <div class="sr-text">API 金鑰與模型</div>
         <div class="sr-val" :style="{ color: apiKey ? 'var(--text-3)' : 'var(--red)' }">{{ apiKey ? '已設定' : '未設定' }}</div><div class="sr-chev">›</div>
       </div>
+      <div class="sr" @click="$router.push('/voice')">
+        <div class="sr-ic"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></div>
+        <div class="sr-text">角色語音</div>
+        <div class="sr-val" :style="{ color: hasVoiceKey ? 'var(--text-3)' : 'var(--text-3)' }">{{ hasVoiceKey ? '已連接' : '未設定' }}</div><div class="sr-chev">›</div>
+      </div>
     </div>
 
     <div class="sg-label">教學</div>
@@ -151,6 +156,7 @@ import { getSetting, setSetting, importAllData } from '../services/db.js';
 import { doBackup, markBackedUp } from '../services/backup.js';
 import { readImportJsonFile } from '../services/importValidation.js';
 import { exportDiag } from '../services/diag.js';
+import { hasTtsKey } from '../services/tts/index.js';
 import { geocodeCity, reverseGeocode } from '../services/weather.js';
 import { demoEntryUrl } from '../services/demoMode.js';
 
@@ -169,6 +175,7 @@ const themes = [
 ];
 
 const apiKey = ref('');
+const hasVoiceKey = ref(false);
 const meName = ref('');
 const meAvatar = ref('');
 const chatFormatStyle = ref(false);
@@ -178,6 +185,7 @@ const weatherBusy = ref(false);
 
 onMounted(async () => {
   apiKey.value = (await getSetting('api_key')) || '';
+  hasVoiceKey.value = await hasTtsKey('elevenlabs');
   const me = await getSetting('me_settings');
   meName.value = me?.name || '';
   meAvatar.value = me?.avatar || '🙂';

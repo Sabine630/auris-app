@@ -147,3 +147,19 @@ describe('⑨ 匯入不得寫入或覆蓋語音設定', () => {
     expect(dump).not.toContain('attacker.test');
   });
 });
+
+// CSP 守門：語音以 Blob object URL 播放。index.html 若沒有 media-src blob:，
+// 會 fallback 到 default-src 'self' 而擋掉 blob:——實測錯誤是
+// 「MEDIA_ELEMENT_ERROR: Media load rejected by URL safety check」，
+// 主控台不報 CSP 違規、程式也不拋錯，只是永遠播不出聲音。
+describe('CSP 允許播放 Blob 音訊', () => {
+  it('index.html 的 media-src 必須含 blob:', async () => {
+    const { readFileSync } = await import('node:fs');
+    const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf-8');
+    const csp = html.match(/Content-Security-Policy"\s+content="([^"]+)"/)?.[1] || '';
+    expect(csp, 'index.html 找不到 CSP').not.toBe('');
+    const mediaSrc = csp.split(';').map(s => s.trim()).find(s => s.startsWith('media-src'));
+    expect(mediaSrc, 'CSP 缺 media-src，會 fallback 到 default-src 而擋掉 blob:').toBeTruthy();
+    expect(mediaSrc).toContain('blob:');
+  });
+});
