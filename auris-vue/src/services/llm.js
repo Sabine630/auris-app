@@ -80,6 +80,18 @@ export async function parseSSEStream(response, provider, onChunk) {
   return { truncated };
 }
 
+// Anthropic 非串流回應的 content 是 block 陣列，可能混入 thinking／redacted_thinking／
+// tool_use。只取 content[0] 會在模型先吐 thinking block 時整段變空字串——P132 實機病灶：
+// 擷取器、總結、日記、貼文等所有非串流背景任務全部悄悄拿到 ''，不拋錯、不留紀錄，
+// 待續的事因此永遠是空的（串流那條有正確過濾 text_delta，所以聊天看起來一切正常）。
+function anthropicText(content) {
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter(b => b?.type === 'text' && typeof b.text === 'string')
+    .map(b => b.text)
+    .join('');
+}
+
 // system 可為字串或 blocks 陣列 [{ text, cache?: true }]；非 anthropic 一律攤平成單一字串。
 function systemToString(system) {
   if (typeof system === 'string') return system || '';
@@ -249,7 +261,7 @@ async function callLLMInner({
     const data = await r.json();
     const errObj = Array.isArray(data) ? data[0]?.error : data.error;
     if (!r.ok || errObj) throw new Error(errObj?.message || JSON.stringify(errObj) || `HTTP Error ${r.status}`);
-    return { fullText: data.content?.[0]?.text || '', truncated: data.stop_reason === 'max_tokens' };
+    return { fullText: anthropicText(data.content), truncated: data.stop_reason === 'max_tokens' };
   }
 
   // ── OpenAI 相容格式（openai / google AI Studio / openrouter）───────────────
