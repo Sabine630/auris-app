@@ -1,7 +1,7 @@
 # 🎨 Auris 完整開發進度總覽
 
-**最後更新**：2026-07-19
-**當前版本**：P130（睡前模式——低刺激陪伴與隔天呼應）
+**最後更新**：2026-07-28
+**當前版本**：P132（實機驗收修正——待續事件記得住、思考洩漏與 iOS 鍵盤遮蔽）
 **狀態**：上線後持續優化中
 
 ---
@@ -1786,7 +1786,7 @@ P82「拆多則短泡泡」預設每則回覆最多切 3 泡泡，實際偏碎�
 
 ---
 
-### P130 睡前模式——低刺激陪伴與隔天呼應（2026-07-19，當前版本）
+### P130 睡前模式——低刺激陪伴與隔天呼應（2026-07-19）
 
 **功能**（E2 定案規格，2026-07-08 決議）：聊天室選單一鍵進入「睡前模式」（非新頁）。模式中：
 - 介面罩一層低刺激濾光（暗色＋暖色調降藍光，`pointer-events:none` 不擋操作；選單彈出時維持正常亮度），header 狀態顯示「睡前模式 🌙」
@@ -1808,6 +1808,70 @@ P82「拆多則短泡泡」預設每則回覆最多切 3 泡泡，實際偏碎�
 | `services/demoData.js`、`services/demoGuideContent.js` | demo 沙盒睡前假回覆（陪伴／收尾／隔天呼應）與聊天室教學文案（驗收修正批） |
 
 ---
+
+### P131 待續的事——角色記得住你說過的未來事（2026-07-25）
+
+**功能**：使用者在對話中提到明確的未來事件、約定或待回覆的問題（「我下週三要面試」「說好禮拜六一起看電影」），角色會記下來，並在該關心的時候主動問起結果。記憶抽屜新增第三個分頁「待續的事」，可查看、編輯、標記完成、取消或刪除，並「回到來源訊息」。角色編輯頁有「記住待續的事」開關（預設開）。
+
+**分五個批次施工**（計畫書 `docs/P131 待續記憶核心計畫書.md`，經三輪審查定案）：
+
+1. **DB v8**：新增 `continuity_threads` store（index：`charId`、`followUpAfter`、複合 `charId_status`），備份匯出／匯入相容、清除聊天記錄時連動
+2. **純函式核心** `services/continuity.js`：本地候選閘門（regex 訊號，未命中則零 API 呼叫）、日期建構與 round-trip 驗證（禁用 `new Date('YYYY-MM-DD')` 的 UTC 午夜偏移）、operation schema 與狀態機、fingerprint 去重、matchKeywords 停用詞過濾與提及判定、每日清理分類
+3. **即時擷取**：使用者訊息落庫後 fire-and-forget 呼叫擷取器（小窗口 4 則、非串流），並補上總結時的補漏路徑
+4. **注入與單一消耗**：每輪最多注入一條「可行動」事件＋兩條背景；回覆確實提及才轉 `waiting_result`，未提及只累加 `offeredCount`，連續 3 輪未中即冷卻 7 天
+5. **管理介面與 Demo**：記憶抽屜分頁、卡片編輯／封存查看、demo 沙盒資料與教學文案
+
+**同批的繁體輸出防線**：角色輸出強制轉台灣繁體（`services/outputLanguage.js`）。為兼顧「不耗 token、不佔記憶體」兩個要求，最終採**用完即釋放的 Worker**——完整 OpenCC 字典（約 1 MB）只在轉換當下載入，`terminate()` 後整份釋放，主執行緒零常駐；Worker 不可用時退回主執行緒且刻意不快取 converter。`services/proseMask.js` 保護網址／程式碼等不該轉換的片段。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/continuity.js` | 新增（671 行）：待續記憶純函式核心 |
+| `services/continuityCleanup.js` | 新增：每日清理（有日期逾期 14 天、無日期 90 天未更新 → expired；關閉逾 30 天 → 刪除） |
+| `services/db.js` | DB v8：`continuity_threads` store 與三個 index |
+| `services/chatEngine.js` | 擷取器入口、per-character queue、prompt 注入與單一消耗、總結補漏 |
+| `services/outputLanguage.js`、`services/zhTwWorker.js`、`services/proseMask.js` | 新增：繁體輸出防線（即用即釋放 Worker） |
+| `views/ChatRoomView.vue` | 記憶抽屜「待續的事」分頁、卡片 CRUD、回到來源訊息、清除連動 |
+| `views/CharEditView.vue` | 「記住待續的事」開關（`followupAware`） |
+| `services/importValidation.js` | thread 領域詞彙白名單與匯入 schema 驗證 |
+
+---
+
+### P132 實機驗收修正——待續事件記得住、思考洩漏與 iOS 鍵盤遮蔽（2026-07-28，當前版本）
+
+P131 上測試版後實機驗收，回報三件事：回覆混入英文思考內容、鍵盤彈出後看不到輸入框、待續的事完全沒有紀錄。查下去發現「沒有紀錄」是**四個問題疊在一起**，每修掉一個症狀都沒變，所以查了很多輪。
+
+**1. 模型思考區塊洩漏**（`services/thinkingFilter.js`）
+部分模型會把 `<thinking>…</thinking>` 當一般文字吐出。統一在 `callLLM` 出口剝除，串流另包一層 stateful filter（標籤可能被切在任意 chunk 邊界），避免先閃在畫面上再被清掉。這段文字同時污染了需要解析 JSON 的背景任務——`parseThreadOps` 從「第一個 `[`」找陣列，思考內容裡出現方括號就整批靜默丟掉。
+
+**2. iOS 鍵盤輔助列遮住輸入列**（`services/keyboardAccessory.js`）
+實機錄影判讀：輸入列位置其實正確，是 iOS 鍵盤上方那條「∧ ∨ ✓」表單輔助列**浮在 visual viewport 之內**（`visualViewport.height` 只扣鍵盤、不扣它），正好整條蓋住。無 Web API 可量，以實機量到的 58px 讓位，只在 iOS 且軟體鍵盤確實升起時生效。判定基準不可用 `window.innerHeight`——診斷證實它在 iOS standalone 會跟著縮到與 `vv.height` 同高，會誤判成鍵盤沒開而讓 inset 抖動；改用 layout viewport（`documentElement.clientHeight`），呼叫端有可信基準時直接傳入。一般頁面（非 `.keyboard-page`）另補鍵盤避讓：以 visual viewport 實際可見底邊判斷、只捲該頁自己的容器，空間不足時暫補底部 padding、失焦還原。
+
+**3. 待續事件完全沒有紀錄**——四個成因疊加：
+
+| 成因 | 症狀 |
+|------|------|
+| `llm.js` Anthropic **非串流**出口只取 `content[0].text` | 模型先吐 thinking block 時整段變空字串。串流那條有正確過濾 `text_delta`，所以聊天看起來完全正常，只有背景的非串流任務（擷取、總結、日記、貼文、我想你、每日一問）全部悄悄失效 |
+| `timeAnchorLine()` 沒有年份 | 模型照訓練資料的年份印象推算，把 2026/8/2 說成「星期六」（那是 2025/8/2），擷取器吐出 2025 年的日期，超出合理範圍被靜默改成 null |
+| 擷取器 prompt **從未寫出 `eventDate` 這個鍵名** | prompt 只提過 `op`／`id`／`matchKeywords`，`title` 靠模型猜得中，日期欄位猜錯鍵名就整個被正規化忽略。卡片有了、關鍵詞有了，就是沒有日期 |
+| 擷取器有六條靜默 return | 以上全部不拋錯、不留紀錄，實機回報時完全無從分辨 |
+
+**4. 診斷可觀測性**：擷取階段追蹤 ring buffer（只記階段與數量，中文與符號一律過濾，不夾帶使用者內容）；鍵盤量測序列 ring buffer；匯出改成「錯誤 → 擷取追蹤 → 鍵盤事件」排序（原本 60 筆鍵盤紀錄會把錯誤區段擠出可貼上的範圍）；`vite define` 注入 build 時間戳，修 bug 期間連推多個 `[skip-ver]` 也分得出手機上是哪一版。
+
+**驗證**：全套 Vitest 533 綠。關鍵修正皆先寫出「在舊程式碼上會失敗」的測試再修（Anthropic 3 red、時間錨與日期範圍 5 red、欄位規格與別名 8 red）。Anthropic 非串流那條另以 Playwright 攔截 https 請求當假端點，走完整條鏈做 A/B——修正前 DB 與抽屜皆空，修正後落庫並顯示卡片、日期與來源引文。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/thinkingFilter.js` | 新增：思考區塊剝除（含串流 stateful filter） |
+| `services/keyboardAccessory.js` | 新增：iOS 表單輔助列讓位（58px，僅 iOS＋軟體鍵盤升起） |
+| `services/llm.js` | Anthropic 非串流改串接所有 `type==='text'` block；`callLLM` 出口統一剝除思考 |
+| `services/chatEngine.js` | `timeAnchorLine()` 補年份；擷取器與總結 prompt 補「今天是」錨點與 `THREAD_OPS_SCHEMA` 欄位規格；擷取六個出口全部留下階段追蹤 |
+| `services/continuity.js` | 擷取追蹤 ring buffer；`eventDate` 別名容錯（`date`／`event_date`）；日期被丟棄時記 `date-out-of-range`／`date-bad-format` |
+| `services/keyboardViewport.js` | `computeKeyboardInsets` 加 `accessoryInset`，併入 `--keyboard-bottom-inset` |
+| `services/keyboardDiagnostics.js`、`services/diag.js` | 鍵盤事件 ring buffer；匯出段落重排；build 時間戳 |
+| `App.vue` | 一般頁面鍵盤避讓改用 visual viewport 可見底邊 |
+| `vite.config.js` | `define` 注入 `__BUILD_TIME__` |
+
+---
 ## 🎨 當前技術棧（Vue 版現況）
 
 ```
@@ -1816,7 +1880,7 @@ P82「拆多則短泡泡」預設每則回覆最多切 3 泡泡，實際偏碎�
 建置    Vite，HMR 開發；GitHub Actions 直接部署 auris-vue/dist
 狀態    自製 globalStore（reactive，characters/theme/keyboardOffset/chatFormatStyle）
 CSS     CSS Variables 主題系統（6 主題）、Flexbox/Grid、safe-area-inset
-資料    IndexedDB（auris，v7，14 個 store）為主；localStorage 存診斷／主題快取，sessionStorage 存 demo 旗標
+資料    IndexedDB（auris，v8，14 個資料 store＋settings）為主；localStorage 存診斷／主題快取，sessionStorage 存 demo 旗標
 API     OpenAI 相容 + Anthropic 原生 + Google AI Studio / Vertex AI 原生；串流 SSE（P47）
 ```
 
@@ -1846,13 +1910,22 @@ API     OpenAI 相容 + Anthropic 原生 + Google AI Studio / Vertex AI 原生�
 | `shareCard.js` | 對話分享卡：canvas 生成主題配色美圖卡＋share/下載（P106）；月報卡面 `renderMonthCard`（P111） |
 | `reviewEngine.js` | 回憶月報：本地統計＋角色回顧短信生成＋每月自動生成，存 settings `monthly_reviews`（P111） |
 | `capsules.js` | 時間膠囊：埋/拆/到期判定 CRUD，存 settings `capsules`（P111） |
+| `continuity.js` | 待續記憶純函式核心（P131）：候選閘門、日期驗證、operation schema 與狀態機、fingerprint 去重、提及判定、清理分類；擷取階段追蹤 ring buffer（P132） |
+| `continuityCleanup.js` | 待續事件每日清理：逾期轉 expired、關閉逾 30 天刪除（P131） |
+| `outputLanguage.js` | 角色輸出強制台灣繁體（P131）：完整 OpenCC 字典走**用完即釋放的 Worker**（`zhTwWorker.js`），主執行緒零常駐；`proseMask.js` 保護網址／程式碼片段 |
+| `thinkingFilter.js` | 剝除模型輸出的 `<thinking>` 區塊（P132），串流另有 stateful filter 防閃現 |
+| `keyboardViewport.js` | `.keyboard-page` 的 visual viewport 控制器（P115）：只縮當前頁、不動 `.phone` |
+| `keyboardRootScrollGuard.js` | iOS standalone root scroll 歸零守衛（P124） |
+| `keyboardAccessory.js` | iOS 表單輔助列讓位（P132）：輔助列浮在 visual viewport 內、`vv.height` 不扣它，以實機量到的 58px 從底部讓出 |
 
 ### 元件（`auris-vue/src/components/`）
 `BottomNav.vue`（底部導覽、鍵盤隱藏）、`AnnouncementModal.vue`（更新公告三頁式 modal）、`DemoTeachingPanel.vue`（教學示範模式的浮動教學鈕＋螢幕感知面板，P102）
 
-### IndexedDB（`auris`，v7，14 個 store）
-characters / messages / memories / moments / diary / dreams / worlds / groups / group_messages / notifications / chat_memories / wishes / notes / settings。
-> v7（P98）：`messages` 加複合索引 `charId_createdAt`（背景派發 cursor／計數用）。升版只能新增 store 或索引；修改既有結構需刪掉重建會清空資料。詳見 `ARCHITECTURE.md`。
+### IndexedDB（`auris`，v8，14 個資料 store＋settings）
+characters / messages / memories / moments / diary / dreams / worlds / groups / group_messages / notifications / chat_memories / wishes / notes / **continuity_threads** / settings。
+> v7（P98）：`messages` 加複合索引 `charId_createdAt`（背景派發 cursor／計數用）。
+> v8（P131）：新增 `continuity_threads`（index：`charId`、`followUpAfter`、複合 `charId_status`）。
+> 升版只能新增 store 或索引；修改既有結構需刪掉重建會清空資料。版號**只能往上加不得下修**——使用者資料庫升到 v8 後若載入只認 v7 的程式，瀏覽器會丟 VersionError 導致 App 完全打不開。詳見 `ARCHITECTURE.md`。
 
 ---
 

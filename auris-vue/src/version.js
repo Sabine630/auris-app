@@ -1,5 +1,5 @@
 // ── 版號常數（P105 版號常數手術）────────────────────────────────────────────
 // 全站唯一的版號來源：設定頁顯示、診斷匯出、錯誤日誌逐筆蓋版號都引用這裡。
 // 版更時只改這個檔（check-version-bump hook 盯的也是這個檔）。
-export const APP_VERSION = 'P130';
-export const VERSION_NOTE = 'P130 睡前模式：低刺激介面與睡前陪伴，隔天自然呼應';
+export const APP_VERSION = 'P132';
+export const VERSION_NOTE = 'P132 待續的事：角色記得住你說過的未來事，並在該問的時候問';
