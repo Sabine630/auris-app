@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-28（P132）
+> 最後更新：2026-07-29（P133）
 
 ---
 
@@ -545,6 +545,16 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P133（2026-07-29）Vertex 空回應歸因與診斷補強
+
+- **`llm.js` Vertex 出口**：原本只取 `candidates[0].content.parts[0].text`。Gemini 的 `parts` 是陣列，長回覆會拆成多段 text → 後半默默丟掉（回覆無故斷在半路）；`parts[0]` 不是 text 時整段變空字串。與 P132 修掉的 `anthropicText()` 是**同一個洞**，當時只補了 Anthropic，Vertex 這條從 P54 接入以來沒動過。新增 `vertexText()` 串接所有 `typeof text === 'string'` 的 part，排除 `thought: true`。
+- **空回應歸因**：供應商回 HTTP 200 卻沒有可用文字時**不拋錯**，進不了 `callLLM` 的 catch，診斷 ring buffer 完全沒有紀錄——`MAX_TOKENS`（思考佔滿輸出額度）／`SAFETY`／`RECITATION` 事後無法分辨。新增 `readVertexCandidate()` 決定原因（優先序：`promptFeedback.blockReason` → 無 candidate → `finishReason` → 回報 STOP 卻無 parts），Anthropic 走 `stop_reason`、OpenAI 相容走 `finish_reason`、SSE 收不到任何 delta 記 `no_chunks`。`callLLM` 出口偵測 `!fullText.trim()` 就 `logError`。**供應商字串一律不放行**：`normalizeEmptyReason()` 映射到固定枚舉，未知值收斂成 `other`（比照 `diag.js` 的 `SAFE_CODES` 思路）。
+- **HTTP 狀態碼傳遞**：各 provider 原以 `new Error(data.error?.message)` 拋出，而 Gemini 的 503 訊息是「The model is overloaded…」，字串不含狀態碼字樣 → `parseStatus` 抓不到 → `classifyCode` 塌成 `runtime_error`（實機 19 筆錯誤有 12 筆是這個無資訊分類）。新增 `httpError(message, status)` 把狀態碼放進例外欄位，`callLLM` 的 catch 傳給 `logError`，不再依賴訊息字串。
+- **`diag.js`**：`SAFE_CODES` 加 `empty_response`；新增 `SAFE_REASONS` allowlist，寫入（`logError`）與讀出（`getErrors`）各擋一次——ring buffer 存 localStorage，schema 標記不代表內容可信。`formatDiagError` 輸出 `reason=`，並改為讓已判定的分類（`quota_error`／`parse_error`）與 `HTTP nnn` 並列：狀態碼常態化之後，這些比狀態碼更有指向性的分類不能被蓋掉（`http_error` 只是保底，有狀態碼時不重複輸出）。
+- **`ChatRoomView.vue` 提示文案**：三處寫死的「代理回傳空回應，請確認代理是否支援串流」是 P60 為「自訂位址打錯、閘道回自己的 HTML＋HTTP 200」寫的，只對 OpenAI 相容代理成立；Vertex 打的是 `:generateContent`（非串流端點），**根本沒有串流**卻同樣吃到這句。改為 `emptyReplyHint(reason)` 原因驅動，只有 `no_chunks` 或原因不明才退回 P60 原句。`generateAIResponseStream` 在 `fullText` 有內容時不掛 `emptyReason`，避免把「拒絕回覆」誤標成供應商原因。
+- **範圍限制（刻意）**：本次**只修已證實的缺陷，不動生成行為**——`maxOutputTokens`、`thinkingConfig`、`safetySettings` 一律未碰。空回應的病因（安全阻擋／思考佔滿額度／複述判定）尚未定案，待實機 `finishReason` 紀錄回來再決定。設 `thinkingBudget` 會把 Gemini 2.5 預設的 dynamic thinking 換成固定上限，是實質的推理品質取捨，不在假設上盲修。**這批不會讓空回應消失，只讓它下次可被歸因。**
+- 全套 Vitest 612 通過（新增 22 項）。Vertex 先前零測試覆蓋，本次補上 `llmVertex.test.js`。
 
 ### P132（2026-07-28）實機驗收修正——待續事件記得住、思考洩漏與 iOS 鍵盤遮蔽
 

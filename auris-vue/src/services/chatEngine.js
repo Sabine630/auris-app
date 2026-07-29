@@ -575,7 +575,7 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
   const system = [{ text: systemStable, cache: true }];
   if (systemVolatile) system.push({ text: systemVolatile });
 
-  const { fullText, truncated: rawTruncated } = await callLLM({
+  const { fullText, truncated: rawTruncated, emptyReason } = await callLLM({
     provider, model, base, apiKey,
     system,
     messages: history,
@@ -606,7 +606,9 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
     }
     if (c.heartVoice) generateHeartVoice(c, allMsgs, fullText).catch(() => {});
   }
-  return { msgs, truncated, refused };
+  // emptyReason 交還 UI 講出真正原因（P133）。落庫後才有意義：msgs 為空但 fullText 有內容
+  // 時（例如整段被判定為拒絕）不是空回應，不該掛上供應商的 finish 原因。
+  return { msgs, truncated, refused, emptyReason: fullText?.trim() ? undefined : emptyReason };
 }
 
 // ── 主動訊息共用工具 ───────────────────────────────────────────────────────

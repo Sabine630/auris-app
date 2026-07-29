@@ -250,6 +250,49 @@ describe('installGlobalErrorLog — window error 同源驗證', () => {
   });
 });
 
+describe('空回應歸因欄位（P133）', () => {
+  it('empty_response 在 allowlist 內，reason 一併保存並輸出', () => {
+    logError('llm', 'empty_response', {
+      code: 'empty_response', provider: 'vertex', model: 'gemini-2.5-pro', reason: 'max_tokens',
+    });
+    const [entry] = getErrors();
+    expect(entry.code).toBe('empty_response');
+    expect(entry.reason).toBe('max_tokens');
+    expect(formatDiagError(entry)).toBe('vertex/gemini-2.5-pro | empty_response | reason=max_tokens');
+  });
+
+  it('不在 allowlist 的 reason 一律丟棄（供應商字串不得進匯出）', () => {
+    logError('llm', 'empty_response', { code: 'empty_response', reason: 'SOME_NEW_REASON<script>' });
+    expect(getErrors()[0].reason).toBeUndefined();
+  });
+
+  it('被竄改的 reason 讀出時再擋一次', () => {
+    store.set('auris_diag_errors', JSON.stringify([{
+      schema: 2, t: '2026-07-15T00:00:00.000Z', v: 'P114', src: 'llm',
+      code: 'empty_response', reason: '私人對話外流',
+    }]));
+    const [entry] = getErrors();
+    expect(entry.reason).toBeUndefined();
+    expect(JSON.stringify(getErrors())).not.toContain('私人對話');
+  });
+
+  // P133 前：供應商 5xx 的訊息不含狀態碼字樣 → parseStatus 抓不到 → 一律 runtime_error，
+  // 上游超載與其他失敗在匯出檔裡分不出來。狀態碼改由呼叫端明確傳入。
+  it('meta.status 讓不含狀態碼字樣的錯誤也分得出 HTTP', () => {
+    logError('llm', new Error('The model is overloaded. Please try again later.'), {
+      provider: 'vertex', model: 'gemini-2.5-pro', status: 503,
+    });
+    const [entry] = getErrors();
+    expect(entry.status).toBe(503);
+    expect(formatDiagError(entry)).toBe('vertex/gemini-2.5-pro | HTTP 503');
+  });
+
+  it('已判斷出的分類不被 HTTP nnn 蓋掉（quota_error 與狀態碼並列）', () => {
+    logError('llm', new Error('quota exhausted'), { provider: 'vertex', model: 'g', status: 429 });
+    expect(formatDiagError(getErrors()[0])).toBe('vertex/g | HTTP 429 | quota_error');
+  });
+});
+
 describe('exportDiag — 匯出內容去敏', () => {
   it('匯出含錯誤行且不含第三方原文；settings 值過 safeLabel', async () => {
     // node 環境補瀏覽器全域（exportDiag 直接讀 window/navigator；node 的 navigator

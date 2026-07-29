@@ -22,7 +22,14 @@ const SCHEMA_VERSION = 2;
 const SAFE_CODES = new Set([
   'request_timeout', 'request_aborted', 'network_error', 'quota_error',
   'storage_error', 'parse_error', 'runtime_error', 'http_error',
-  'indexeddb_init_failed', 'settings_read_failed',
+  'indexeddb_init_failed', 'settings_read_failed', 'empty_response',
+]);
+// 空回應原因（P133）：供應商 finish/stop/block 欄位經 llm.js 正規化後的固定枚舉。
+// 這裡再擋一次——ring buffer 存在 localStorage，可被手動竄改，讀出時不能信任既存值。
+const SAFE_REASONS = new Set([
+  'max_tokens', 'safety', 'recitation', 'blocklist', 'prohibited_content',
+  'spii', 'malformed_function_call', 'stop', 'end_turn', 'content_filter',
+  'no_candidates', 'no_parts', 'no_chunks', 'other', 'unknown',
 ]);
 // 偵測用（safeLabel 拒收）與遮蔽用（實際 replace 成 [REDACTED]，g flag＋吃掉整段 key）
 const SECRETISH_TEST_RE = /(?:sk-[A-Za-z0-9_-]{12,}|AIza[0-9A-Za-z_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_|AKIA[0-9A-Z]{12,}|xox[bap]-)/i;
@@ -88,6 +95,7 @@ export function logError(src, error, meta = {}) {
       code: classifyCode(raw, status, meta.code),
     };
     if (status != null) entry.status = status;
+    if (meta.reason != null && SAFE_REASONS.has(meta.reason)) entry.reason = meta.reason;
     if (meta.provider != null) entry.provider = safeLabel(meta.provider);
     if (meta.model != null) entry.model = safeLabel(meta.model);
     if (meta.location) entry.location = safeLocation(meta.location);
@@ -122,6 +130,7 @@ export function getErrors() {
         base.code = SAFE_CODES.has(item.code) ? item.code : 'runtime_error';
         const status = Number(item.status);
         if (Number.isInteger(status) && status >= 100 && status <= 599) base.status = status;
+        if (typeof item.reason === 'string' && SAFE_REASONS.has(item.reason)) base.reason = item.reason;
         if (typeof item.provider === 'string') base.provider = safeLabel(item.provider);
         if (typeof item.model === 'string') base.model = safeLabel(item.model);
         if (typeof item.location === 'string' && item.location) {
@@ -157,7 +166,14 @@ export function formatDiagError(entry) {
   const loc = entry.location ? safeLocation(entry.location) : '';
   const parts = [];
   if (provider || model) parts.push(`${provider || '?'}/${model || '?'}`);
-  parts.push(Number.isInteger(status) && status >= 100 && status <= 599 ? `HTTP ${status}` : code);
+  // P133 起狀態碼會確實帶上（見 llm.js httpError），HTTP nnn 因此成為常態。分類碼
+  // 仍要並列——http_error 只是「有狀態碼但沒別的線索」的保底，quota_error／parse_error
+  // 這類已經判斷出來的分類比狀態碼更有指向性，不能被 HTTP nnn 蓋掉。
+  const hasStatus = Number.isInteger(status) && status >= 100 && status <= 599;
+  if (hasStatus) parts.push(`HTTP ${status}`);
+  if (!hasStatus || code !== 'http_error') parts.push(code);
+  const reason = SAFE_REASONS.has(entry.reason) ? entry.reason : '';
+  if (reason) parts.push(`reason=${reason}`);
   if (loc) parts.push(`at ${loc}`);
   let line = parts.join(' | ');
   if (entry.localMessage != null) {

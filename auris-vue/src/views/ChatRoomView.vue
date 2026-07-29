@@ -1489,7 +1489,7 @@ async function streamSegmentedReply(genFn) {
     }
   };
   try {
-    const { msgs, truncated, refused } = await genFn({
+    const { msgs, truncated, refused, emptyReason } = await genFn({
       onChunk(text) {
         buffer += text;
         // P116 ???????????????? chunk ? DOM???????????????
@@ -1514,11 +1514,32 @@ async function streamSegmentedReply(genFn) {
     removeLive();
     const out = msgs || [];
     if (out.length) { messages.value.push(...out); scrollToBottom(); }
-    return { msgs: out, truncated, refused };
+    return { msgs: out, truncated, refused, emptyReason };
   } catch (err) {
     removeLive();
     throw err;
   }
+}
+
+// 空回應提示（P133）。原本三處寫死同一句「代理是否支援串流」——那是 P60 為「自訂位址
+// 打錯、閘道回自己的 HTML」寫的，只對 OpenAI 相容代理成立；Vertex 根本不走串流，卻也
+// 吃到這句，等於叫使用者去換一個沒問題的代理。改成由供應商實際回報的原因決定文案，
+// 只有真的「連一個 chunk 都沒收到」或原因不明時才退回 P60 原句。
+const EMPTY_REPLY_HINTS = {
+  max_tokens: '這次的額度被思考佔滿、沒產出內容。可長按訊息「重新生成回覆」再試一次。',
+  safety: '這則回覆被服務商的安全設定擋下。長按「重新生成回覆」通常就過了。',
+  prohibited_content: '這則回覆被服務商的內容政策擋下。長按「重新生成回覆」通常就過了。',
+  blocklist: '這則回覆被服務商的封鎖清單擋下。長按「重新生成回覆」通常就過了。',
+  spii: '這則回覆因含個資疑慮被服務商擋下。長按「重新生成回覆」通常就過了。',
+  recitation: '服務商判定回覆與既有素材過於相似而丟棄。長按「重新生成回覆」通常就過了。',
+  content_filter: '這則回覆被服務商的內容過濾擋下。長按「重新生成回覆」通常就過了。',
+  no_parts: '服務商回報正常結束，卻沒有回傳任何內容。長按「重新生成回覆」再試一次。',
+  no_candidates: '服務商沒有回傳任何候選回覆。長按「重新生成回覆」再試一次。',
+};
+
+function emptyReplyHint(reason) {
+  return EMPTY_REPLY_HINTS[reason]
+    || '代理回傳空回應，請確認代理是否支援串流、或換用其他代理';
 }
 
 // ── 已讀不回（P96）─────────────────────────────────────────────────────────
@@ -1629,13 +1650,13 @@ async function sendMsg() {
   const rawMsgs = messages.value.filter(m => m.type !== 'hv');
 
   try {
-    const { msgs, truncated, refused } = await streamSegmentedReply(
+    const { msgs, truncated, refused, emptyReason } = await streamSegmentedReply(
       (handlers) => generateAIResponseStream(charId, rawMsgs, handlers, imgToSend)
     );
     if (refused) {
       refusalNotice.value = true;
     } else if (!msgs.length) {
-      window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
+      window.toast_(emptyReplyHint(emptyReason));
     } else if (truncated) {
       window.toast_('⚠ 回覆可能被截斷，可長按訊息「重新生成回覆」');
     }
@@ -2051,13 +2072,13 @@ async function doRegenerate(m) {
   const rawMsgs = messages.value.filter(x => x.type !== 'hv');
 
   try {
-    const { msgs, truncated, refused } = await streamSegmentedReply(
+    const { msgs, truncated, refused, emptyReason } = await streamSegmentedReply(
       (handlers) => generateAIResponseStream(charId, rawMsgs, handlers)
     );
     if (refused) {
       refusalNotice.value = true;
     } else if (!msgs.length) {
-      window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
+      window.toast_(emptyReplyHint(emptyReason));
     } else if (truncated) {
       window.toast_('⚠ 回覆可能被截斷');
     }
@@ -2077,13 +2098,13 @@ async function retryAfterRefusal() {
   isTyping.value = true;
   const rawMsgs = messages.value.filter(x => x.type !== 'hv');
   try {
-    const { msgs, truncated, refused } = await streamSegmentedReply(
+    const { msgs, truncated, refused, emptyReason } = await streamSegmentedReply(
       (handlers) => generateAIResponseStream(charId, rawMsgs, handlers)
     );
     if (refused) {
       refusalNotice.value = true;
     } else if (!msgs.length) {
-      window.toast_('代理回傳空回應，請確認代理是否支援串流、或換用其他代理');
+      window.toast_(emptyReplyHint(emptyReason));
     } else if (truncated) {
       window.toast_('⚠ 回覆可能被截斷');
     }
