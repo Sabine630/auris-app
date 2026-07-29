@@ -150,7 +150,7 @@ function onGlobalFocusOut(e) {
 }
 
 const showNav = computed(() => {
-  const hiddenRoutes = ['chat', 'onboarding', 'api', 'lock', 'char-edit', 'char-manage', 'group-room', 'group-create', 'post-detail', 'diary-detail', 'dream-detail', 'relation'];
+  const hiddenRoutes = ['chat', 'onboarding', 'api', 'voice', 'lock', 'char-edit', 'char-manage', 'group-room', 'group-create', 'post-detail', 'diary-detail', 'dream-detail', 'relation'];
   return !hiddenRoutes.includes(route.name);
 });
 

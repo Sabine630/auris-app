@@ -92,6 +92,68 @@ function anthropicText(content) {
     .join('');
 }
 
+// Gemini 的 candidate.content.parts 同樣是陣列：長回覆會被拆成多段 text，思考摘要則
+// 帶 thought: true。舊實作只取 parts[0]?.text——多段時後半被默默丟掉（使用者看到回覆
+// 無故斷在半路），parts[0] 不是 text 時整段變空字串。與上面 anthropicText 是同一個洞，
+// P132 只補了 Anthropic，Vertex 這條從 P54 接入以來一直沒修。
+function vertexText(parts) {
+  if (!Array.isArray(parts)) return '';
+  return parts
+    .filter(p => p && p.thought !== true && typeof p.text === 'string')
+    .map(p => p.text)
+    .join('');
+}
+
+// Vertex 回應 → { text, truncated, emptyReason }。空回應的原因優先序：
+// prompt 端被擋（promptFeedback.blockReason）→ 連 candidate 都沒有 → candidate 自己的
+// finishReason（MAX_TOKENS／SAFETY／RECITATION…）→ 都正常卻沒有 parts。
+function readVertexCandidate(data) {
+  const cand = data?.candidates?.[0];
+  const text = vertexText(cand?.content?.parts);
+  const truncated = cand?.finishReason === 'MAX_TOKENS';
+  if (text) return { text, truncated };
+
+  const blockReason = data?.promptFeedback?.blockReason;
+  const finishReason = cand?.finishReason;
+  let emptyReason;
+  if (blockReason) emptyReason = blockReason;
+  else if (!cand) emptyReason = 'no_candidates';
+  else if (finishReason && finishReason !== 'STOP') emptyReason = finishReason;
+  else emptyReason = 'no_parts';
+  return { text, truncated, emptyReason };
+}
+
+// ── 空回應原因（P133）───────────────────────────────────────────────────────
+// 供應商回 HTTP 200 但沒有任何可用文字時，唯一能事後定層的線索就是它的 finish/stop/
+// block 欄位。這些值是固定枚舉，但仍**不放行原字串**——一律映射到自家 allowlist，
+// 未知值收斂成 other，確保任何供應商字串都進不了診斷匯出（比照 diag.js 的 SAFE_CODES）。
+const EMPTY_REASONS = new Set([
+  'max_tokens', 'safety', 'recitation', 'blocklist', 'prohibited_content',
+  'spii', 'malformed_function_call', 'stop', 'end_turn', 'content_filter',
+  'no_candidates', 'no_parts', 'no_chunks', 'other', 'unknown',
+]);
+
+// 同一件事各家名稱不同，先收斂成同義詞再查 allowlist（OpenAI 的 length ＝ 被
+// max_tokens 切斷；Gemini 的 PROHIBITED_CONTENT 與 OpenAI 的 content_filter 同義）。
+const REASON_ALIASES = { length: 'max_tokens', model_length: 'max_tokens' };
+
+export function normalizeEmptyReason(raw) {
+  const key = String(raw ?? '').trim().toLowerCase();
+  if (!key) return 'unknown';
+  const canonical = REASON_ALIASES[key] || key;
+  return EMPTY_REASONS.has(canonical) ? canonical : 'other';
+}
+
+// HTTP 錯誤一律帶上狀態碼。供應商的 error.message 多半不含 "HTTP 503" 字樣
+// （例：「The model is overloaded. Please try again later.」），diag 的 parseStatus
+// 就抓不到、classifyCode 只好塌成 runtime_error——上游超載／認證失敗／配額不足
+// 在匯出檔裡長得一模一樣。狀態碼改用例外欄位傳遞，不依賴訊息字串。
+function httpError(message, status) {
+  const err = new Error(message || `HTTP ${status}`);
+  err.status = status;
+  return err;
+}
+
 // system 可為字串或 blocks 陣列 [{ text, cache?: true }]；非 anthropic 一律攤平成單一字串。
 function systemToString(system) {
   if (typeof system === 'string') return system || '';
@@ -158,10 +220,28 @@ export async function callLLM(opts) {
       : opts;
     const result = await callLLMInner(inner);
     filter?.flush();
-    return { ...result, fullText: stripThinking(result?.fullText) };
+    const fullText = stripThinking(result?.fullText);
+    // 空回應（HTTP 200 但沒有任何可用文字）在 P133 之前完全不留痕跡：不拋錯 → 進不了
+    // 下面的 catch，使用者只看到一句寫死的代理提示，匯出檔裡什麼都沒有。這裡補記原因，
+    // 讓「思考佔滿額度／被安全設定擋／被判定為複述」下次一眼可辨。只記枚舉，不記內容。
+    // 正規化一次、log 與回傳共用。**回傳值也必須是正規化過的**——各家的原始值大小寫
+    // 不一（Vertex 回 'MAX_TOKENS'、OpenAI 回 'length'），UI 端以此值查文案表，
+    // 直接回傳原始值會查不到而退回代理提示，等於整個原因驅動的文案沒生效。
+    // 附帶效果：值必為 allowlist 內的枚舉，呼叫端拿它查表不會撞到 Object 原型上的鍵。
+    if (!fullText || !fullText.trim()) {
+      const emptyReason = normalizeEmptyReason(result?.emptyReason);
+      logError('llm', 'empty_response', {
+        code: 'empty_response',
+        provider: opts.provider,
+        model: opts.model,
+        reason: emptyReason,
+      });
+      return { ...result, fullText, emptyReason };
+    }
+    return { ...result, fullText, emptyReason: undefined };
   } catch (e) {
     if (e?.name !== 'AbortError') {
-      logError('llm', e, { provider: opts.provider, model: opts.model });
+      logError('llm', e, { provider: opts.provider, model: opts.model, status: e?.status });
     }
     throw e;
   }
@@ -221,16 +301,17 @@ async function callLLMInner({
     }, 90000);
 
     if (stream) {
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw httpError(e.error?.message, r.status); }
       onStart?.();
       const data = await r.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const { text, ...rest } = readVertexCandidate(data);
       onChunk?.(text);
-      return { fullText: text, truncated: data.candidates?.[0]?.finishReason === 'MAX_TOKENS' };
+      return { fullText: text, ...rest };
     }
     const data = await r.json();
-    if (!r.ok || data.error) throw new Error(data.error?.message || JSON.stringify(data.error) || `HTTP Error ${r.status}`);
-    return { fullText: data.candidates?.[0]?.content?.parts?.[0]?.text || '', truncated: data.candidates?.[0]?.finishReason === 'MAX_TOKENS' };
+    if (!r.ok || data.error) throw httpError(data.error?.message || JSON.stringify(data.error), r.status);
+    const { text, ...rest } = readVertexCandidate(data);
+    return { fullText: text, ...rest };
   }
 
   // ── Anthropic Messages API ────────────────────────────────────────────────
@@ -252,16 +333,21 @@ async function callLLMInner({
     }, 90000);
 
     if (stream) {
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || `HTTP ${r.status}`); }
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw httpError(e.error?.message, r.status); }
       onStart?.();
       let fullText = '';
       const { truncated } = await parseSSEStream(r, 'anthropic', (t) => { fullText += t; onChunk?.(t); });
-      return { fullText, truncated };
+      return { fullText, truncated, emptyReason: fullText ? undefined : 'no_chunks' };
     }
     const data = await r.json();
     const errObj = Array.isArray(data) ? data[0]?.error : data.error;
-    if (!r.ok || errObj) throw new Error(errObj?.message || JSON.stringify(errObj) || `HTTP Error ${r.status}`);
-    return { fullText: anthropicText(data.content), truncated: data.stop_reason === 'max_tokens' };
+    if (!r.ok || errObj) throw httpError(errObj?.message || JSON.stringify(errObj), r.status);
+    const text = anthropicText(data.content);
+    return {
+      fullText: text,
+      truncated: data.stop_reason === 'max_tokens',
+      emptyReason: text ? undefined : (data.stop_reason || 'no_parts'),
+    };
   }
 
   // ── OpenAI 相容格式（openai / google AI Studio / openrouter）───────────────
@@ -282,17 +368,24 @@ async function callLLMInner({
   }, 90000);
 
   if (stream) {
-    if (!r.ok) { const d = await r.json(); throw new Error(d.error?.message || `HTTP ${r.status}`); }
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw httpError(d.error?.message, r.status); }
     onStart?.();
     let fullText = '';
     const { truncated } = await parseSSEStream(r, 'openai', (t) => { fullText += t; onChunk?.(t); });
-    return { fullText, truncated };
+    // no_chunks＝HTTP 200 但整條 SSE 沒有任何 delta。P60 那個「代理位址打錯、閘道回自己
+    // 的 HTML」正是這一種，代理提示文案只在這個原因下才成立。
+    return { fullText, truncated, emptyReason: fullText ? undefined : 'no_chunks' };
   }
   const data = await r.json();
   const errObj = Array.isArray(data) ? data[0]?.error : data.error;
-  if (!r.ok || errObj) throw new Error(errObj?.message || JSON.stringify(errObj) || `HTTP Error ${r.status}`);
+  if (!r.ok || errObj) throw httpError(errObj?.message || JSON.stringify(errObj), r.status);
   // 非串流也要看 finish_reason——P94 只在 SSE 路徑偵測截斷，非串流永遠回 false，
   // 心聲等背景生成被 max_tokens 硬切時呼叫端無從得知、殘句照存。
   const fr = data.choices?.[0]?.finish_reason;
-  return { fullText: data.choices?.[0]?.message?.content || '', truncated: fr === 'length' || fr === 'max_tokens' };
+  const text = data.choices?.[0]?.message?.content || '';
+  return {
+    fullText: text,
+    truncated: fr === 'length' || fr === 'max_tokens',
+    emptyReason: text ? undefined : (fr || 'no_parts'),
+  };
 }

@@ -1,7 +1,7 @@
 # 🎨 Auris 完整開發進度總覽
 
-**最後更新**：2026-07-28
-**當前版本**：P132（實機驗收修正——待續事件記得住、思考洩漏與 iOS 鍵盤遮蔽）
+**最後更新**：2026-07-29
+**當前版本**：P133（Vertex 空回應歸因與診斷補強）
 **狀態**：上線後持續優化中
 
 ---
@@ -1836,7 +1836,7 @@ P82「拆多則短泡泡」預設每則回覆最多切 3 泡泡，實際偏碎�
 
 ---
 
-### P132 實機驗收修正——待續事件記得住、思考洩漏與 iOS 鍵盤遮蔽（2026-07-28，當前版本）
+### P132 實機驗收修正——待續事件記得住、思考洩漏與 iOS 鍵盤遮蔽（2026-07-28）
 
 P131 上測試版後實機驗收，回報三件事：回覆混入英文思考內容、鍵盤彈出後看不到輸入框、待續的事完全沒有紀錄。查下去發現「沒有紀錄」是**四個問題疊在一起**，每修掉一個症狀都沒變，所以查了很多輪。
 
@@ -1870,6 +1870,34 @@ P131 上測試版後實機驗收，回報三件事：回覆混入英文思考內
 | `services/keyboardDiagnostics.js`、`services/diag.js` | 鍵盤事件 ring buffer；匯出段落重排；build 時間戳 |
 | `App.vue` | 一般頁面鍵盤避讓改用 visual viewport 可見底邊 |
 | `vite.config.js` | `define` 注入 `__BUILD_TIME__` |
+
+---
+
+### P133 Vertex 空回應歸因與診斷補強（2026-07-29，當前版本）
+
+**背景**：使用者回報聊天偶發跳出「代理回傳空回應，請確認代理是否支援串流、或換用其他代理」，重傳同一句就正常；同一把 Vertex 金鑰在酒館與另一個前端都穩定。P132 之前就有回報，非新版迴歸。
+
+追查後確認**病因尚未定案**，但沿路挖出四個各自獨立、可指出行號的缺陷：
+
+1. **提示文案指錯方向**：那句話是 P60 為「自訂位址打錯（`/v1` → `/v.1`）、閘道回自己的 HTML＋HTTP 200」寫的，只對 OpenAI 相容代理成立。而 Vertex 分支打的是 `:generateContent`（非串流端點，`llm.js` 內以 `onChunk` 補吐整段），**根本沒有串流可言**，卻同樣吃到這句，等於叫使用者去換一個沒問題的代理。
+2. **Vertex 只取 `parts[0]`**：Gemini 的 `candidate.content.parts` 是陣列，長回覆會拆成多段 text。舊實作只取第一段，後半默默丟掉（回覆無故斷在半路）；`parts[0]` 不是 text 時整段變空字串。與 P132 修掉的 `anthropicText()` 是同一個洞——當時只補了 Anthropic，Vertex 這條從 P54 接入以來沒動過。
+3. **空回應完全不留痕跡**：HTTP 200 但沒有可用文字時不拋錯，進不了 `callLLM` 的 catch，診斷 ring buffer 什麼都沒有。實機匯出可佐證：回報時點（07-28 03:47Z）buffer 只有 19/30 筆、未滿未被擠掉，該時刻確實空白。`MAX_TOKENS`（思考佔滿輸出額度）／`SAFETY`／`RECITATION` 在匯出檔裡完全無法分辨。
+4. **HTTP 狀態碼在錯誤路徑遺失**：各 provider 以 `new Error(data.error?.message)` 拋出，而 Gemini 的 503 訊息是「The model is overloaded…」，字串裡沒有狀態碼字樣 → `parseStatus` 抓不到 → `classifyCode` 塌成 `runtime_error`。實機 19 筆錯誤中 12 筆是這個無資訊的分類，上游超載／認證失敗／配額不足長得一模一樣。
+
+**本次只修「已證實的缺陷」，不動生成行為**——`maxOutputTokens`、`thinkingConfig`、`safetySettings` 一律未碰。病因待 ③ 的 `finishReason` 紀錄回來再決定，避免在假設上改生成參數（設 `thinkingBudget` 會把 Gemini 2.5 預設的 dynamic thinking 換成固定上限，是實質的品質取捨，不該盲修）。
+
+**已知限制**：這批**不會讓空回應消失**，只讓它下次可被歸因。使用者仍會遇到，但會看到真正的原因而非代理提示。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/llm.js` | 新增 `vertexText()`（掃全 parts、排除 `thought:true`）、`readVertexCandidate()`（空回應原因優先序：`promptFeedback.blockReason` → 無 candidate → `finishReason` → 無 parts）、`normalizeEmptyReason()`（供應商字串一律映射到固定枚舉，未知收斂 `other`）、`httpError()`（狀態碼改用例外欄位傳遞，不依賴訊息字串）；`callLLM` 出口偵測空回應並 `logError`，catch 補傳 `status`；Anthropic／OpenAI 相容分支同步回報 `emptyReason`（SSE 無 delta → `no_chunks`） |
+| `services/diag.js` | `SAFE_CODES` 加 `empty_response`；新增 `SAFE_REASONS` allowlist（寫入與讀出各擋一次，localStorage 可竄改）；`formatDiagError` 輸出 `reason=`，並讓已判定的分類（`quota_error` 等）與 `HTTP nnn` 並列不被蓋掉 |
+| `services/chatEngine.js` | `generateAIResponseStream` 交還 `emptyReason`（`fullText` 有內容時不掛，避免把「拒絕回覆」誤標成供應商原因） |
+| `views/ChatRoomView.vue` | 新增 `EMPTY_REPLY_HINTS`／`emptyReplyHint()`，三處寫死的提示改為原因驅動；只有 `no_chunks` 或原因不明才退回 P60 原句 |
+| `services/__tests__/llmVertex.test.js` | 新增 17 項：單／多／零 part、thought part、串流路徑、`MAX_TOKENS`、六種空回應歸因、未知 reason 收斂、狀態碼傳遞 |
+| `services/__tests__/diag.test.js` | 新增 5 項：`empty_response` allowlist、reason 寫入／讀出雙重過濾、`meta.status` 分類、分類與狀態碼並列 |
+
+**驗證**：全套 Vitest 612 綠（新增 22 項）、production build 通過。Vertex 先前零測試覆蓋，本次補上。
 
 ---
 ## 🎨 當前技術棧（Vue 版現況）

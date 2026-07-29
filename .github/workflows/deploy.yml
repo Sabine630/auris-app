@@ -49,8 +49,13 @@ jobs:
         working-directory: ./auris-vue
         run: npm test
         
+      # 角色語音（批次 A／B 已在 dev，C／D 未施工）不隨正式版發布：旗標關閉時
+      # Rollup 會把 VoiceSettingsView 與 services/tts 整個從產物移除。dev 的 Vercel
+      # 測試版不設此變數，預設為開、繼續驗證。語音要正式上線時刪掉這兩行即可。
       - name: Build
         working-directory: ./auris-vue
+        env:
+          VITE_VOICE_ENABLED: '0'
         run: npm run build
         
       - name: Setup Pages

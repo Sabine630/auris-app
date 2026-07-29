@@ -445,3 +445,13 @@ describe('擷取器欄位規格', () => {
     expect(buildSummaryThreadInstr([], [])).toContain('eventDate');
   });
 });
+
+// 標題直接顯示給使用者看，prompt 內部對使用者的稱呼不該漏出去（實機：「8/5跟對方吃飯」）。
+describe('擷取器標題人稱', () => {
+  it('prompt 明令 title 不得帶人稱，並給出正反例', () => {
+    const sys = buildThreadExtractSystem([], [], 'zh-tw', Date.now());
+    expect(sys).toMatch(/不要加入人稱/);
+    expect(sys).toContain('跟對方');
+    expect(sys).toContain('一起吃飯');
+  });
+});

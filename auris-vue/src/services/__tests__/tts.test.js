@@ -1,0 +1,356 @@
+// 角色語音批次 A：安全基礎與服務商轉接層。
+// 對應 docs/角色語音系統派工單.md「批次 A 必交測試」12 項，逐條標註。
+// 測試金鑰一律使用明顯假值 xi-demo-not-a-real-key（派工單第 60 行）。
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const FAKE_KEY = 'xi-demo-not-a-real-key';
+
+const store = vi.hoisted(() => ({ settings: new Map() }));
+vi.mock('../db.js', () => ({
+  getSetting: vi.fn(async (k) => store.settings.get(k)),
+  setSetting: vi.fn(async (k, v) => { store.settings.set(k, v); }),
+}));
+
+const {
+  loadTtsConfigs, saveTtsConfig, clearTtsKey, clearAllTtsKeys, maskApiKey,
+  listVoices, synthesize, testConnection, pendingRequestCount, TTS_SETTINGS_KEY,
+} = await import('../tts/index.js');
+const { getProvider, isSupportedProvider } = await import('../tts/providerRegistry.js');
+const {
+  isValidVoiceId, assertText, looksLikeAudio, readAudioResponse,
+  errorFromStatus, isRetryable, TtsError, MAX_TTS_TEXT_CHARS,
+} = await import('../tts/ttsShared.js');
+
+// 最小 MP3：ID3 標頭
+const MP3 = new Uint8Array([0x49, 0x44, 0x33, 0x04, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+function audioResponse(bytes = MP3, { mime = 'audio/mpeg', length = null } = {}) {
+  return {
+    ok: true, status: 200,
+    headers: { get: (h) => (h.toLowerCase() === 'content-type' ? mime : length) },
+    arrayBuffer: async () => bytes.buffer.slice(0),
+  };
+}
+
+beforeEach(async () => {
+  store.settings.clear();
+  vi.unstubAllGlobals();
+  await saveTtsConfig('elevenlabs', { enabled: true, apiKey: FAKE_KEY });
+});
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+// ① 未註冊 provider 在任何 fetch 前被拒絕
+describe('① 未註冊 provider', () => {
+  it('取用 adapter 即拋錯，且完全不發網路請求', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    expect(() => getProvider('minimax')).toThrow(TtsError);
+    await expect(synthesize({ provider: 'minimax', voiceId: 'abc', text: '你好' }))
+      .rejects.toMatchObject({ code: 'tts_provider_unsupported' });
+    await expect(listVoices('openai')).rejects.toMatchObject({ code: 'tts_provider_unsupported' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('本機設定被塞入未知 provider 時，讀出即丟棄', async () => {
+    store.settings.set(TTS_SETTINGS_KEY, {
+      elevenlabs: { enabled: true, apiKey: FAKE_KEY },
+      evil: { enabled: true, apiKey: 'x', baseUrl: 'https://attacker.test' },
+    });
+    const cfgs = await loadTtsConfigs();
+    expect(Object.keys(cfgs)).toEqual(['elevenlabs']);
+    expect(isSupportedProvider('evil')).toBe(false);
+  });
+
+  it('sanitize 只留白名單欄位——竄改的 baseUrl 不會流進呼叫端', async () => {
+    store.settings.set(TTS_SETTINGS_KEY, {
+      elevenlabs: { enabled: true, apiKey: FAKE_KEY, baseUrl: 'https://attacker.test', origin: 'x' },
+    });
+    const cfg = (await loadTtsConfigs()).elevenlabs;
+    expect(cfg).not.toHaveProperty('baseUrl');
+    expect(cfg).not.toHaveProperty('origin');
+    expect(Object.keys(cfg).sort()).toEqual(['apiKey', 'connectedAt', 'enabled', 'lastValidatedAt', 'model']);
+  });
+});
+
+// ② ElevenLabs URL、method、headers、model 與語音參數正確
+describe('② 請求組裝', () => {
+  it('列表：官方 origin、GET、xi-api-key', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ voices: [] }) }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await listVoices('elevenlabs');
+    const [url, opts] = fetchSpy.mock.calls[0];
+    expect(url).toBe('https://api.elevenlabs.io/v1/voices');
+    expect(opts.method).toBe('GET');
+    expect(opts.headers['xi-api-key']).toBe(FAKE_KEY);
+  });
+
+  it('合成：POST 到 text-to-speech/<voiceId>，body 含 model 與夾在 0–1 的語音參數', async () => {
+    const fetchSpy = vi.fn(async () => audioResponse());
+    vi.stubGlobal('fetch', fetchSpy);
+    await synthesize({
+      provider: 'elevenlabs', voiceId: 'JBFqnCBsd6RMkjVDRZzb', text: '晚安。',
+      settings: { stability: 5, similarity: -3 },
+    });
+    const [url, opts] = fetchSpy.mock.calls[0];
+    expect(url).toBe('https://api.elevenlabs.io/v1/text-to-speech/JBFqnCBsd6RMkjVDRZzb');
+    expect(opts.method).toBe('POST');
+    const body = JSON.parse(opts.body);
+    expect(body.text).toBe('晚安。');
+    expect(body.model_id).toBe('eleven_flash_v2_5');
+    expect(body.voice_settings).toEqual({ stability: 1, similarity_boost: 0 }); // 越界被夾住
+  });
+
+  it('非法 model 退回預設，不讓任意字串進 body', async () => {
+    const fetchSpy = vi.fn(async () => audioResponse());
+    vi.stubGlobal('fetch', fetchSpy);
+    await synthesize({ provider: 'elevenlabs', voiceId: 'abc', text: 'x', model: '../../etc/passwd' });
+    expect(JSON.parse(fetchSpy.mock.calls[0][1].body).model_id).toBe('eleven_flash_v2_5');
+  });
+
+  it('供應商回傳的 voice 只取白名單欄位，非官方 previewUrl 丟棄', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200,
+      json: async () => ({ voices: [{
+        voice_id: 'v1', name: 'x'.repeat(500), category: 'premade',
+        preview_url: 'https://attacker.test/track.mp3', secret: 'leak',
+      }] }),
+    })));
+    const [v] = await listVoices('elevenlabs');
+    expect(v).toEqual({ voiceId: 'v1', name: 'x'.repeat(80), category: 'premade', previewUrl: '' });
+    expect(v).not.toHaveProperty('secret');
+  });
+});
+
+// ③ Key 缺失時不送出請求
+describe('③ 缺 Key', () => {
+  it('沒有 Key 時 listVoices／synthesize 都不發請求', async () => {
+    await clearAllTtsKeys();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(listVoices('elevenlabs')).rejects.toMatchObject({ code: 'tts_key_missing' });
+    await expect(synthesize({ provider: 'elevenlabs', voiceId: 'abc', text: 'x' }))
+      .rejects.toMatchObject({ code: 'tts_key_missing' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ④ Voice ID 空值、過長、URL、斜線與控制字元均被拒絕
+describe('④ Voice ID 驗證', () => {
+  it.each([
+    ['空字串', ''],
+    ['未定義', undefined],
+    ['過長', 'a'.repeat(65)],
+    ['含斜線', 'abc/def'],
+    ['路徑穿越', '../../v1/user'],
+    ['完整 URL', 'https://attacker.test/x'],
+    ['控制字元', 'abc\u0000def'],
+    ['換行', 'abc\ndef'],
+    ['空白', 'abc def'],
+  ])('拒絕 %s', (_label, id) => {
+    expect(isValidVoiceId(id)).toBe(false);
+  });
+
+  it('合法 ID 通過，且非法 ID 不會發出請求', async () => {
+    expect(isValidVoiceId('JBFqnCBsd6RMkjVDRZzb')).toBe(true);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(synthesize({ provider: 'elevenlabs', voiceId: 'a/b', text: 'x' }))
+      .rejects.toMatchObject({ code: 'tts_voice_invalid' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ⑤ timeout 會 abort；呼叫端取消也會 abort
+describe('⑤ 中斷', () => {
+  it('逾時轉成 tts_timeout', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('request_timeout'); }));
+    await expect(listVoices('elevenlabs')).rejects.toMatchObject({ code: 'tts_timeout' });
+  });
+
+  it('呼叫端 abort 保留 AbortError，讓 UI 分辨「使用者取消」與「失敗」', async () => {
+    const controller = new AbortController();
+    vi.stubGlobal('fetch', vi.fn(async (_u, o) => {
+      controller.abort();
+      const e = new Error('aborted'); e.name = 'AbortError';
+      expect(o.signal).toBeDefined();
+      throw e;
+    }));
+    await expect(listVoices('elevenlabs', { signal: controller.signal }))
+      .rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  // ⑪ 同一 AbortSignal 可正確取消列表與合成請求
+  it('⑪ 同一 signal 同時傳進列表與合成請求', async () => {
+    const controller = new AbortController();
+    const seen = [];
+    vi.stubGlobal('fetch', vi.fn(async (_u, o) => { seen.push(o.signal); return audioResponse(); }));
+    await synthesize({ provider: 'elevenlabs', voiceId: 'abc', text: 'x', signal: controller.signal });
+    vi.stubGlobal('fetch', vi.fn(async (_u, o) => {
+      seen.push(o.signal);
+      return { ok: true, status: 200, json: async () => ({ voices: [] }) };
+    }));
+    await listVoices('elevenlabs', { signal: controller.signal });
+    expect(seen).toHaveLength(2);
+    expect(seen.every(s => s && typeof s.aborted === 'boolean')).toBe(true);
+  });
+});
+
+// ⑥ 401／403／429／quota／timeout／離線錯誤轉為安全且可理解的錯誤碼
+describe('⑥ 錯誤分類', () => {
+  it.each([
+    [401, 'tts_key_invalid'],
+    [403, 'tts_forbidden'],
+    [429, 'tts_rate_limited'],
+    [402, 'tts_quota_exceeded'],
+    [422, 'tts_quota_exceeded'],
+    [500, 'tts_failed'],
+  ])('HTTP %i → %s', (status, code) => {
+    expect(errorFromStatus(status).code).toBe(code);
+  });
+
+  it('離線（TypeError: Failed to fetch）轉 tts_network', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    await expect(synthesize({ provider: 'elevenlabs', voiceId: 'abc', text: 'x' }))
+      .rejects.toMatchObject({ code: 'tts_network' });
+  });
+
+  it('錯誤不攜帶 response body、headers 或 URL', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false, status: 401,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ detail: { message: `key ${FAKE_KEY} rejected` } }),
+      text: async () => `key ${FAKE_KEY} rejected`,
+    })));
+    const err = await listVoices('elevenlabs').catch(e => e);
+    const dump = JSON.stringify({ ...err, message: err.message, stack: '' });
+    expect(dump).not.toContain(FAKE_KEY);
+    expect(dump).not.toContain('api.elevenlabs.io');
+    expect(err.code).toBe('tts_key_invalid');
+  });
+});
+
+// ⑦ 錯誤物件、console 與診斷 ring buffer 中不存在測試 Key
+describe('⑦ Key 不外流至錯誤與日誌', () => {
+  it('失敗路徑不呼叫 console 也不寫診斷', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false, status: 403, headers: { get: () => 'application/json' },
+      json: async () => ({ detail: FAKE_KEY }),
+    })));
+    await listVoices('elevenlabs').catch(() => {});
+    const printed = [...errSpy.mock.calls, ...logSpy.mock.calls].flat().join(' ');
+    expect(printed).not.toContain(FAKE_KEY);
+  });
+
+  it('遮罩後只剩尾四碼，短 Key 全遮', () => {
+    expect(maskApiKey(FAKE_KEY)).toBe('••••••••-key');
+    expect(maskApiKey(FAKE_KEY)).not.toContain('xi-demo');
+    expect(maskApiKey('short')).toBe('••••••••');
+    expect(maskApiKey('')).toBe('');
+  });
+});
+
+// ⑫ 不因網路錯誤以外的錯誤自動重試
+describe('⑫ 重試策略', () => {
+  it('網路錯誤最多重試一次（共 2 次請求）', async () => {
+    const fetchSpy = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    vi.stubGlobal('fetch', fetchSpy);
+    await listVoices('elevenlabs').catch(() => {});
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([401, 402, 403, 429])('HTTP %i 不重試（計費狀態不明時重試＝可能重複扣費）', async (status) => {
+    const fetchSpy = vi.fn(async () => ({ ok: false, status, headers: { get: () => '' } }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await synthesize({ provider: 'elevenlabs', voiceId: 'abc', text: 'x' }).catch(() => {});
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('逾時不重試', () => {
+    expect(isRetryable(new TtsError('tts_timeout'))).toBe(false);
+    expect(isRetryable(new TtsError('tts_network'))).toBe(true);
+  });
+
+  it('進行中的相同請求去重，連點只送一次', async () => {
+    let resolve;
+    const fetchSpy = vi.fn(() => new Promise(r => { resolve = () => r(audioResponse()); }));
+    vi.stubGlobal('fetch', fetchSpy);
+    const args = { provider: 'elevenlabs', voiceId: 'abc', text: '同一句' };
+    const a = synthesize(args); const b = synthesize(args);
+    // 註冊必須是同步的：這一行在任何 await 之前就要看到 1，否則連點會各送一次。
+    expect(pendingRequestCount()).toBe(1);
+    expect(b).toBe(a);
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    resolve();
+    await Promise.all([a, b]);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ⑩ 錯誤 MIME、偽造音訊簽章及超大回應被拒絕
+describe('⑩ 音訊回應防線', () => {
+  it('認得 MP3／WAV／OGG 的檔頭', () => {
+    expect(looksLikeAudio(MP3)).toBe(true);
+    expect(looksLikeAudio(new Uint8Array([0xff, 0xfb, 0x90, 0x00]))).toBe(true);
+    expect(looksLikeAudio(new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45]))).toBe(true);
+    expect(looksLikeAudio(new Uint8Array([0x4f, 0x67, 0x67, 0x53]))).toBe(true);
+  });
+
+  it('拒絕非音訊 MIME', async () => {
+    await expect(readAudioResponse(audioResponse(MP3, { mime: 'text/html' })))
+      .rejects.toMatchObject({ code: 'tts_response_not_audio' });
+    await expect(readAudioResponse(audioResponse(MP3, { mime: 'image/svg+xml' })))
+      .rejects.toMatchObject({ code: 'tts_response_not_audio' });
+  });
+
+  it('MIME 正確但內容偽造（HTML 冒充 mp3）一樣拒絕', async () => {
+    const html = new Uint8Array([0x3c, 0x21, 0x44, 0x4f, 0x43, 0x54, 0x59, 0x50, 0x45, 0x20, 0x68, 0x74]);
+    await expect(readAudioResponse(audioResponse(html)))
+      .rejects.toMatchObject({ code: 'tts_response_not_audio' });
+  });
+
+  it('Content-Length 宣告超限即拒絕，不下載內容', async () => {
+    await expect(readAudioResponse(audioResponse(MP3, { length: String(6 * 1024 * 1024) })))
+      .rejects.toMatchObject({ code: 'tts_response_too_large' });
+  });
+
+  it('Content-Length 說謊時以實際大小為準', async () => {
+    const big = new Uint8Array(5 * 1024 * 1024 + 10);
+    big.set(MP3.slice(0, 3));
+    await expect(readAudioResponse(audioResponse(big, { length: '10' })))
+      .rejects.toMatchObject({ code: 'tts_response_too_large' });
+  });
+
+  it('合法音訊回傳 Blob，audio/mp3 正規化為 audio/mpeg', async () => {
+    const blob = await readAudioResponse(audioResponse(MP3, { mime: 'audio/mp3' }));
+    expect(blob.type).toBe('audio/mpeg');
+    expect(blob.size).toBe(MP3.byteLength);
+  });
+});
+
+describe('文字長度上限', () => {
+  it('空白與超長都拒絕，不送出請求', async () => {
+    expect(() => assertText('   ')).toThrow(TtsError);
+    expect(() => assertText('a'.repeat(MAX_TTS_TEXT_CHARS + 1))).toThrow(TtsError);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(synthesize({ provider: 'elevenlabs', voiceId: 'abc', text: '' }))
+      .rejects.toMatchObject({ code: 'tts_text_empty' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('金鑰清除與連線測試', () => {
+  it('clearTtsKey 只清該服務商，設定內不再有 Key', async () => {
+    await clearTtsKey('elevenlabs');
+    expect(await loadTtsConfigs()).toEqual({});
+    expect(JSON.stringify(store.settings.get(TTS_SETTINGS_KEY))).not.toContain(FAKE_KEY);
+  });
+
+  it('連線測試成功後記下 lastValidatedAt', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ voices: [] }) })));
+    await testConnection('elevenlabs');
+    expect((await loadTtsConfigs()).elevenlabs.lastValidatedAt).toBeGreaterThan(0);
+  });
+});

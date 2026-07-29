@@ -575,7 +575,7 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
   const system = [{ text: systemStable, cache: true }];
   if (systemVolatile) system.push({ text: systemVolatile });
 
-  const { fullText, truncated: rawTruncated } = await callLLM({
+  const { fullText, truncated: rawTruncated, emptyReason } = await callLLM({
     provider, model, base, apiKey,
     system,
     messages: history,
@@ -606,7 +606,9 @@ export async function generateAIResponseStream(charId, allMsgs, { onChunk }, ima
     }
     if (c.heartVoice) generateHeartVoice(c, allMsgs, fullText).catch(() => {});
   }
-  return { msgs, truncated, refused };
+  // emptyReason 交還 UI 講出真正原因（P133）。落庫後才有意義：msgs 為空但 fullText 有內容
+  // 時（例如整段被判定為拒絕）不是空回應，不該掛上供應商的 finish 原因。
+  return { msgs, truncated, refused, emptyReason: fullText?.trim() ? undefined : emptyReason };
 }
 
 // ── 主動訊息共用工具 ───────────────────────────────────────────────────────
@@ -1395,7 +1397,9 @@ function threadLine(t) {
 const THREAD_OPS_SCHEMA = [
   '【欄位名稱】只能用下列鍵，不得自創或改寫（拼錯即整個欄位失效）：',
   '  op / id / title / detail / eventDate / eventTime / matchKeywords / kind / owner / result',
-  '  · title：事件標題，簡短一句',
+  // 標題直接顯示在使用者的待續清單上，寫成「跟對方吃飯」會把 prompt 內部對使用者的
+  // 稱呼漏到畫面上（實機：「8/5跟對方吃飯」）。只描述事情本身即可，人稱一律省略。
+  '  · title：事件標題，簡短一句，只描述事情本身；不要加入人稱（不可寫「跟對方」「和使用者」「跟他」「幫我」），例如寫「一起吃飯」而不是「跟對方吃飯」',
   '  · eventDate：字串 "YYYY-MM-DD" 或 null。鍵名就是 eventDate，不可寫成 date、event_date、日期',
   '  · eventTime：字串 "HH:MM" 或 null（沒有明確時間就 null）',
   '  · kind：event／promise／open_question 其一；owner：user／shared 其一（不確定就省略）',
