@@ -5,7 +5,6 @@ import ChatRoomView from '../views/ChatRoomView.vue';
 import MomentsView from '../views/MomentsView.vue';
 import DiaryView from '../views/DiaryView.vue';
 import SettingsView from '../views/SettingsView.vue';
-import VoiceSettingsView from '../views/VoiceSettingsView.vue';
 import ApiView from '../views/ApiView.vue';
 import LockView from '../views/LockView.vue';
 import OnboardingView from '../views/OnboardingView.vue';
@@ -27,13 +26,20 @@ import WorldEditView from '../views/WorldEditView.vue';
 import RelationView from '../views/RelationView.vue';
 import TogetherView from '../views/TogetherView.vue';
 import MemoriesView from '../views/MemoriesView.vue';
+// 角色語音尚未完成（批次 C／D 未施工），正式版建置關閉旗標時整條路由不註冊。
+// 條件直接寫 define 的全域 __VOICE_ENABLED__（不透過 featureFlags.js 匯出的 const）——
+// 實測 Rollup 不跨模組摺疊，包一層就會讓 VoiceSettingsView 的 chunk 照樣產出。
+/* global __VOICE_ENABLED__ */
+const voiceRoutes = __VOICE_ENABLED__
+  ? [{ path: '/voice', name: 'voice', component: () => import('../views/VoiceSettingsView.vue') }]
+  : [];
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/', name: 'home', component: HomeView },
     { path: '/api', name: 'api', component: ApiView },
-    { path: '/voice', name: 'voice', component: VoiceSettingsView },
+    ...voiceRoutes,
     { path: '/lock', name: 'lock', component: LockView },
     { path: '/onboarding', name: 'onboarding', component: OnboardingView },
     { path: '/chat-list', name: 'chat-list', component: ChatListView },
