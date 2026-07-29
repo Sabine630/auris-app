@@ -133,10 +133,15 @@ const EMPTY_REASONS = new Set([
   'no_candidates', 'no_parts', 'no_chunks', 'other', 'unknown',
 ]);
 
+// 同一件事各家名稱不同，先收斂成同義詞再查 allowlist（OpenAI 的 length ＝ 被
+// max_tokens 切斷；Gemini 的 PROHIBITED_CONTENT 與 OpenAI 的 content_filter 同義）。
+const REASON_ALIASES = { length: 'max_tokens', model_length: 'max_tokens' };
+
 export function normalizeEmptyReason(raw) {
   const key = String(raw ?? '').trim().toLowerCase();
   if (!key) return 'unknown';
-  return EMPTY_REASONS.has(key) ? key : 'other';
+  const canonical = REASON_ALIASES[key] || key;
+  return EMPTY_REASONS.has(canonical) ? canonical : 'other';
 }
 
 // HTTP 錯誤一律帶上狀態碼。供應商的 error.message 多半不含 "HTTP 503" 字樣
@@ -219,15 +224,21 @@ export async function callLLM(opts) {
     // 空回應（HTTP 200 但沒有任何可用文字）在 P133 之前完全不留痕跡：不拋錯 → 進不了
     // 下面的 catch，使用者只看到一句寫死的代理提示，匯出檔裡什麼都沒有。這裡補記原因，
     // 讓「思考佔滿額度／被安全設定擋／被判定為複述」下次一眼可辨。只記枚舉，不記內容。
+    // 正規化一次、log 與回傳共用。**回傳值也必須是正規化過的**——各家的原始值大小寫
+    // 不一（Vertex 回 'MAX_TOKENS'、OpenAI 回 'length'），UI 端以此值查文案表，
+    // 直接回傳原始值會查不到而退回代理提示，等於整個原因驅動的文案沒生效。
+    // 附帶效果：值必為 allowlist 內的枚舉，呼叫端拿它查表不會撞到 Object 原型上的鍵。
     if (!fullText || !fullText.trim()) {
+      const emptyReason = normalizeEmptyReason(result?.emptyReason);
       logError('llm', 'empty_response', {
         code: 'empty_response',
         provider: opts.provider,
         model: opts.model,
-        reason: normalizeEmptyReason(result?.emptyReason),
+        reason: emptyReason,
       });
+      return { ...result, fullText, emptyReason };
     }
-    return { ...result, fullText };
+    return { ...result, fullText, emptyReason: undefined };
   } catch (e) {
     if (e?.name !== 'AbortError') {
       logError('llm', e, { provider: opts.provider, model: opts.model, status: e?.status });

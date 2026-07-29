@@ -123,6 +123,26 @@ describe('Vertex 空回應歸因', () => {
     expect(reasonOf()).toBe('other');
   });
 
+  // 迴歸：callLLM 原本只在寫 log 時正規化，**回傳值仍是供應商原始字串**。Vertex 回
+  // 'MAX_TOKENS'（大寫），UI 的文案表以小寫鍵查詢 → 查不到 → 退回 P60 的代理提示，
+  // 原因驅動的文案等於沒生效。回傳值必須與 log 用的是同一個正規化結果。
+  it('回傳的 emptyReason 已正規化（不是供應商原始大寫字串）', async () => {
+    mockVertex({ candidates: [{ finishReason: 'MAX_TOKENS' }] });
+    expect((await call()).emptyReason).toBe('max_tokens');
+  });
+
+  it('回傳值與 logError 記錄的是同一個值', async () => {
+    mockVertex({ candidates: [{ finishReason: 'RECITATION' }] });
+    const { emptyReason } = await call();
+    expect(emptyReason).toBe('recitation');
+    expect(emptyReason).toBe(logError.mock.calls.at(-1)[2].reason);
+  });
+
+  it('有內容時 emptyReason 為 undefined', async () => {
+    mockVertex(candidate([{ text: '有回覆' }]));
+    expect((await call()).emptyReason).toBeUndefined();
+  });
+
   it('有內容時不記空回應', async () => {
     mockVertex(candidate([{ text: '有回覆' }]));
     await call();
@@ -156,5 +176,36 @@ describe('Vertex HTTP 錯誤帶狀態碼', () => {
     mockVertex({ error: { message: 'quota exhausted' } }, { ok: false, status: 429 });
     await expect(call({ stream: true, onChunk: () => {} })).rejects.toThrow(/quota/);
     expect(logError.mock.calls.at(-1)[2].status).toBe(429);
+  });
+});
+
+describe('跨供應商原因別名', () => {
+  beforeEach(() => { logError.mockClear(); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  // OpenAI 相容的 finish_reason='length' 與 Gemini 的 MAX_TOKENS 是同一件事，
+  // 不收斂的話會落到 other，UI 只能給無方向的通用文案。
+  it("OpenAI 的 length 收斂成 max_tokens", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200,
+      json: async () => ({ choices: [{ message: { content: '' }, finish_reason: 'length' }] }),
+    })));
+    const { emptyReason } = await callLLM({
+      provider: 'openai', model: 'gpt-x', base: 'https://example.test', apiKey: 'sk-demo-t',
+      system: 'x', messages: [{ role: 'user', content: 'y' }], stream: false,
+    });
+    expect(emptyReason).toBe('max_tokens');
+  });
+
+  it('Anthropic 的 stop_reason 同樣正規化', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200,
+      json: async () => ({ content: [], stop_reason: 'max_tokens' }),
+    })));
+    const { emptyReason } = await callLLM({
+      provider: 'anthropic', model: 'claude-x', base: 'https://example.test', apiKey: 'sk-demo-t',
+      system: 'x', messages: [{ role: 'user', content: 'y' }], stream: false,
+    });
+    expect(emptyReason).toBe('max_tokens');
   });
 });
