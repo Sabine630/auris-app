@@ -42,6 +42,23 @@ function safeLabel(value, fallback = '?', max = 80) {
   return cleaned || fallback;
 }
 
+// 供應商錯誤代碼（pcode，P134 第三批）專用清洗——刻意不共用 safeLabel：
+// 1) safeLabel 的白名單 [A-Za-z0-9._:/-] 沒有底線，會把 model_not_found 洗成
+//    modelnotfound，可讀性全失（供應商代碼慣用 snake_case／SCREAMING_CASE）。
+// 2) 這裡的欄位是第一個「開放值」欄位（其餘診斷欄位一律封閉 allowlist），必須自己
+//    的形狀過濾更嚴：不得含空白、只准 code 常見字元、長度上限、金鑰特徵值照擋。
+// 「不得含空白」刻意獨立於字元白名單之外先判——供應商代碼是機器可讀 token，本來
+// 就不該有空白；直接拒絕整個值，不要讓白名單「安靜地」把空白濾掉、變成看似合法
+// 但其實是自由文字片段（例如呼叫端不小心把 error.message 當代碼傳進來）的字串。
+export function sanitizeCode(value, max = 64) {
+  const str = String(value ?? '');
+  if (!str || /\s/.test(str)) return null;            // 1. 不得含任何空白字元
+  if (!/^[A-Za-z0-9_.\-/]+$/.test(str)) return null;   // 2. 僅允許 code 字元集（中文一個字都通不過）
+  if (str.length < 1 || str.length > max) return null; // 3. 長度 1–64
+  if (SECRETISH_TEST_RE.test(str)) return null;         // 4. 金鑰特徵值一律擋
+  return str;
+}
+
 // trusted-local 訊息的淨化管線。順序固定：
 // 1. 先「刪除」控制字元（不是換成空白——被換行等控制字元切開的金鑰片段會
 //    因此重新黏合，才能被下一步遮蔽；換成空白會讓拆開的片段避開偵測門檻）
@@ -81,8 +98,11 @@ function parseStatus(raw, metaStatus) {
 }
 
 // 記一筆錯誤（逐筆蓋當時版號）。診斷用途，自身絕不能再拋錯。
-// meta：{ code, status, provider, model, location, policy }。
+// meta：{ code, status, provider, model, location, policy, pcode }。
 // policy 只接受 'trusted-local'（由受控 call site 明確指定）；其餘一律 strict。
+// pcode（P134 三批）：供應商錯誤代碼（如 Google 的 NOT_FOUND、OpenAI 的
+// model_not_found），由 llm.js 對錯誤物件做鍵名掃描擷取。寫入前必經 sanitizeCode——
+// 這是第一個開放值欄位，不能相信呼叫端已經清過。
 export function logError(src, error, meta = {}) {
   try {
     const raw = error instanceof Error ? `${error.name}: ${error.message}` : String(error ?? '');
@@ -99,6 +119,10 @@ export function logError(src, error, meta = {}) {
     if (meta.provider != null) entry.provider = safeLabel(meta.provider);
     if (meta.model != null) entry.model = safeLabel(meta.model);
     if (meta.location) entry.location = safeLocation(meta.location);
+    if (meta.pcode != null) {
+      const cleanedPcode = sanitizeCode(meta.pcode);
+      if (cleanedPcode) entry.pcode = cleanedPcode;
+    }
     if (meta.policy === 'trusted-local') {
       const cleaned = sanitizeLocalMessage(raw);
       if (cleaned) entry.localMessage = cleaned;
@@ -141,6 +165,10 @@ export function getErrors() {
           const cleaned = sanitizeLocalMessage(item.localMessage);
           if (cleaned) base.localMessage = cleaned;
         }
+        if (typeof item.pcode === 'string') {
+          const cleanedPcode = sanitizeCode(item.pcode);
+          if (cleanedPcode) base.pcode = cleanedPcode;
+        }
         return base;
       }
       // 舊版（schema 1，msg 為任意字串，可能含第三方原文）：只重分類，不保留原文
@@ -174,6 +202,8 @@ export function formatDiagError(entry) {
   if (!hasStatus || code !== 'http_error') parts.push(code);
   const reason = SAFE_REASONS.has(entry.reason) ? entry.reason : '';
   if (reason) parts.push(`reason=${reason}`);
+  const pcode = typeof entry.pcode === 'string' ? sanitizeCode(entry.pcode) : '';
+  if (pcode) parts.push(`pcode=${pcode}`);
   if (loc) parts.push(`at ${loc}`);
   let line = parts.join(' | ');
   if (entry.localMessage != null) {

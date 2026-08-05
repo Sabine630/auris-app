@@ -6,7 +6,7 @@ import { getSetting } from './db.js';
 import { fetchWithTimeout, getVertexToken, getDefModel, isReasoningModel } from './api.js';
 import { isDemo } from './demoMode.js';
 import { demoReply } from './demoData.js';
-import { logError } from './diag.js';
+import { logError, sanitizeCode } from './diag.js';
 import { createThinkingStreamFilter, stripThinking } from './thinkingFilter.js';
 
 const VERTEX_REGION = 'us-central1';
@@ -144,13 +144,71 @@ export function normalizeEmptyReason(raw) {
   return EMPTY_REASONS.has(canonical) ? canonical : 'other';
 }
 
+// ── 供應商錯誤代碼擷取（pcode，P134 第三批）─────────────────────────────────
+// HTTP 404／429 各自可能是好幾種原因（模型不存在 vs 網址錯；速率上限 vs 配額用完），
+// 但這件事只有供應商自己的錯誤代碼欄位答得出來，各家鍵名不同（Google error.status、
+// OpenAI error.type／error.code、Anthropic error.type）。刻意不寫死路徑——結構猜錯
+// 就整個抓不到，改用鍵名優先序＋深度受限（≤4 層）掃描解析後的錯誤物件，鍵名對得上
+// 就用，不管它在物件裡的哪個位置。**絕對不讀 error.message**（自由文字欄位，使用者
+// 對話片段可能被供應商原樣夾帶回來）——這裡的候選鍵名清單裡完全沒有 message，
+// 結構上就保證讀不到它。
+// 優先序：code 必須排在 type 之前。OpenAI 的錯誤同時有 type（籠統的分類桶，如
+// invalid_request_error）與 code（具體原因，如 model_not_found／insufficient_quota），
+// 而「具體原因」才是這個欄位存在的意義——籠統值答不出「404 是模型還是網址」。
+// 其餘 provider 不受影響：Google 由 status 先命中（其 code 是數字 404，本來就會跳過），
+// Anthropic 沒有 code 欄位、仍會落到 type。
+const PCODE_MAIN_KEYS = ['status', 'code', 'type', 'reason', 'errorType'];
+const PCODE_QUOTA_KEYS = ['quotaId', 'quotaMetric', 'quota_metric', 'metric'];
+const PCODE_MAX_DEPTH = 4;
+
+// 蒐集 errObj 底下所有「鍵名＋值」，depth 從 1（errObj 自身的鍵）起算，最深到
+// PCODE_MAX_DEPTH。只走物件（陣列也是 typeof 'object'，一併掃，Google 的配額細節
+// 常包在 details 陣列裡）。
+function collectPcodeCandidates(node, depth, out) {
+  if (!node || typeof node !== 'object' || depth > PCODE_MAX_DEPTH) return;
+  for (const [key, value] of Object.entries(node)) {
+    out.push({ key, value });
+    if (value && typeof value === 'object') collectPcodeCandidates(value, depth + 1, out);
+  }
+}
+
+// 依鍵名優先序找第一個「字串值、且通過 sanitizeCode」的候選——數字一律跳過
+// （Google 的 error.code 是 HTTP 狀態碼數字 404，error.status 才是 NOT_FOUND；
+// 收到數字就代表抓錯欄位，不能把 404 當代碼記進去）。同一個鍵名若有多個符合的
+// 節點，取掃描順序中第一個通過清洗的；該鍵名完全沒有可用值才換下一個鍵名。
+function findPcode(candidates, keyNames) {
+  for (const name of keyNames) {
+    for (const { key, value } of candidates) {
+      if (key !== name || typeof value !== 'string') continue;
+      const cleaned = sanitizeCode(value);
+      if (cleaned) return cleaned;
+    }
+  }
+  return null;
+}
+
+// errObj：httpError 呼叫端已經剝出來的錯誤子物件（各 provider 分支既有的
+// data.error／e.error 等）。抓不到就回 undefined，呼叫端不帶這個欄位。
+function extractPcode(errObj) {
+  if (!errObj || typeof errObj !== 'object') return undefined;
+  const candidates = [];
+  collectPcodeCandidates(errObj, 1, candidates);
+  const main = findPcode(candidates, PCODE_MAIN_KEYS);
+  if (!main) return undefined;
+  const quota = findPcode(candidates, PCODE_QUOTA_KEYS);
+  return quota ? `${main}/${quota}` : main;
+}
+
 // HTTP 錯誤一律帶上狀態碼。供應商的 error.message 多半不含 "HTTP 503" 字樣
 // （例：「The model is overloaded. Please try again later.」），diag 的 parseStatus
 // 就抓不到、classifyCode 只好塌成 runtime_error——上游超載／認證失敗／配額不足
 // 在匯出檔裡長得一模一樣。狀態碼改用例外欄位傳遞，不依賴訊息字串。
-function httpError(message, status) {
+// errObj（選填）：供應商回傳的錯誤子物件，用來擷取 pcode；不傳就不帶 pcode。
+function httpError(message, status, errObj) {
   const err = new Error(message || `HTTP ${status}`);
   err.status = status;
+  const pcode = extractPcode(errObj);
+  if (pcode) err.pcode = pcode;
   return err;
 }
 
@@ -241,7 +299,7 @@ export async function callLLM(opts) {
     return { ...result, fullText, emptyReason: undefined };
   } catch (e) {
     if (e?.name !== 'AbortError') {
-      logError('llm', e, { provider: opts.provider, model: opts.model, status: e?.status });
+      logError('llm', e, { provider: opts.provider, model: opts.model, status: e?.status, pcode: e?.pcode });
     }
     throw e;
   }
@@ -301,7 +359,7 @@ async function callLLMInner({
     }, 90000);
 
     if (stream) {
-      if (!r.ok) { const e = await r.json().catch(() => ({})); throw httpError(e.error?.message, r.status); }
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw httpError(e.error?.message, r.status, e.error); }
       onStart?.();
       const data = await r.json();
       const { text, ...rest } = readVertexCandidate(data);
@@ -309,7 +367,7 @@ async function callLLMInner({
       return { fullText: text, ...rest };
     }
     const data = await r.json();
-    if (!r.ok || data.error) throw httpError(data.error?.message || JSON.stringify(data.error), r.status);
+    if (!r.ok || data.error) throw httpError(data.error?.message || JSON.stringify(data.error), r.status, data.error);
     const { text, ...rest } = readVertexCandidate(data);
     return { fullText: text, ...rest };
   }
@@ -333,7 +391,7 @@ async function callLLMInner({
     }, 90000);
 
     if (stream) {
-      if (!r.ok) { const e = await r.json().catch(() => ({})); throw httpError(e.error?.message, r.status); }
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw httpError(e.error?.message, r.status, e.error); }
       onStart?.();
       let fullText = '';
       const { truncated } = await parseSSEStream(r, 'anthropic', (t) => { fullText += t; onChunk?.(t); });
@@ -341,7 +399,7 @@ async function callLLMInner({
     }
     const data = await r.json();
     const errObj = Array.isArray(data) ? data[0]?.error : data.error;
-    if (!r.ok || errObj) throw httpError(errObj?.message || JSON.stringify(errObj), r.status);
+    if (!r.ok || errObj) throw httpError(errObj?.message || JSON.stringify(errObj), r.status, errObj);
     const text = anthropicText(data.content);
     return {
       fullText: text,
@@ -368,7 +426,7 @@ async function callLLMInner({
   }, 90000);
 
   if (stream) {
-    if (!r.ok) { const d = await r.json().catch(() => ({})); throw httpError(d.error?.message, r.status); }
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw httpError(d.error?.message, r.status, d.error); }
     onStart?.();
     let fullText = '';
     const { truncated } = await parseSSEStream(r, 'openai', (t) => { fullText += t; onChunk?.(t); });
@@ -378,7 +436,7 @@ async function callLLMInner({
   }
   const data = await r.json();
   const errObj = Array.isArray(data) ? data[0]?.error : data.error;
-  if (!r.ok || errObj) throw httpError(errObj?.message || JSON.stringify(errObj), r.status);
+  if (!r.ok || errObj) throw httpError(errObj?.message || JSON.stringify(errObj), r.status, errObj);
   // 非串流也要看 finish_reason——P94 只在 SSE 路徑偵測截斷，非串流永遠回 false，
   // 心聲等背景生成被 max_tokens 硬切時呼叫端無從得知、殘句照存。
   const fr = data.choices?.[0]?.finish_reason;

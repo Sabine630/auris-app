@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-07-29（P133）
+> 最後更新：2026-08-05（P134）
 
 ---
 
@@ -545,6 +545,19 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P134（2026-08-05）繁體正規化誤傷專有名詞、404 錯誤歸因、供應商錯誤代碼
+
+- **新增 `services/zhPhraseBlocklist.js`**：`normalizeCharacterOutput` 跑的 OpenCC `twp` 是**詞組級**替換，`TWPhrases` 詞表裡混了一批「短音譯碎片」條目（`格拉斯→葛拉斯`、`布爾→布林`…），碎片本身很短，只要它是某個更長專有名詞的一部分就會在該名字內部誤觸發，把本來就正確的繁體名字改壞。實測 15 個名字有 14 個中招。此模組匯出 `DROP_SOURCES`（9 條）與 `filterPhraseDict(toTwp)`，`zhTwWorker.js` 與 `outputLanguage.js` 的 `convertOnMainThread` 共用同一份規則。**只走 `opencc-js/to/twp` 公開匯出**（不 import 套件內部 `dist/esm-lib/dict/*`，避免升版即壞），且結構不符預期時原樣回傳未濾字典——最壞情況等於改版前，不讓轉換掛掉或吐空字典。
+  - 否決過的兩案（記錄以免重蹈）：改用字級 `tw` 會讓「網絡／信息／軟件」等中國用語留著不轉；「先 `tw`、無變化就略過」的兩段式在「模型寫繁體字＋中國詞彙」時整段略過，同樣漏掉。
+  - `肖邦→蕭邦` 等正確譯名刻意保留，不隨碎片一起砍。
+- **新增 `services/connectionError.js`**：`ApiView.testApi` 原本把所有 404 說成「自訂網址錯了」，但 Google 的 OpenAI 相容端點在模型不存在時同樣回 404 且訊息含 `not found`，使用者被指去改一個正確的網址。改為純函式 `describeConnectionFailure({ status, raw, data, modelId, baseKind })`，只依三個本地訊號分流（回應是否為 JSON／錯誤訊息有無回述我方 `modelId`／網址由誰決定），不猜供應商措辭。判斷順序與改版前一致（401→429→404→403）。
+  - `baseKind` 為三態而非 boolean：`'custom'`／`'default'`／`'app-built'`。Vertex 的網址由程式自組且嵌有 `project_id`，404 可能是專案問題而非模型問題，硬套 boolean 會把有用的供應商訊息換成誤導的「找不到模型」——`app-built` 在訊息沒點名模型時原樣回傳原始訊息。
+  - `ApiView.vue` 只改兩處失敗分支，**成功路徑（`res.ok && looksLikeChatResponse`）一字未動**。
+- **`llm.js` 新增 `extractPcode()`**：對解析後的錯誤子物件做深度受限（≤4 層）的鍵名掃描，主代碼優先序 `status → code → type → reason → errorType`。**`code` 必須排在 `type` 之前**——OpenAI 的 `type` 是籠統分類桶（`invalid_request_error`），`code` 才是具體原因（`model_not_found`），取到籠統值就答不出「404 是模型還是網址」。只接受字串值（Google 的 `error.code` 是數字 404，`error.status` 才是 `NOT_FOUND`）。`httpError(message, status, errObj)` 多帶第三參數，6 個呼叫點同步。
+- **`diag.js` 新增 `sanitizeCode()` 與 `pcode` 欄位**：`pcode` 是診斷的**第一個開放值欄位**（其餘皆封閉 allowlist），故採形狀過濾四道——不得含任何空白（自由文字必含空白，這道獨立於白名單先判，避免空白被安靜濾掉而讓自由文字片段偽裝成合法 token）→ 僅 `[A-Za-z0-9_.\-/]`（中文一字不通過，而本 app 使用者內容幾乎全中文）→ 長度 1–64 → 金鑰特徵擋。**刻意不共用 `safeLabel`**：其白名單 `[A-Za-z0-9._:/-]` 沒有底線，會把 `model_not_found` 洗成 `modelnotfound`。`pcode` 於寫入（`logError`）、讀出（`getErrors`）、輸出（`formatDiagError`）三層各清洗一次。**候選鍵名清單裡結構性地沒有 `message`**，讀不到自由文字欄位。
+- **`Auris 維運速查.md` 新增第五節**：「使用者回報的常見處理」，首個條目為名字被改壞——症狀、成因、怎麼確認是我們改的（串流當下正確、落庫後才變）、以及修法「在 `zhPhraseBlocklist.js` 加一個來源詞＋補一條測試，不必動任何轉換邏輯」。檔頭範圍說明一併放寬。
+- 全套 Vitest 702 通過（新增 85 項）。繁體那項另以真實 OpenCC 字典端到端驗證。**已知限制**：碎片清單只涵蓋已知 9 條，是降低發生率而非根治。
 
 ### P133（2026-07-29）Vertex 空回應歸因與診斷補強
 

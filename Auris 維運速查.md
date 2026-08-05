@@ -1,6 +1,6 @@
 # 🛠️ Auris 維運速查（給 Sabine 的備忘）
 
-> 開發系統（hooks／skills／CI 資安防線）的「怎麼觸發」與「怎麼查核」。
+> 開發系統（hooks／skills／CI 資安防線）的「怎麼觸發」與「怎麼查核」，以及這類 app 維護處方（使用者回報怎麼確認是我們改的、怎麼修）。
 > 系統本體：共用 hooks 在 `scripts/hooks/`；Claude/Codex 分別由 `.claude/settings.json`、`.codex/hooks.json` 掛載；skills 在 `.claude/skills/`、`.agents/skills/`；CI 在 `.github/workflows/ci.yml`。
 > 建立：2026-07-05～07-11（P105 前後）。
 
@@ -57,3 +57,14 @@
 - [x] **Actions 釘 commit SHA**：✅ 2026-07-18——ci.yml／deploy.yml 的第三方 action 全數改釘 commit SHA（防 tag 被改指的供應鏈攻擊），註解保留版號，Dependabot 自動滾動更新。
 
 三項皆完成；此節保留作為「已開防線與查核方式」備忘。尚未做：lint／coverage gate、正式 E2E 測試套件（見 ROADMAP）。
+
+---
+
+## 五、使用者回報的常見處理
+
+### 角色回覆把人名／地名改成別的寫法（例：格林格拉斯→格林葛拉斯）
+
+- **症狀**：使用者在對話裡打的專有名詞（人名、地名）是對的，但角色回覆存進聊天後，某幾個字被換成別的寫法，看起來像模型自己打錯字。
+- **成因**：`normalizeCharacterOutput`（`auris-vue/src/services/outputLanguage.js`）落庫前會跑 OpenCC 的 `twp`（台灣詞彙）轉換，把供應商偶爾吐出的簡體／中國用語轉成台灣繁體與慣用詞。但 `twp` 的 `TWPhrases` 詞表裡混了一批「短音譯碎片」條目（例：格拉斯→葛拉斯、布爾→布林），只要碎片剛好是某個更長專有名詞的一部分，就會在該名字內部誤觸發，把本來就正確的繁體名字改壞。
+- **怎麼確認是我們改的、不是模型打錯**：串流當下畫面顯示的是正確寫法，**落庫後才變**——正規化是在 `persistReplySegments` 呼叫 `normalizeCharacterOutput` 那一步才跑，時間點在生成完成之後。可用診斷匯出或重現對話比對「串流當下」與「重新整理後」的文字是否一致來確認。
+- **怎麼修**：打開 `auris-vue/src/services/zhPhraseBlocklist.js`，把被改壞的詞條「來源詞」（`TWPhrases` 裡「來源 目標」那一行的來源那半）加進 `DROP_SOURCES` 集合，例如使用者打「肯特」卻被改成別的寫法，就把 `'肯特'` 加進去。再到 `auris-vue/src/services/__tests__/outputLanguage.test.js` 的「twp 詞表碎片誤觸發的迴歸鎖」補一條該名字的斷言。**只需要加一個詞、補一條測試，不必動任何轉換邏輯**（`zhTwWorker.js`、`outputLanguage.js` 的呼叫端都已經接好 `filterPhraseDict`）。

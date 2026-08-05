@@ -293,6 +293,92 @@ describe('空回應歸因欄位（P133）', () => {
   });
 });
 
+// P134 第三批：供應商錯誤代碼（pcode）——第一個開放值欄位，四道形狀過濾全要顧到。
+describe('供應商錯誤代碼欄位 pcode（P134 三批）', () => {
+  it('合法代碼（含底線）正常保存與輸出，位置在 reason 之後', () => {
+    logError('llm', new Error('boom'), {
+      provider: 'google', model: 'gemini-3.5-flash', status: 404, pcode: 'NOT_FOUND',
+    });
+    const [entry] = getErrors();
+    expect(entry.pcode).toBe('NOT_FOUND');
+    expect(formatDiagError(entry)).toBe('google/gemini-3.5-flash | HTTP 404 | pcode=NOT_FOUND');
+  });
+
+  it('底線保留可讀性（safeLabel 白名單沒有底線，pcode 不能共用它）', () => {
+    logError('llm', new Error('boom'), { provider: 'openai', model: 'gpt-x', status: 404, pcode: 'model_not_found' });
+    expect(getErrors()[0].pcode).toBe('model_not_found');
+  });
+
+  it('pcode 兩段（主代碼／配額識別）以斜線相接，字元集允許斜線', () => {
+    logError('llm', new Error('boom'), { provider: 'google', model: 'g', status: 429, pcode: 'RESOURCE_EXHAUSTED/gemini-pro-requests' });
+    expect(getErrors()[0].pcode).toBe('RESOURCE_EXHAUSTED/gemini-pro-requests');
+  });
+
+  it('含空白的值整段丟棄（不是安靜濾掉空白後續用）', () => {
+    logError('llm', new Error('boom'), { provider: 'openai', model: 'x', pcode: 'model not found' });
+    expect(getErrors()[0].pcode).toBeUndefined();
+  });
+
+  it('含中文的值整段丟棄', () => {
+    logError('llm', new Error('boom'), { provider: 'openai', model: 'x', pcode: '找不到模型' });
+    expect(getErrors()[0].pcode).toBeUndefined();
+  });
+
+  it('超過 64 字元丟棄', () => {
+    logError('llm', new Error('boom'), { provider: 'openai', model: 'x', pcode: 'a'.repeat(65) });
+    expect(getErrors()[0].pcode).toBeUndefined();
+  });
+
+  it('64 字元剛好放行（邊界）', () => {
+    logError('llm', new Error('boom'), { provider: 'openai', model: 'x', pcode: 'a'.repeat(64) });
+    expect(getErrors()[0].pcode).toBe('a'.repeat(64));
+  });
+
+  it('金鑰特徵值一律擋（即使字元集合法）', () => {
+    const fakeKey = 'sk-' + 'A'.repeat(24);
+    logError('llm', new Error('boom'), { provider: 'openai', model: 'x', pcode: fakeKey });
+    expect(getErrors()[0].pcode).toBeUndefined();
+  });
+
+  it('getErrors 對被竄改的 pcode（含空白）讀出時再擋一次', () => {
+    store.set('auris_diag_errors', JSON.stringify([{
+      schema: 2, t: '2026-07-15T00:00:00.000Z', v: 'P114', src: 'llm',
+      code: 'http_error', pcode: 'evil injected value',
+    }]));
+    expect(getErrors()[0].pcode).toBeUndefined();
+  });
+
+  it('getErrors 對被竄改的 pcode（含中文）讀出時再擋一次', () => {
+    store.set('auris_diag_errors', JSON.stringify([{
+      schema: 2, t: '2026-07-15T00:00:00.000Z', v: 'P114', src: 'llm',
+      code: 'http_error', pcode: '私人對話內容',
+    }]));
+    const [entry] = getErrors();
+    expect(entry.pcode).toBeUndefined();
+    expect(JSON.stringify(getErrors())).not.toContain('私人對話');
+  });
+
+  it('getErrors 對合法竄改資料的 pcode 正常放行', () => {
+    store.set('auris_diag_errors', JSON.stringify([{
+      schema: 2, t: '2026-07-15T00:00:00.000Z', v: 'P114', src: 'llm',
+      code: 'http_error', pcode: 'RATE_LIMIT_EXCEEDED',
+    }]));
+    expect(getErrors()[0].pcode).toBe('RATE_LIMIT_EXCEEDED');
+  });
+
+  it('formatDiagError 直接餵未清理物件：pcode 同樣重新過濾', () => {
+    const line = formatDiagError({ code: 'http_error', status: 404, pcode: '找不到模型 model not found' });
+    expect(line).not.toContain('pcode=');
+  });
+
+  it('沒有 pcode 時 entry 不含該欄位，也不影響其他輸出', () => {
+    logError('llm', new Error('boom'), { provider: 'openai', model: 'x', status: 500 });
+    const [entry] = getErrors();
+    expect(entry.pcode).toBeUndefined();
+    expect(formatDiagError(entry)).toBe('openai/x | HTTP 500');
+  });
+});
+
 describe('exportDiag — 匯出內容去敏', () => {
   it('匯出含錯誤行且不含第三方原文；settings 值過 safeLabel', async () => {
     // node 環境補瀏覽器全域（exportDiag 直接讀 window/navigator；node 的 navigator
