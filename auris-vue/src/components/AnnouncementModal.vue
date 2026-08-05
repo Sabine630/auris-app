@@ -5,54 +5,31 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P132 更新公告</div>
+      <div class="ann-badge">P134 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
           <div class="ann-page" :key="page">
 
-            <!-- 第一頁：新功能 -->
+            <!-- 第一頁：修復與改善（P133–P134 全是修復，沒有新功能） -->
             <template v-if="page === 0">
-              <div class="ann-title">新功能</div>
-              <div class="ann-items">
-                <div class="ann-item">
-                  <div class="ann-item-title">待續的事 📌</div>
-                  <div class="ann-item-desc">你提到的未來事、約定、還沒回答的問題（「我下週三要面試」「說好禮拜六一起看電影」），他會記下來，在該關心的時候主動問結果——不用你再提一次。聊天室的記憶抽屜多了「待續的事」分頁，可以查看、修改、標記完成或回到來源訊息；不想讓某個角色記，在角色設定關掉就好。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">睡前模式 🌙</div>
-                  <div class="ann-item-desc">聊天室選單一鍵進入。畫面轉為低刺激的暖色濾光，他會改用低聲短句陪你，不開刺激話題，也可以講平靜的睡前故事。你道晚安他會溫柔收尾；久沒回應（大概睡著了）他會自己輕聲道晚安。隔天再聊，他記得昨晚。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">關係里程碑 🎉</div>
-                  <div class="ann-item-desc">在一起 100、200、300、520、1000 天，關係頁會提前倒數，當天他也會自然提起、陪你一起紀念。</div>
-                </div>
-              </div>
-            </template>
-
-            <!-- 第二頁：修復與改善 -->
-            <template v-else-if="page === 1">
               <div class="ann-title">修復與改善</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">背景功能其實一直沒在跑 🔧</div>
-                  <div class="ann-item-desc">使用 Anthropic 時，記憶總結、日記、貼文、「我想你」、每日一問可能長期都是空轉的——不會報錯，只是靜靜地什麼都沒做。現在已修復。</div>
+                  <div class="ann-item-title">角色把人名地名寫成別的字 ✍️</div>
+                  <div class="ann-item-desc">你打「格林格拉斯」，他回覆卻變成「格林葛拉斯」——這不是他打錯字，是上一版的繁體轉換誤傷了專有名詞（道格拉斯、伊斯坦布爾、拉莫斯等也會中）。現在已排除這些誤觸發，簡體與中國用語照樣會轉。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">不再冒出簡體字 🇹🇼</div>
-                  <div class="ann-item-desc">角色回覆統一轉成台灣繁體用語（角色設定為其他語言的除外）。轉換用完立刻釋放，不額外消耗 token，也不佔記憶體。</div>
+                  <div class="ann-item-title">回覆莫名斷在半路 ✂️</div>
+                  <div class="ann-item-desc">使用 Vertex AI 時，較長的回覆可能只顯示前半段、後面被默默丟掉。現在會完整顯示。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">回覆混入英文思考內容 💭</div>
-                  <div class="ann-item-desc">部分模型會把內部推理當成回覆的一部分吐出來，現在會在顯示前剝除，串流時也不會先閃一下。</div>
+                  <div class="ann-item-title">錯誤訊息指錯方向 🧭</div>
+                  <div class="ann-item-desc">過去他沒回話時只會叫你「換一個代理」，連線測試失敗也一律說「網址錯了」——但問題常常不在那裡。現在會講真正的原因：模型不存在、被安全設定擋下、額度被思考佔滿、或請求次數超限。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">iPhone 打字看不到輸入框 ⌨️</div>
-                  <div class="ann-item-desc">鍵盤上方那條工具列會蓋住輸入框的問題已修復，聊天室與設定頁都適用。角色也不會再把日期的星期幾算錯。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">安全性更新 🔒</div>
-                  <div class="ann-item-desc">修補已知的相依套件弱點，並修正貼文標籤解析的效能風險。</div>
+                  <div class="ann-item-title">回報問題更容易查 🔍</div>
+                  <div class="ann-item-desc">診斷資訊會記下服務商回的錯誤代碼與狀態碼，過去全部混成同一種「未知錯誤」。遇到問題時匯出給我，能直接看出是哪一種。（只記代碼，不會記下你的對話內容。）</div>
                 </div>
               </div>
             </template>
@@ -61,11 +38,13 @@
             <template v-else>
               <div class="ann-title">更新指引</div>
 
-              <!-- P132 升 IndexedDB v8，且升版是單向的：退回舊版程式會開不了 App。
-                   這個警告必須排在最前面，使用者才會在動手更新前看到。 -->
+              <!-- P134 本身沒有動 IndexedDB 結構，所以不能照抄 P132 那句「這一版更新後
+                   無法退回舊版」——那會是假的。但資料庫結構是在 P132 升到 v8 的，且升版
+                   單向：還停在 P131 以前的人這次會跨過那道升級，退回舊版仍會開不起來。
+                   故改成有條件的警告，只對真正受影響的人成立。 -->
               <div class="ann-guide-section ann-guide-warn">
-                <div class="ann-guide-label">⚠️ 這一版更新後無法退回舊版</div>
-                <div class="ann-guide-text">本次調整了手機裡的資料庫結構。更新完成後若改用舊版網址或舊版本，App 會開不起來。<strong>請務必先備份再更新。</strong></div>
+                <div class="ann-guide-label">⚠️ 若你上一版是 P131 或更早</div>
+                <div class="ann-guide-text">這次會跨過 P132 的資料庫結構調整，更新完成後就<strong>無法退回舊版</strong>（App 會開不起來）。<strong>請務必先備份再更新。</strong>已經在 P132 之後的人不受影響，但備份仍然建議。</div>
               </div>
 
               <div class="ann-guide-section">
@@ -93,7 +72,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P132</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P134</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
@@ -128,7 +107,8 @@ import { ref } from 'vue';
 
 const emit = defineEmits(['close']);
 // 頁數集中在此：指示點與「下一頁／我知道了」都依它算，加頁時不會漏改其中一處。
-const PAGE_COUNT = 3;
+// P134 只有「修復與改善」與「更新指引」兩頁（本版無新功能）。
+const PAGE_COUNT = 2;
 const page = ref(0);
 
 function close() {

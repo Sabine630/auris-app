@@ -6,6 +6,7 @@
 // 不能讓它常駐在主執行緒（純前端 PWA，使用者裝置就是唯一的執行環境）。零 API 呼叫、零 token。
 import { logError } from './diag.js';
 import { convertVisibleProse } from './proseMask.js';
+import { filterPhraseDict } from './zhPhraseBlocklist.js';
 
 const WORKER_TIMEOUT_MS = 8000;
 
@@ -46,7 +47,7 @@ async function convertOnMainThread(text) {
     import('opencc-js/from/cn'),
     import('opencc-js/to/twp'),
   ]);
-  return convertVisibleProse(text, ConverterFactory(...fromCn, ...toTwp));
+  return convertVisibleProse(text, ConverterFactory(...fromCn, ...filterPhraseDict(toTwp)));
 }
 
 // 正規化是加分防線，不是落庫的前提：轉換失敗（字典載不到、Worker 起不來、逾時）時退回

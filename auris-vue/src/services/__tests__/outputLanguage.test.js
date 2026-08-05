@@ -84,6 +84,65 @@ describe('完整字典的最長匹配案例', () => {
   });
 });
 
+// P134（三輪修正）：OpenCC twp 詞表裡的短音譯碎片會卡在更長的專有名詞內部誤觸發
+// （見 zhPhraseBlocklist.js 開頭的完整說明）。這裡逐一釘住 13 個曾經被改壞的名字，
+// 以及一個刻意保留、確認沒有濫砍的正確譯名（肖邦→蕭邦）。
+describe('twp 詞表碎片誤觸發的迴歸鎖（zhPhraseBlocklist）', () => {
+  it.each([
+    '格林格拉斯', '道格拉斯', '格拉斯哥',
+    '伊斯坦布爾', '布爾什維克', '尼布爾',
+    '歐拉夫', '拉莫斯', '加納利群島',
+    '薩蒂亞', '凱奇亞', '拉洛克', '香農',
+  ])('%s 落庫後保持原樣，不被詞表碎片改壞', async (name) => {
+    await expect(normalizeCharacterOutput(name, 'zh-tw')).resolves.toBe(name);
+  });
+
+  it('肖邦→蕭邦 仍然會轉（確認排除清單沒有濫砍到正確譯名）', async () => {
+    await expect(normalizeCharacterOutput('肖邦的夜曲', 'zh-tw')).resolves.toBe('蕭邦的夜曲');
+  });
+
+  it('句子中夾著會誤觸發的名字，只有名字本身保持原樣，其他簡體字仍正常轉換', async () => {
+    await expect(normalizeCharacterOutput('这是格林格拉斯家的秘密，头发有点长。', 'zh-tw'))
+      .resolves.toBe('這是格林格拉斯家的秘密，頭髮有點長。');
+  });
+});
+
+// 排除清單只挖掉會誤觸發的碎片條目，其餘中國用語詞彙在地化必須維持原樣正常運作，
+// 不能因為濾了幾條詞表就連帶失去這個模組原本的價值。
+describe('中國用語在地化仍正常（排除清單沒有誤傷其他詞條）', () => {
+  it.each([
+    ['网络', '網路'],
+    ['信息', '資訊'],
+    ['软件', '軟體'],
+    ['硬件', '硬體'],
+    ['屏幕', '螢幕'],
+    ['相册', '相簿'],
+    ['点击', '點選'],
+    ['搜索', '搜尋'],
+    ['黑客', '駭客'],
+    ['程序', '程式'],
+    ['菜单', '選單'],
+  ])('%s → %s', async (input, expected) => {
+    await expect(normalizeCharacterOutput(input, 'zh-tw')).resolves.toBe(expected);
+  });
+});
+
+describe('normalizeCharacterOutput 的輸入安全性', () => {
+  it.each([
+    ['空字串', ''],
+    ['null', null],
+    ['undefined', undefined],
+    ['數字', 42],
+  ])('%s 原樣回傳，不拋錯', async (_label, value) => {
+    await expect(normalizeCharacterOutput(value, 'zh-tw')).resolves.toBe(value);
+  });
+});
+
+// filterPhraseDict 的防禦分支（toTwp 結構不如預期時原樣回傳、不拋錯、不吐空字典）
+// 已在 zhPhraseBlocklist.test.js 用多種畸形結構直接對純函式驗證過；這裡不重複用
+// mock 扭曲 opencc-js 套件本身的匯出去測整合路徑——那樣扭曲的幅度會連 ConverterFactory
+// 本身都無法運作，測到的是「套件被弄壞」而不是「我們的防禦分支生效」，訊號不乾淨。
+
 describe('normalizeCharacterOutput 的失敗防護', () => {
   it('轉換器拋錯時退回原文，不讓已生成的回覆消失', async () => {
     vi.resetModules();

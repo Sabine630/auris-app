@@ -78,6 +78,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { getSetting, setSetting } from '../services/db.js';
 import { fetchWithTimeout, getVertexToken } from '../services/api.js';
+import { describeConnectionFailure } from '../services/connectionError.js';
 
 const apiProvider = ref('openai');
 const apiModel = ref('gpt-5.4-mini');
@@ -209,6 +210,13 @@ function describeBadOkBody(data) {
   return '伺服器有回應但格式不是預期的聊天回應，請確認自訂網址與模型 ID 是否正確';
 }
 
+// 使用者是否真的填了自訂網址（去尾斜線比較；空字串一律視為沒自訂）。
+function isUsingCustomBase(base, defBase) {
+  const trimmed = String(base ?? '').trim().replace(/\/+$/, '');
+  if (!trimmed) return false;
+  return trimmed !== String(defBase ?? '').replace(/\/+$/, '');
+}
+
 async function testApi() {
   if (!apiKey.value) {
     window.toast_('請先填寫金鑰');
@@ -238,9 +246,13 @@ async function testApi() {
       } else if (res.ok) {
         window.toast_('連線失敗：' + describeBadOkBody(data), 6000);
       } else {
-        let msg = `HTTP ${res.status}`;
-        if (data) msg = data.error?.message || data.error?.status || msg; else msg = text.slice(0, 120) || msg;
-        window.toast_('連線失敗：' + msg, 6000);
+        let raw = `HTTP ${res.status}`;
+        if (data) raw = data.error?.message || data.error?.status || raw; else raw = text.slice(0, 120) || raw;
+        // Vertex 的網址是程式自己組出來的（project/region/model 拼字串），不是使用者填的，
+        // 也不是「自訂網址／預設網址」二選一——404 可能是 project_id 錯，baseKind 標成
+        // app-built，讓 describeConnectionFailure 沒點名模型時原樣回傳供應商訊息。
+        const friendly = describeConnectionFailure({ status: res.status, raw, data, modelId, baseKind: 'app-built' });
+        window.toast_('連線失敗：' + friendly, 6000);
       }
       return;
     } else if (apiProvider.value === 'anthropic') {
@@ -274,16 +286,8 @@ async function testApi() {
       let raw = `HTTP ${res.status}`;
       if (data) raw = data.error?.message || data.error?.status || JSON.stringify(data.error) || raw;
       else raw = text.slice(0, 120) || raw;
-      let friendly = raw;
-      if (res.status === 401 || raw.includes('invalid') && raw.includes('key') || raw.includes('Unauthorized')) {
-        friendly = 'API 金鑰錯誤，請確認是否填對、或帳號是否仍有效';
-      } else if (res.status === 429 || raw.includes('rate') || raw.includes('quota')) {
-        friendly = '請求次數超限或額度用完，請稍後再試或確認帳號餘額';
-      } else if (res.status === 404 || raw.includes('doctype') || raw.includes('not found')) {
-        friendly = '找不到這個 API 位址，請確認自訂網址是否正確（需包含 /v1）';
-      } else if (res.status === 403) {
-        friendly = '金鑰無此模型的使用權限，請確認模型 ID 或帳號方案';
-      }
+      const baseKind = isUsingCustomBase(apiBase.value, defaultBase.value) ? 'custom' : 'default';
+      const friendly = describeConnectionFailure({ status: res.status, raw, data, modelId, baseKind });
       window.toast_('連線失敗：' + friendly, 6000);
     }
   } catch (err) {
