@@ -1,5 +1,5 @@
 // ── 版號常數（P105 版號常數手術）────────────────────────────────────────────
 // 全站唯一的版號來源：設定頁顯示、診斷匯出、錯誤日誌逐筆蓋版號都引用這裡。
 // 版更時只改這個檔（check-version-bump hook 盯的也是這個檔）。
-export const APP_VERSION = 'P135';
-export const VERSION_NOTE = 'P135 角色終於知道你們的生日與紀念日，不再被問到就自己編一個';
+export const APP_VERSION = 'P136';
+export const VERSION_NOTE = 'P136 角色說錯話可以直接改——長按他的訊息就能編輯內容，不必重骰整段';

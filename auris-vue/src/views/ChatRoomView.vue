@@ -523,7 +523,31 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-9 9 9.75 9.75 0 01-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
         <span>重新生成回覆</span>
       </div>
+      <div class="msg-sheet-item" v-if="activeMsg.role === 'assistant' && activeMsg.type !== 'hv' && activeMsg.content" @click="openEditContent(activeMsg)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <span>編輯內容</span>
+      </div>
       <div class="msg-sheet-cancel" @click="activeMsg = null">取消</div>
+    </div>
+
+    <!-- 角色回覆就地編輯（P136）：只給角色訊息用，使用者側維持「編輯並重傳」不動 -->
+    <div class="menu-overlay" v-if="editContentMsg" @click="cancelEditContent"></div>
+    <div class="bottom-menu" :style="{ display: editContentMsg ? 'block' : 'none' }">
+      <div style="padding:20px 16px 8px;text-align:center">
+        <div style="font-weight:500;font-size:15px;margin-bottom:6px">編輯內容</div>
+        <div style="font-size:12px;color:var(--text-3);font-weight:300;line-height:1.6">
+          只改這則訊息的文字，不會觸發重新生成，也不影響其他訊息。
+        </div>
+      </div>
+      <div style="padding:0 16px 8px">
+        <textarea class="mem-edit-content" v-model="editContentText" rows="5" style="width:100%;box-sizing:border-box"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;padding:12px 16px 20px">
+        <button @click="cancelEditContent"
+          style="flex:1;padding:12px;border-radius:12px;background:var(--surface);color:var(--text);border:.5px solid var(--border);font-size:14px;font-weight:400;cursor:pointer">取消</button>
+        <button @click="saveEditContent" :disabled="!editContentText.trim()"
+          style="flex:1;padding:12px;border-radius:12px;background:var(--rose);color:#fff;border:none;font-size:14px;font-weight:500;cursor:pointer">儲存</button>
+      </div>
     </div>
 
     <!-- 收藏成回憶（P106 D2）：選填一行備註後存快照 -->
@@ -588,6 +612,7 @@ import { formatContent, splitReply } from '../services/format.js';
 import { estimateTokens } from '../services/tokens.js';
 import { computeFollowUpAfter, computeKeywordRefreshPatch } from '../services/continuity.js';
 import { addKeepsake } from '../services/keepsakes.js';
+import { applyMessageEdit } from '../services/messageEdit.js';
 import { renderShareCard, shareCardImage } from '../services/shareCard.js';
 import { localDateKey } from '../services/date.js';
 import { installKeyboardViewport } from '../services/keyboardViewport.js';
@@ -661,6 +686,10 @@ const pressingMsgId = ref(null);
 let pressTimer = null;
 let pressStartXY = null;
 const editingMsgRef = ref(null);
+
+// ── 角色回覆就地編輯（P136）：獨立於「編輯並重傳」的輸入列流程，避免混用出事 ──
+const editContentMsg = ref(null);    // 正在編輯的訊息物件（null＝modal 未開啟）
+const editContentText = ref('');     // textarea 內容
 
 // ── 輕觸互動（P96）──────────────────────────────────────────────────────
 // 長按角色頭像（header／訊息旁）跳出動作選單；動作以 type:'touch' 訊息落庫並進 AI history
@@ -2014,6 +2043,36 @@ async function doShareCard() {
 function closeShareCard() {
   shareMsg.value = null;
   sharePreviewUrl.value = '';
+}
+
+// ── 角色回覆就地編輯（P136）─────────────────────────────────────────────
+// 只給角色回覆用；使用者訊息側維持既有「編輯並重傳」，兩者後果差很多不可混用。
+function openEditContent(m) {
+  activeMsg.value = null;
+  editContentText.value = m.content;
+  editContentMsg.value = m;
+}
+
+function cancelEditContent() {
+  editContentMsg.value = null;
+  editContentText.value = '';
+}
+
+async function saveEditContent() {
+  const m = editContentMsg.value;
+  if (!m) return;
+  const updated = applyMessageEdit(m, editContentText.value);
+  if (!updated) { cancelEditContent(); return; }
+  try {
+    await dbPut('messages', updated);
+    const idx = messages.value.findIndex(x => x.id === m.id);
+    if (idx >= 0) messages.value[idx] = updated;
+  } catch (e) {
+    console.error('save edited content failed:', e);
+    window.toast_('儲存失敗，請再試一次');
+    return;
+  }
+  cancelEditContent();
 }
 
 async function setReaction(m, emoji) {

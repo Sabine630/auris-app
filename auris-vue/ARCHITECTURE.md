@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-08-08（P135）
+> 最後更新：2026-08-08（P136）
 
 ---
 
@@ -545,6 +545,18 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P136（2026-08-08）角色回覆可就地編輯
+
+- **新增 `services/messageEdit.js`**：純函式 `applyMessageEdit(msg, newContent)`，只負責「換掉訊息內容」這件事本身，不碰 DB／UI。trim 後為空、與原內容相同、`msg` 非物件（含陣列）、`newContent` 非字串一律回 `null`，呼叫端據此判斷不寫入；有效則回**新物件**（不就地修改傳入物件），且**只動 `content`**——`id`／`role`／`createdAt`／`charId`／`type` 保持原樣，因為 `keepsakes` 與 `continuity` 都以 `msgId` 綁定，改到就會斷。
+  - 邏輯刻意抽出 SFC：`ChatRoomView.vue` 是大型單檔元件，留在裡面就沒有單元測試涵蓋（同 `connectionError.js` 的作法）。
+  - **不對編輯後的文字跑 `normalizeCharacterOutput`**：那是使用者刻意打的字，再跑一次 OpenCC 詞彙轉換等於重現 P134 修掉的誤傷專有名詞問題。
+- **`ChatRoomView.vue` 長按選單新增「編輯內容」**：條件 `role === 'assistant' && type !== 'hv' && content`——只給角色回覆，心聲（行內卡片渲染）與純圖片訊息自動排除。**不限最新一則**，往前的訊息也能改；最新那則同時保有「重新生成回覆」（只改一個字時重骰整段既浪費 token 又可能弄掉好的部分）。
+  - 使用獨立 modal（`menu-overlay`/`bottom-menu` 樣式）而非沿用輸入列——輸入列綁的是 `doEditAndResend` 的重傳流程（會刪掉後面全部並重新生成），混用會出事。狀態 `editContentMsg`／`editContentText` 與 `editingMsgRef`／`inputContent` 完全分離。
+  - 文案明寫「只改這則訊息的文字，不會觸發重新生成，也不影響其他訊息」，與使用者側的「編輯並重傳」在名稱、視覺容器、後果上三重區隔。
+  - 儲存流程：`applyMessageEdit` 回 `null` 就直接關閉不寫入；有效則 `dbPut` 後就地更新 `messages.value[idx]`；寫入失敗保留 modal 並 toast 提示。
+- **為什麼是編輯而不是刪除**：`chatEngine.js:664` 已註明 Gemini／Anthropic 會拒絕連續同角色的訊息。刪除單則會讓前後兩則同角色相鄰、破壞 user/assistant 交替，需額外的合併／補位邏輯；編輯則不改變則數與角色順序，結構上零風險。
+- 全套 Vitest 758 通過（新增 18 項）。`ChatRoomView.vue` 的 diff 為純加法，未刪除任何既有行。
 
 ### P135（2026-08-08）重要日期常駐注入——角色不再自己編生日
 
