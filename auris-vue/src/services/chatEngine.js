@@ -179,15 +179,20 @@ function getHolidaySeasonCtx() {
 }
 
 // 個人紀念日感知：回傳今天與角色/玩家生日、相識日、在一起紀念日相關的提示字串
-function getPersonalDateCtx(char, me) {
+// export 供測試（P135 迴歸鎖：確認新增的「重要日期」常駐段沒有取代掉這段當天祝賀邏輯）
+export function getPersonalDateCtx(char, me) {
   const n = new Date();
   const mm = String(n.getMonth() + 1).padStart(2, '0');
   const dd = String(n.getDate()).padStart(2, '0');
   const today = mm + '-' + dd;
   const parts = [];
 
+  // 匯入的角色 JSON／損壞備份可能把 birthday 等欄位存成非字串（{}、數字、Date 物件…），
+  // db.js／importValidation.js 目前沒對這幾個欄位做型別檢查。先驗證是 'YYYY-MM-DD' 格式字串
+  // 再切片，避免對非字串呼叫 .slice() 直接拋錯（會讓整個聊天請求中斷），也避免把
+  // String({}) === '[object Object]' 這種垃圾字串切出語意不明的假「月日」拿去比對。
   function mmdd(dateStr) {
-    if (!dateStr) return null;
+    if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return null;
     return dateStr.slice(5);
   }
 
@@ -205,6 +210,45 @@ function getPersonalDateCtx(char, me) {
   }
 
   return parts.length ? ('\n【紀念日】' + parts.join('；')) : '';
+}
+
+// 重要日期常駐事實（P135）：getPersonalDateCtx 只在「當天」才注入祝賀提示，其餘 364 天模型
+// 完全不知道生日/紀念日是哪天——被問到就會自己編，編出來的答案又寫進對話歷史，反而變成它
+// 「記得」的事實，一路堅持錯下去。這段不依賴日期，只要角色卡/我的設定有填就常駐注入。
+// 生日只給「月日」不給年份：年齡以角色卡既有「年齡」欄位為準，避免兩者互相矛盾；
+// 相識日/在一起紀念日則給完整日期（含年份），因為年份決定「在一起多久」，不會與年齡打架。
+// 注意：日期欄位是 'YYYY-MM-DD' 字串，不可用 new Date('YYYY-MM-DD')（UTC 午夜偏移問題），
+// 直接切字串取月日即可，同時用 Number() 去除前導零（避免顯示成「09月03日」這種怪格式）。
+// 匯入的角色 JSON／損壞備份可能把日期欄位存成非字串（{}、數字、Date 物件、陣列…），
+// db.js／importValidation.js 目前沒對 birthday/meetDate/togetherDate 做型別檢查。
+// 先用 typeof + 格式正則驗證再取值，而不是先 String() 硬轉再切——避免把
+// String({}) === '[object Object]' 這類垃圾字串誤判出語意不明的假「月日/年月日」。
+const DATE_STR_RE = /^(\d{4})-(\d{2})-(\d{2})/;
+function fmtMonthDay(dateStr) {
+  if (typeof dateStr !== 'string') return null;
+  const m = DATE_STR_RE.exec(dateStr);
+  if (!m) return null;
+  return `${Number(m[2])}月${Number(m[3])}日`;
+}
+function fmtFullDate(dateStr) {
+  if (typeof dateStr !== 'string') return null;
+  const m = DATE_STR_RE.exec(dateStr);
+  if (!m) return null;
+  return `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日`;
+}
+export function getKeyDatesCtx(char, me) {
+  const items = [];
+  const charBday = fmtMonthDay(char && char.birthday);
+  if (charBday) items.push(`你的生日：${charBday}`);
+  const meBday = fmtMonthDay(me && me.birthday);
+  if (meBday) items.push(`對方的生日：${meBday}`);
+  const meet = fmtFullDate(char && char.meetDate);
+  if (meet) items.push(`你們相識於 ${meet}`);
+  const together = fmtFullDate(char && char.togetherDate);
+  if (together) items.push(`在一起於 ${together}`);
+  if (!items.length) return '';
+  return '\n【重要日期】' + items.join('；') + '。'
+    + '這些是既定事實，被問到時必須正確回答，不可自行編造或更改。但不要主動提起、也不要反覆確認——只有對方問起或當天到了才自然提及。你的年齡以上方基本資訊為準，不要用生日推算。';
 }
 
 const CLEAN_END_RE = /[。！？！?.…」』）)」”'”]/;
@@ -323,6 +367,9 @@ async function buildAIChatSetup(charId, allMsgs, { includeContinuity = false } =
 
   // 個人紀念日（生日、相識日、在一起紀念日）——不依賴 timeAware，只要有設定就注入
   const personalDateCtx = getPersonalDateCtx(c, me);
+  // 重要日期常駐事實（P135）：與上面的「當天才提醒」不同，這段每則對話都在，讓模型「知道」日期
+  // 本身。不依賴日期變化，放進 systemStable（角色卡模板）不影響快取。
+  const keyDatesCtx = getKeyDatesCtx(c, me);
 
   // 作息設定：把角色的上班時段／地點／作息餵進 prompt，讓角色（與主動訊息）依現在時間有情境感
   const sched = [];
@@ -451,6 +498,7 @@ ${c.conflict ? `面對衝突時：${{ direct: '直接表達不滿', cold: '傾�
 ${c.relation ? `與對方的關係：${{ lover: '戀人', childhood: '青梅竹馬', friend: '好友', online: '網友', colleague: '同事', stranger: '陌生人' }[c.relation] || c.relation}。` : ''}
 ${c.rel_bg ? `關係背景：${c.rel_bg}` : ''}
 ${c.rel_pos ? `你在角色心中：${c.rel_pos}` : ''}
+${keyDatesCtx}
 
 【對方資訊】對方本名是「${youName}」${youRole ? `，身份：${youRole}` : ''}${youPersona ? `，個性：${youPersona}` : ''}。無論兩人關係為何，不可幫對方冠夫姓、改姓或更改名字。
 ${c.taboo ? `【禁止話題】${c.taboo}` : ''}

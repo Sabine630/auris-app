@@ -4,6 +4,7 @@ import {
   SLEEP_RECALL_MIN_MS, SLEEP_RECALL_MAX_MS,
   buildMemorySummarySystemPrompt, buildSummaryThreadInstr, buildThreadExtractSystem,
   THREAD_FINAL_STATE_RULE,
+  getPersonalDateCtx, getKeyDatesCtx,
 } from '../chatEngine.js';
 
 describe('dayPeriod — 時段分界', () => {
@@ -234,5 +235,151 @@ describe('sleepRecallState — 隔天「昨晚睡前」呼應判定（P130）', 
   it('門檻常數健全性：3 小時 / 36 小時', () => {
     expect(SLEEP_RECALL_MIN_MS).toBe(3 * 3600 * 1000);
     expect(SLEEP_RECALL_MAX_MS).toBe(36 * 3600 * 1000);
+  });
+});
+
+// ── 重要日期常駐事實（P135）──────────────────────────────────────────────────
+// 病灶：被問生日時角色會自己編，錯誤答案又寫進對話歷史反被當成「記得」的事實。
+// getKeyDatesCtx 讓角色卡模板常駐帶入生日/紀念日，不像 getPersonalDateCtx 只在當天才注入。
+describe('getKeyDatesCtx — 重要日期常駐注入（P135）', () => {
+  it('四個日期都有設定 → 含「重要日期」段，生日只出現月日、不含年份', () => {
+    const char = { name: '小晴', birthday: '2001-09-03', meetDate: '2024-01-15', togetherDate: '2024-06-20' };
+    const me = { birthday: '1998-12-25' };
+    const ctx = getKeyDatesCtx(char, me);
+    expect(ctx).toContain('【重要日期】');
+    expect(ctx).toContain('你的生日：9月3日');
+    expect(ctx).not.toContain('2001'); // 角色生日不可帶年份
+    expect(ctx).toContain('對方的生日：12月25日');
+    expect(ctx).not.toContain('1998'); // 對方生日也不可帶年份
+  });
+
+  it('相識日／在一起日給完整年月日', () => {
+    const char = { meetDate: '2024-01-15', togetherDate: '2024-06-20' };
+    const ctx = getKeyDatesCtx(char, {});
+    expect(ctx).toContain('你們相識於 2024年1月15日');
+    expect(ctx).toContain('在一起於 2024年6月20日');
+  });
+
+  it('只設部分欄位 → 只出現有值的那幾項，其餘不出現', () => {
+    const char = { birthday: '1995-05-01' };
+    const ctx = getKeyDatesCtx(char, {});
+    expect(ctx).toContain('你的生日：5月1日');
+    expect(ctx).not.toContain('對方的生日');
+    expect(ctx).not.toContain('相識於');
+    expect(ctx).not.toContain('在一起於');
+  });
+
+  it('四個都沒設 → 整段不出現（不留空標題）', () => {
+    expect(getKeyDatesCtx({}, {})).toBe('');
+    expect(getKeyDatesCtx({}, undefined)).toBe('');
+  });
+
+  it('含「不可主動提起」與「不可反覆確認」類約束字樣', () => {
+    const ctx = getKeyDatesCtx({ birthday: '2000-01-01' }, {});
+    expect(ctx).toContain('不要主動提起');
+    expect(ctx).toContain('不要反覆確認');
+  });
+
+  it('含「年齡以基本資訊為準、不用生日推算」類字樣', () => {
+    const ctx = getKeyDatesCtx({ birthday: '2000-01-01' }, {});
+    expect(ctx).toContain('你的年齡以上方基本資訊為準');
+    expect(ctx).toContain('不要用生日推算');
+  });
+
+  it('含「必須正確回答、不可編造」類字樣', () => {
+    const ctx = getKeyDatesCtx({ birthday: '2000-01-01' }, {});
+    expect(ctx).toContain('必須正確回答');
+    expect(ctx).toContain('不可自行編造');
+  });
+
+  it('個位數月日不補零：2001-09-03 呈現「9月3日」而非「09月03日」', () => {
+    const ctx = getKeyDatesCtx({ birthday: '2001-09-03' }, {});
+    expect(ctx).toContain('9月3日');
+    expect(ctx).not.toContain('09月');
+    expect(ctx).not.toContain('月03日');
+  });
+});
+
+describe('getPersonalDateCtx — 當天祝賀提示（迴歸鎖，確認未被 P135 新段落取代）', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('角色生日當天仍有 🎂 祝賀提示', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 3, 10, 0)); // 9/3
+    const char = { name: '小晴', birthday: '2001-09-03' };
+    const ctx = getPersonalDateCtx(char, {});
+    expect(ctx).toContain('【紀念日】');
+    expect(ctx).toContain('小晴');
+    expect(ctx).toContain('🎂');
+  });
+
+  it('非生日當天不出現紀念日段', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 4, 10, 0)); // 9/4，非生日
+    const char = { name: '小晴', birthday: '2001-09-03' };
+    expect(getPersonalDateCtx(char, {})).toBe('');
+  });
+});
+
+// ── 型別防呆（驗收補件）───────────────────────────────────────────────────
+// 匯入的角色 JSON／損壞備份可能把 birthday/meetDate/togetherDate 存成非字串，
+// db.js／importValidation.js 沒做型別檢查。這兩個函式都在 buildAIChatSetup 必經路徑上，
+// 一旦拋錯整個聊天請求就會中斷。確認非字串輸入不拋錯、也不會產生垃圾字串。
+describe('日期欄位非字串輸入 — 不拋錯防呆', () => {
+  const badValues = [{}, 20010903, [2001, 9, 3], new Date(2001, 8, 3), null, undefined];
+
+  it.each(badValues)('getKeyDatesCtx 對非字串 birthday（%o）不拋錯，且該欄位不出現在輸出', (bad) => {
+    expect(() => getKeyDatesCtx({ birthday: bad }, {})).not.toThrow();
+    const ctx = getKeyDatesCtx({ birthday: bad }, {});
+    expect(ctx).not.toContain('你的生日');
+    expect(ctx).not.toContain('[object Object]');
+  });
+
+  it.each(badValues)('getKeyDatesCtx 對非字串 meetDate/togetherDate（%o）不拋錯，且該欄位不出現在輸出', (bad) => {
+    const char = { meetDate: bad, togetherDate: bad };
+    expect(() => getKeyDatesCtx(char, {})).not.toThrow();
+    const ctx = getKeyDatesCtx(char, {});
+    expect(ctx).not.toContain('相識於');
+    expect(ctx).not.toContain('在一起於');
+    expect(ctx).not.toContain('[object Object]');
+  });
+
+  it('getKeyDatesCtx 四個欄位全是非字串垃圾值 → 整段不出現', () => {
+    const char = { birthday: {}, meetDate: [1, 2, 3], togetherDate: new Date() };
+    const me = { birthday: 20010903 };
+    expect(getKeyDatesCtx(char, me)).toBe('');
+  });
+
+  it.each(badValues)('getPersonalDateCtx 對非字串 birthday（%o）不拋錯', (bad) => {
+    expect(() => getPersonalDateCtx({ name: '小晴', birthday: bad }, {})).not.toThrow();
+  });
+
+  it.each(badValues)('getPersonalDateCtx 對非字串 meetDate/togetherDate（%o）不拋錯', (bad) => {
+    expect(() => getPersonalDateCtx({ name: '小晴', meetDate: bad, togetherDate: bad }, {})).not.toThrow();
+  });
+
+  it('getPersonalDateCtx 對非字串對方生日（me.birthday）不拋錯', () => {
+    expect(() => getPersonalDateCtx({ name: '小晴' }, { birthday: {} })).not.toThrow();
+  });
+});
+
+describe('迴歸鎖 — 補件修改後，正常字串輸入行為完全不變', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('getKeyDatesCtx 正常輸入：月日不補零、完整年月日照舊', () => {
+    const char = { birthday: '2001-09-03', meetDate: '2024-01-15', togetherDate: '2024-06-20' };
+    const me = { birthday: '1998-12-25' };
+    const ctx = getKeyDatesCtx(char, me);
+    expect(ctx).toContain('你的生日：9月3日');
+    expect(ctx).toContain('對方的生日：12月25日');
+    expect(ctx).toContain('你們相識於 2024年1月15日');
+    expect(ctx).toContain('在一起於 2024年6月20日');
+  });
+
+  it('getPersonalDateCtx 正常輸入：生日當天 🎂 仍在', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 3, 10, 0)); // 9/3
+    const char = { name: '小晴', birthday: '2001-09-03' };
+    expect(getPersonalDateCtx(char, {})).toContain('🎂');
   });
 });
