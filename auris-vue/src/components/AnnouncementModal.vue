@@ -5,36 +5,32 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P134 更新公告</div>
+      <div class="ann-badge">P136 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
           <div class="ann-page" :key="page">
 
-            <!-- 第一頁：修復與改善（P133–P134 全是修復，沒有新功能） -->
+            <!-- 第一頁：P135–P136。一個新功能、一個修復，兩者是同一個故事的兩半 -->
             <template v-if="page === 0">
-              <div class="ann-title">修復與改善</div>
+              <div class="ann-title">新功能與修復</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">角色把人名地名寫成別的字 ✍️</div>
-                  <div class="ann-item-desc">你打「格林格拉斯」，他回覆卻變成「格林葛拉斯」——這不是他打錯字，是上一版的繁體轉換誤傷了專有名詞（道格拉斯、伊斯坦布爾、拉莫斯等也會中）。現在已排除這些誤觸發，簡體與中國用語照樣會轉。</div>
+                  <div class="ann-item-title">可以改他說過的話了 ✏️</div>
+                  <div class="ann-item-desc">長按角色的訊息 →「編輯內容」，直接改掉那句話。<b>不限最新一則，往前的訊息也能改。</b>只換這則的文字，不會重新生成、也不影響其他訊息。<br>這不只是修錯字——他一旦講錯事情（例如把生日講成別天），那句話會留在對話裡被他當成「記得」的事，之後怎麼糾正都沒用。直接把那句改掉才是根治。</div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">回覆莫名斷在半路 ✂️</div>
-                  <div class="ann-item-desc">使用 Vertex AI 時，較長的回覆可能只顯示前半段、後面被默默丟掉。現在會完整顯示。</div>
+                  <div class="ann-item-title">他終於記得你們的日子了 🎂</div>
+                  <div class="ann-item-desc">角色生日、你的生日、相識紀念日、在一起紀念日——過去他<b>只有在當天</b>才知道，其他日子被問到就自己編一個，而且越糾正越堅持。現在這些日期他隨時都記得。<br>他不會沒事拿出來講，只有你問起或當天到了才會提。<br><span style="opacity:.75">※ 生日只記月和日，年齡以角色設定為準，所以他答不出出生年份是正常的。※ 日期要先在角色設定／我的設定裡填好才有用。</span></div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">錯誤訊息指錯方向 🧭</div>
-                  <div class="ann-item-desc">過去他沒回話時只會叫你「換一個代理」，連線測試失敗也一律說「網址錯了」——但問題常常不在那裡。現在會講真正的原因：模型不存在、被安全設定擋下、額度被思考佔滿、或請求次數超限。</div>
-                </div>
-                <div class="ann-item">
-                  <div class="ann-item-title">回報問題更容易查 🔍</div>
-                  <div class="ann-item-desc">診斷資訊會記下服務商回的錯誤代碼與狀態碼，過去全部混成同一種「未知錯誤」。遇到問題時匯出給我，能直接看出是哪一種。（只記代碼，不會記下你的對話內容。）</div>
+                  <div class="ann-item-title">如果他還是講錯 🔁</div>
+                  <div class="ann-item-desc">先前講錯的那幾則還留在對話裡，他可能還會跟著錯。用上面的「編輯內容」把那幾則改掉就好——這正是這次加這個功能的原因。</div>
                 </div>
               </div>
             </template>
 
-            <!-- 第三頁：更新指引 -->
+            <!-- 第二頁：更新指引 -->
             <template v-else>
               <div class="ann-title">更新指引</div>
 
@@ -72,7 +68,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P134</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P136</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
@@ -107,7 +103,7 @@ import { ref } from 'vue';
 
 const emit = defineEmits(['close']);
 // 頁數集中在此：指示點與「下一頁／我知道了」都依它算，加頁時不會漏改其中一處。
-// P134 只有「修復與改善」與「更新指引」兩頁（本版無新功能）。
+// P136 為「新功能與修復」與「更新指引」兩頁。增減頁面時只改這個常數即可。
 const PAGE_COUNT = 2;
 const page = ref(0);
 

@@ -57,7 +57,7 @@ import { keyboardAccessoryInset } from './services/keyboardAccessory.js';
 import BottomNav from './components/BottomNav.vue';
 import AnnouncementModal from './components/AnnouncementModal.vue';
 
-const ANNOUNCEMENT_VERSION = 'P134';
+const ANNOUNCEMENT_VERSION = 'P136';
 const showAnnouncement = ref(false);
 
 // ── 全域 confirm modal ─────────────────────────────────────────────────────
