@@ -8,6 +8,7 @@ import { isDemo } from './demoMode.js';
 import { demoReply } from './demoData.js';
 import { logError, sanitizeCode } from './diag.js';
 import { createThinkingStreamFilter, stripThinking } from './thinkingFilter.js';
+import { createMetaLeakStreamFilter, stripMetaLeak } from './metaLeakFilter.js';
 
 const VERTEX_REGION = 'us-central1';
 
@@ -130,7 +131,7 @@ function readVertexCandidate(data) {
 const EMPTY_REASONS = new Set([
   'max_tokens', 'safety', 'recitation', 'blocklist', 'prohibited_content',
   'spii', 'malformed_function_call', 'stop', 'end_turn', 'content_filter',
-  'no_candidates', 'no_parts', 'no_chunks', 'other', 'unknown',
+  'no_candidates', 'no_parts', 'no_chunks', 'meta_leak', 'other', 'unknown',
 ]);
 
 // 同一件事各家名稱不同，先收斂成同義詞再查 allowlist（OpenAI 的 length ＝ 被
@@ -270,15 +271,25 @@ function applyImage(messages, image, provider) {
 // 串流時額外包一層 stateful filter，避免 <thinking> 先閃在畫面上再被清掉。
 export async function callLLM(opts) {
   try {
+    // 串流過濾鏈：thinking 標籤 → 純文字思考外洩 → 呼叫端。兩支各自有狀態，
+    // flush 也要照同一個方向收尾（前面吐出來的殘料還要能被後面那支處理到）。
+    const metaFilter = opts.stream && opts.onChunk
+      ? createMetaLeakStreamFilter(opts.onChunk)
+      : null;
     const filter = opts.stream && opts.onChunk
-      ? createThinkingStreamFilter(opts.onChunk)
+      ? createThinkingStreamFilter(chunk => metaFilter.push(chunk))
       : null;
     const inner = filter
       ? { ...opts, onChunk: chunk => filter.push(chunk) }
       : opts;
     const result = await callLLMInner(inner);
     filter?.flush();
-    const fullText = stripThinking(result?.fullText);
+    metaFilter?.flush();
+    const rawText = stripThinking(result?.fullText);
+    // 模型把思考／計畫當正文吐出來（P137）：落庫前剝掉。整段都是思考時會變成空字串，
+    // 交給下面既有的空回應路徑處理，並標成 meta_leak 讓診斷分得出是哪一種空。
+    const fullText = stripMetaLeak(rawText);
+    const metaLeaked = Boolean(rawText?.trim()) && !fullText?.trim();
     // 空回應（HTTP 200 但沒有任何可用文字）在 P133 之前完全不留痕跡：不拋錯 → 進不了
     // 下面的 catch，使用者只看到一句寫死的代理提示，匯出檔裡什麼都沒有。這裡補記原因，
     // 讓「思考佔滿額度／被安全設定擋／被判定為複述」下次一眼可辨。只記枚舉，不記內容。
@@ -287,7 +298,7 @@ export async function callLLM(opts) {
     // 直接回傳原始值會查不到而退回代理提示，等於整個原因驅動的文案沒生效。
     // 附帶效果：值必為 allowlist 內的枚舉，呼叫端拿它查表不會撞到 Object 原型上的鍵。
     if (!fullText || !fullText.trim()) {
-      const emptyReason = normalizeEmptyReason(result?.emptyReason);
+      const emptyReason = metaLeaked ? 'meta_leak' : normalizeEmptyReason(result?.emptyReason);
       logError('llm', 'empty_response', {
         code: 'empty_response',
         provider: opts.provider,

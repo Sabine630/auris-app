@@ -213,3 +213,37 @@ describe('轉換資源的釋放', () => {
     vi.doUnmock('opencc-js/core');
   });
 });
+
+// P137：名字被 OpenCC 改字的迴歸鎖。
+// 這一類跟上面 twp 碎片那批**不是同一個洞**：「星回 星迴」「低回 低迴」在 fromCn（s2t）
+// 那份詞表裡，而 zhPhraseBlocklist 只濾得到 toTwp，所以把詞加進 DROP_SOURCES 對它無效。
+// 解法改成把角色名／使用者名整個遮起來再轉（proseMask 的 convertProtectedProse）。
+describe('protect：角色名／使用者名不被詞表改字', () => {
+  it('沒有保護時「沈星回」確實會被改成「沈星迴」——證明這條詞表規則真的存在', async () => {
+    await expect(normalizeCharacterOutput('沈星回今天很乖', 'zh-tw')).resolves.toBe('沈星迴今天很乖');
+  });
+
+  it('把名字放進 protect 之後全篇保持原樣', async () => {
+    await expect(
+      normalizeCharacterOutput('沈星回今天很乖', 'zh-tw', { protect: ['沈星回'] })
+    ).resolves.toBe('沈星回今天很乖');
+  });
+
+  it('同一句裡的中國用語仍然照常在地化，只有名字被保住', async () => {
+    await expect(
+      normalizeCharacterOutput('沈星回用软件传信息给我', 'zh-tw', { protect: ['沈星回'] })
+    ).resolves.toBe('沈星回用軟體傳資訊給我');
+  });
+
+  it('保護清單可同時放角色名與使用者名，且忽略空值／單字名', async () => {
+    await expect(
+      normalizeCharacterOutput('沈星回和星兒', 'zh-tw', { protect: ['沈星回', undefined, '', '回'] })
+    ).resolves.toBe('沈星回和星兒');
+  });
+
+  it('名字出現多次、夾在標點與 emoji 之間也都保住', async () => {
+    await expect(
+      normalizeCharacterOutput('「沈星回💫」說：沈星回會等妳。', 'zh-tw', { protect: ['沈星回'] })
+    ).resolves.toBe('「沈星回💫」說：沈星回會等妳。');
+  });
+});

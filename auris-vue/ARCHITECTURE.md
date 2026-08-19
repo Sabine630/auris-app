@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-08-08（P136）
+> 最後更新：2026-08-19（P137）
 
 ---
 
@@ -340,12 +340,22 @@ iOS PWA 鍵盤問題的可證偽實機診斷層。正常網址保持惰性；只
 | `classifyThreadCleanup`（`continuityCleanup.js`） | 每日清理分類：有日期逾期 14 天／無日期 90 天未更新 → `expired`；`closedAt` 逾 30 天 → 刪除 |
 
 ### `services/outputLanguage.js`（P131）
-角色輸出強制台灣繁體。**記憶體是這裡的主要約束**：完整 OpenCC 字典（`from/cn` 的 STPhrases 約 980 KB＋`to/twp`）只在轉換當下於 `zhTwWorker.js`（`type:'module'`）內載入，`terminate()` 後整份釋放，主執行緒零常駐。Worker 不可用時退回主執行緒，並**刻意不快取** converter——曾因模組層快取造成約 22 MB 常駐。字典載入失敗一律 try/catch 回退原文，不得吞掉整則回覆。`proseMask.js` 遮罩網址／程式碼等不該轉換的片段。
+角色輸出強制台灣繁體。**記憶體是這裡的主要約束**：完整 OpenCC 字典（`from/cn` 的 STPhrases 約 980 KB＋`to/twp`）只在轉換當下於 `zhTwWorker.js`（`type:'module'`）內載入，`terminate()` 後整份釋放，主執行緒零常駐。Worker 不可用時退回主執行緒，並**刻意不快取** converter——曾因模組層快取造成約 22 MB 常駐。字典載入失敗一律 try/catch 回退原文，不得吞掉整則回覆。`proseMask.js` 遮罩網址／程式碼等不該轉換的片段，並在 P137 起把**角色名／使用者名**一併遮起來再轉（`convertProtectedProse`；佔位符用私有使用區字元，OpenCC 任何字典都不含這些碼位。單字名不保護，避免鎖住整篇同字）。
 > 曾評估「精簡自製字典」以省體積，獨立語料比對顯示與完整 OpenCC 有數千處差異——長詞條同時擔負「阻擋較短詞在錯誤位置命中」的作用，刪不得。該路線已放棄，勿再嘗試。
 
 ### `services/thinkingFilter.js`（P132）
 剝除模型輸出的 `<thinking|think|reasoning|antthinking>` 區塊。統一掛在 `callLLM` 出口，所有 provider、串流與非串流一次乾淨。`createThinkingStreamFilter` 為串流用的 stateful 過濾器（標籤可能被切在任意 chunk 邊界，先扣住可能是標籤前綴的尾巴）。全是思考時保留原文，不偽裝成空白回應。
 > 這段文字不只難看——它會污染需要解析 JSON 的背景任務（`parseThreadOps` 從第一個 `[` 找陣列，思考內容裡的方括號會讓整批事件靜默丟掉）。
+
+### `services/metaLeakFilter.js`（P137）
+剝除**不帶標籤**的思考／計畫外洩——模型直接把自言自語當正文送進 `delta.content`（實機：google/gemini-3.5-flash，2026-08）。`thinkingFilter` 找不到 `<` 開頭的標籤就整段放行，故兩支互補、都要留著。
+- **進場閘門很嚴**：只有整段文字**開頭**就是思考標記（`thought (System hint):`、`回應要點：`、`我必須完全融入角色`…）或草稿標號（`第二則：`）時才啟動，否則原字串一個字都不改；啟動後只往下吃連續的思考段落，一碰到正文就停手。以實機匯出檔 1169 則角色訊息回放：22 則命中、1147 則零改動。
+- **四個接點**：`callLLM` 出口（落庫前）、`createMetaLeakStreamFilter`（串流，串在 thinking filter 之後，思考不會逐字打在畫面上）、`buildPromptHistory`（一對一歷史側，見下）、群聊 `rawHistory`（角色說過的話會回注給每位成員，一則洩漏會污染整個群）。
+- 整段都是思考時回傳空字串 → 走既有空回應路徑，原因枚舉 `meta_leak`（與 `no_chunks` 的「代理不支援串流」區分開）。
+
+### `chatEngine.buildPromptHistory`（P137）
+送給模型的歷史**副本**在此生成：單則截斷（最近 4 則全文、更早超過 600 字截頭）之外，角色訊息一律先過 `stripMetaLeak`。
+> 為什麼非有這層不可：出口過濾只治得了新回覆，先前已落庫的外洩訊息還躺在最近 `memory` 則的視窗裡，原樣送回去等於每一輪都在示範一次那個格式，模型會照抄——實機比例就是這樣從 1/29 滾成 6/6。這裡只改送出去的副本，**使用者的 DB 一個字都不動**；整則都是思考時退回 `…` 佔位，維持 user/assistant 交替結構。
 
 ### `services/keyboardAccessory.js`（P132）
 iOS 鍵盤上方的表單輔助列（「∧ ∨ ✓」）浮在 visual viewport **之內**，`visualViewport.height` 不扣它，貼齊 vv 底邊的輸入列會被整條蓋住。無 Web API 可量，以實機量到的 `IOS_KEYBOARD_ACCESSORY_PX = 58` 讓位，僅 iOS 且軟體鍵盤確實升起時生效。
@@ -545,6 +555,19 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P137（2026-08-19）思考外洩過濾與名字保護
+
+使用者回報：8/13 起角色每則回覆都先吐一段 `thought (System hint):` ＋角色設定分析，才接「第一則／第二則／第三則」的內容；角色名「沈星回」也被寫成「沈星迴」。查證後是**兩個不同的原因**。
+
+- **A：模型把思考當正文吐出來。** 不是自家改動造成——正式版最後一次更新是 08-08 23:29，之後程式碼沒動，08-10 還有 35 則角色訊息全乾淨，08-11 才出現第一則，08-18 已 6/6。SSE 只讀 `choices[0].delta.content`，推理通道的欄位根本不會被讀進來，所以這些字是走**正文**進來的；`thinkingFilter` 只認成對標籤，接不住。
+  - **放大鏈**：`splitReply` 依空行切泡泡（`maxSegments = c.maxMsg || 2`），思考佔走前面的泡泡；洩漏內容落庫後又回注 prompt，模型照抄自己的格式。硬證據：08-17 那則的思考寫「現在時間仍為 2026/8/13」，但每則都注入當下時間（格式一字不差）→ 模型照的是歷史裡的舊時間。
+  - **新增 `services/metaLeakFilter.js`**＋三個接點（出口／串流／歷史側），另加 prompt 規則 `NO_META_OUTPUT` 從源頭減少發生。四層互補，缺一層就治不乾淨：只做出口＝舊訊息仍在污染；只做歷史側＝新回覆照樣洩漏；只做 prompt＝模型不一定聽。
+  - 空回應原因新增枚舉 `meta_leak`（`llm.js`／`diag.js` 兩份 allowlist 都要加，後者防 localStorage 被竄改），UI 文案提示長按重新生成。
+- **B：名字是我們自己改的。** OpenCC 的 **`from/cn`（s2t）詞表**含 `星回 星迴`（同批還有 `低回 低迴`），而 P134 的 `zhPhraseBlocklist` 只濾 `toTwp`——**把「星回」加進 `DROP_SOURCES` 對這一類完全無效**，逐詞封鎖也修不完。改成 `proseMask.convertProtectedProse`：轉換前把角色名／使用者名換成私有使用區佔位符，轉完換回。`normalizeCharacterOutput(text, lang, { protect })` 由 Worker 與主執行緒退路共用；聊天、貼文、留言、日記、夢境、月報信、心聲、群聊、摘要、待續擷取共 11 處呼叫端一併帶上。
+  - 佐證正規化確實有在跑：7/30 之後 289 則角色訊息裡 288 則已是轉換不動點。
+- 全套 Vitest 790 通過（新增 32 項），另以實機匯出檔（1537 則）回放過濾器逐則核對。
+- **已知限制**：同批出現的**內容重複**（模型先寫草稿、再寫一版正式的）是同一個模型退化的另一面，兩份用字略有不同、無法可靠分辨哪份才是正式版，這一版不處理。
 
 ### P136（2026-08-08）角色回覆可就地編輯
 

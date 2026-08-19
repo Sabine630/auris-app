@@ -11,6 +11,7 @@ import { getMilestoneInfo } from './milestones.js';
 import { isDemo } from './demoMode.js';
 import { logError } from './diag.js';
 import { characterLanguageInstruction, normalizeCharacterOutput } from './outputLanguage.js';
+import { stripMetaLeak } from './metaLeakFilter.js';
 import {
   evaluateCandidateTurn, deriveTurnTexts, buildRecentThreadWindow,
   parseThreadOps, normalizeThreadOps, planThreadApply, enqueueThreadTask,
@@ -94,6 +95,30 @@ export function shouldSuppressContinuityPrompt(character, allMsgs) {
   return !!(lastUser && isGoodnightText(lastUser.content));
 }
 
+// ── 送給模型的歷史副本 ─────────────────────────────────────────────────────
+// #9 歷史單則截斷：最近 KEEP_FULL 則保留全文（接續剛寫的長文不受影響），
+// 更早的單則超過 HIST_MSG_CAP 字元則截頭並加省略號——省 token，
+// 長篇舊內容的細節交給長期記憶摘要補位。
+//
+// P137 另加一道：角色訊息送回模型前先剝掉「思考／計畫外洩」的殘留。callLLM 出口的
+// 過濾只治得了新回覆，先前已經落庫的那幾則還躺在這個視窗裡，原樣送回去等於每一輪都
+// 在示範一次那個格式，模型會照抄——實機就是這樣從偶發（1/29）滾成每則都洩漏（6/6）。
+// 這裡只改「送出去的副本」，使用者的 DB 一個字都不動；整則都是思考時退回 '…' 佔位，
+// 維持 user/assistant 交替結構（Gemini／Anthropic 會拒絕結構壞掉的對話）。
+const HIST_MSG_CAP = 600;
+const KEEP_FULL = 4;
+
+export function buildPromptHistory(recent, { cap = HIST_MSG_CAP, keepFull = KEEP_FULL } = {}) {
+  const list = recent || [];
+  return list.map((m, i) => {
+    let content = m.role === 'user' ? m.content : (stripMetaLeak(m.content) || '…');
+    if (i < list.length - keepFull && content.length > cap) {
+      content = content.slice(0, cap) + '…（後略）';
+    }
+    return { role: m.role === 'user' ? 'user' : 'assistant', content };
+  });
+}
+
 // 把 AI 一次回覆的整段文字依空行切成多則訊息並寫入 DB（真人連發短泡泡）。
 // 回傳已落庫的訊息陣列（同角色、createdAt 以毫秒位移保序，會被 isCont 歸為連續訊息）。
 // maxSegments 預設取角色 maxMsg，避免一句一泡泡；kind 供主動訊息標記用。
@@ -104,7 +129,8 @@ async function persistReplySegments(charId, fullText, { maxSegments = 3, kind = 
   const youName = c?.overrideMe && c?.you_name ? c.you_name : me.name || '你';
   const normalized = await normalizeCharacterOutput(
     applyNameMacros(fullText, youName, c?.name),
-    c?.lang
+    c?.lang,
+    { protect: [c?.name, youName] }
   );
   const segs = splitReply(normalized, maxSegments);
   const base = Date.now();
@@ -512,21 +538,10 @@ ${lengthGuide}
 ・語氣、用詞要完全符合角色個性，不能像客服或 AI
 ・禁止使用「我理解你的感受」「這很有趣」「確實如此」等通用句
 ・回覆要有延伸性，可以反問、聊到相關話題、分享自身經歷
-【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 2}則訊息，每則訊息之間「空一行」分隔（前端會把每則顯示成獨立的訊息泡泡，像真人連發）。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。${REPLY_NO_NARRATION}`;
+【格式規則】一次回${c.minMsg || 1}到${c.maxMsg || 2}則訊息，每則訊息之間「空一行」分隔（前端會把每則顯示成獨立的訊息泡泡，像真人連發）。不要加 emoji 除非符合角色個性。絕對不要說「我作為 AI」。${REPLY_NO_NARRATION}${NO_META_OUTPUT}`;
 
-  // #9 歷史單則截斷：最近 KEEP_FULL 則保留全文（接續剛寫的長文不受影響），
-  // 更早的單則超過 HIST_MSG_CAP 字元則截頭並加省略號——省 token，
-  // 長篇舊內容的細節交給長期記憶摘要補位。
-  const HIST_MSG_CAP = 600;
-  const KEEP_FULL = 4;
   const recent = allMsgs.slice(-(c.memory || 20));
-  const history = recent.map((m, i) => {
-    let content = m.content;
-    if (i < recent.length - KEEP_FULL && content.length > HIST_MSG_CAP) {
-      content = content.slice(0, HIST_MSG_CAP) + '…（後略）';
-    }
-    return { role: m.role === 'user' ? 'user' : 'assistant', content };
-  });
+  const history = buildPromptHistory(recent);
 
   const lastUserMsg = history[history.length - 1]?.content || '';
   const isLongForm = LONG_FORM_RE.test(lastUserMsg);
@@ -686,9 +701,17 @@ const REPLY_NO_NARRATION = '\n（重要：這是即時聊天訊息，不是小�
   + '「書房裡咖啡剛沏好」這類場景旁白、時間旁白或大段敘事鋪陳；就像真人傳訊一樣，直接說你想說的話。'
   + '若有用星號標動作，也只是簡短點綴，不要整段場景描寫。）';
 
+// 不要把思考／計畫當成回覆吐出來（P137）。落庫端已有 metaLeakFilter 把外洩內容剝掉，
+// 但那是事後補救——模型仍然把額度花在自言自語上（照樣計費，也容易被 max_tokens 切斷）。
+// 這一句是從源頭少發生的那一半，兩者互補、不可互相取代。
+const NO_META_OUTPUT = '\n（重要：直接輸出你要說的話本身。不要寫出你的思考過程、狀態分析、'
+  + '回應要點或草稿計畫，也不要加「第一則：」「訊息 1：」這類標號——那些是給你自己看的，'
+  + '對方看到只會覺得莫名其妙。）';
+
 // 主動訊息共用尾巴：禁止 AI 把「主動傳訊」演成小說場景／時間旁白（B）。
 // 主動訊息是即時送出的一則訊息，不該出現「隔天早上」「手機震動」「書房裡…」這類鋪陳。
-const PROACTIVE_NO_NARRATION = '\n\n（重要：直接以你要傳出的訊息正文開始。不要寫「隔天早上」「手機震動」'
+const PROACTIVE_NO_NARRATION = NO_META_OUTPUT
+  + '\n（重要：直接以你要傳出的訊息正文開始。不要寫「隔天早上」「手機震動」'
   + '「書房裡咖啡剛沏好」這類場景旁白、時間旁白或敘事鋪陳，也不要用星號＊＊把場景描述包起來——'
   + '這是一則此刻即時傳出的訊息，不是小說章節，開頭就直接說你想對對方說的話。）';
 
@@ -1097,7 +1120,8 @@ ${recentText}
 
     let hvText = await normalizeCharacterOutput(
       fullText.trim().replace(/\n{2,}/g, ' ').replace(/\s+/g, ' '),
-      c.lang
+      c.lang,
+      { protect: [c.name] }
     );
 
     // 上游拒絕生成（如 "I can't help with this request."）→ 不存（P107，
@@ -1188,12 +1212,14 @@ async function buildGroupChatSetup(charIdToRespond, allMsgs, members) {
     (c.timeAware ? '\n現在時間：' + timeAnchorLine() : '') +
     mentionHint;
 
+  // 群聊歷史同樣要剝掉思考外洩（P137）——角色說過的話會回注給每一位成員當上下文，
+  // 一則洩漏會同時污染整個群的下一輪。使用者訊息原樣送出。
   const rawHistory = allMsgs.slice(-12).map(m => {
     if (m.charId === 'user') return { role: 'user', content: m.content };
-    if (m.charId === c.id) return { role: 'assistant', content: m.content };
+    if (m.charId === c.id) return { role: 'assistant', content: stripMetaLeak(m.content) || '…' };
     const mc = members.find(x => x.id === m.charId);
     const speakerName = mc ? mc.name : '';
-    return { role: 'user', content: '（' + speakerName + '剛剛說：' + m.content + '）' };
+    return { role: 'user', content: '（' + speakerName + '剛剛說：' + (stripMetaLeak(m.content) || '…') + '）' };
   });
 
   const history = [];
@@ -1260,7 +1286,8 @@ export async function generateGroupAIResponseStream(groupId, charIdToRespond, al
 
   const cleanedText = await normalizeCharacterOutput(
     applyNameMacros(cleanGroupAIText(fullText.trim(), c, validChars), meName, c.name),
-    c.lang
+    c.lang,
+    { protect: [c.name, meName, ...(validChars || []).map(v => v?.name)] }
   );
 
   if (!cleanedText) return null;
@@ -1349,7 +1376,7 @@ export async function summarizeToMemory(charId, recentMsgs, count = 20) {
   ).then(t => t.trim());
   // 摘要、模型產生的默契與待續事件都會永久落庫並回注 prompt；統一在 parser 前正規化，
   // 讓同一次輸出的三種資料都遵守角色語言設定。
-  const raw = await normalizeCharacterOutput(rawReply, c?.lang);
+  const raw = await normalizeCharacterOutput(rawReply, c?.lang, { protect: [c?.name] });
 
   // BONDS parser 錨定句尾，故先把尾端 THREAD_OPS 區塊切掉再解析 BONDS 與摘要。
   const { summary, bonds: newBonds } = parseSummaryBonds(stripThreadOpsTail(raw));
@@ -1554,7 +1581,7 @@ export async function extractContinuityThreads(charId, allMsgs) {
     });
 
     // title/detail/result 會永久保存並反覆注入，與角色可見輸出走同一語言正規化防線。
-    const normalizedText = await normalizeCharacterOutput(fullText, c.lang);
+    const normalizedText = await normalizeCharacterOutput(fullText, c.lang, { protect: [c.name] });
     const parsed = parseThreadOps(normalizedText);
     const ops = normalizeThreadOps(parsed);
     if (!ops.length) {
@@ -1695,7 +1722,7 @@ export async function generateCapsuleLetter(charId, openAt) {
       stream: false,
       extra: { frequency_penalty: 0.5, presence_penalty: 0.2 },
     });
-    return (await normalizeCharacterOutput((fullText || '').trim(), c.lang)) || null;
+    return (await normalizeCharacterOutput((fullText || '').trim(), c.lang, { protect: [c.name] })) || null;
   } catch (e) {
     console.error('generateCapsuleLetter failed:', e);
     return null;

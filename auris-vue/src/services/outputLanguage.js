@@ -5,7 +5,7 @@
 // 轉換一律在 zhTwWorker 裡做、做完就 terminate：完整字典建成 converter 後要 12 MB 以上，
 // 不能讓它常駐在主執行緒（純前端 PWA，使用者裝置就是唯一的執行環境）。零 API 呼叫、零 token。
 import { logError } from './diag.js';
-import { convertVisibleProse } from './proseMask.js';
+import { convertVisibleProse, convertProtectedProse } from './proseMask.js';
 import { filterPhraseDict } from './zhPhraseBlocklist.js';
 
 const WORKER_TIMEOUT_MS = 8000;
@@ -23,7 +23,7 @@ export function characterLanguageInstruction(lang = 'zh-tw') {
 
 // 每次轉換都是「開 Worker → 轉 → terminate」。字典下載後由瀏覽器 HTTP cache 命中，
 // 重開的成本只有 spawn（實測整趟約 80 ms），落庫路徑感受不到。
-function convertInWorker(text) {
+function convertInWorker(text, protect) {
   const worker = new Worker(new URL('./zhTwWorker.js', import.meta.url), { type: 'module' });
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('zh-tw worker timeout')), WORKER_TIMEOUT_MS);
@@ -32,7 +32,7 @@ function convertInWorker(text) {
       ? done(resolve, data.text)
       : done(reject, new Error(data?.error || 'zh-tw worker failed')));
     worker.onerror = (event) => done(reject, new Error(event?.message || 'zh-tw worker error'));
-    worker.postMessage({ text });
+    worker.postMessage({ text, protect });
   }).finally(() => worker.terminate());
 }
 
@@ -41,22 +41,25 @@ function convertInWorker(text) {
 // 正是這支模組要避免的事。每次退路都重建（約 70 ms），轉完即可被 GC 回收。
 // （字典模組本身進了 ES module registry 就無法卸載，那 1 MB 字串留著是平台限制；
 //   真正該避免的是 trie。Worker 路徑連 registry 都隨 terminate 一起清掉。）
-async function convertOnMainThread(text) {
+async function convertOnMainThread(text, protect) {
   const [{ ConverterFactory }, { default: fromCn }, { default: toTwp }] = await Promise.all([
     import('opencc-js/core'),
     import('opencc-js/from/cn'),
     import('opencc-js/to/twp'),
   ]);
-  return convertVisibleProse(text, ConverterFactory(...fromCn, ...filterPhraseDict(toTwp)));
+  return convertProtectedProse(text, ConverterFactory(...fromCn, ...filterPhraseDict(toTwp)), protect);
 }
 
 // 正規化是加分防線，不是落庫的前提：轉換失敗（字典載不到、Worker 起不來、逾時）時退回
 // 原文，不能讓已經生成且已計費的角色回覆整則消失。
-export async function normalizeCharacterOutput(text, lang = 'zh-tw') {
+// protect：轉換時要原樣保住的專有名詞（角色名／使用者名）。OpenCC 的 s2t 詞表裡有
+// 「星回 星迴」這類短詞條，角色名整個被命中就會每則回覆都被改字；逐詞封鎖只補得到
+// twp 那份字典，補不完 fromCn 側，故改成把名字整個遮起來再轉（見 proseMask.js）。
+export async function normalizeCharacterOutput(text, lang = 'zh-tw', { protect = [] } = {}) {
   if (lang !== 'zh-tw' || typeof text !== 'string' || !text) return text;
   if (typeof Worker !== 'undefined') {
     try {
-      return await convertInWorker(text);
+      return await convertInWorker(text, protect);
     } catch (error) {
       // 舊 Safari 有 Worker 但不吃 type:'module'。品質優先，退回主執行緒轉換（記憶體代價
       // 只發生在這些環境），仍失敗才放棄。
@@ -64,7 +67,7 @@ export async function normalizeCharacterOutput(text, lang = 'zh-tw') {
     }
   }
   try {
-    return await convertOnMainThread(text);
+    return await convertOnMainThread(text, protect);
   } catch (error) {
     logError('outputLanguage', error, { phase: 'normalize' });
     return text;

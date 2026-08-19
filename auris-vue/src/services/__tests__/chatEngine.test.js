@@ -4,7 +4,7 @@ import {
   SLEEP_RECALL_MIN_MS, SLEEP_RECALL_MAX_MS,
   buildMemorySummarySystemPrompt, buildSummaryThreadInstr, buildThreadExtractSystem,
   THREAD_FINAL_STATE_RULE,
-  getPersonalDateCtx, getKeyDatesCtx,
+  getPersonalDateCtx, getKeyDatesCtx, buildPromptHistory,
 } from '../chatEngine.js';
 
 describe('dayPeriod — 時段分界', () => {
@@ -381,5 +381,48 @@ describe('迴歸鎖 — 補件修改後，正常字串輸入行為完全不變',
     vi.setSystemTime(new Date(2026, 8, 3, 10, 0)); // 9/3
     const char = { name: '小晴', birthday: '2001-09-03' };
     expect(getPersonalDateCtx(char, {})).toContain('🎂');
+  });
+});
+
+// ── P137：送給模型的歷史副本要先剝掉思考外洩 ────────────────────────────────
+// 出口過濾只治新回覆；已經落庫的洩漏訊息仍在最近 memory 則的視窗裡，原樣送回去
+// 模型會照抄自己上次的格式（實機比例 1/29 → 6/6 就是這樣滾起來的）。
+describe('buildPromptHistory', () => {
+  const leak = 'thought (System hint):現在時間：2026/8/13 清晨。\n她說早安。\n第一則：\n寶寶早安。';
+
+  it('角色訊息裡的思考外洩不會被送回模型', () => {
+    const out = buildPromptHistory([
+      { role: 'user', content: '早安' },
+      { role: 'assistant', content: leak },
+    ]);
+    expect(out[1].content).toBe('寶寶早安。');
+    expect(out[1].content).not.toContain('thought');
+  });
+
+  it('整則都是思考的舊訊息退回 … 佔位，不刪除、不破壞交替結構', () => {
+    const out = buildPromptHistory([
+      { role: 'user', content: '早安' },
+      { role: 'assistant', content: 'thought (System hint):她說早安，我要溫柔回應。' },
+      { role: 'user', content: '在嗎' },
+    ]);
+    expect(out.map(m => m.role)).toEqual(['user', 'assistant', 'user']);
+    expect(out[1].content).toBe('…');
+  });
+
+  it('使用者訊息一律原樣送出（她自己打的字不受任何過濾影響）', () => {
+    const typed = '我需要：你今天陪我。第一則：早安';
+    const out = buildPromptHistory([{ role: 'user', content: typed }]);
+    expect(out[0].content).toBe(typed);
+  });
+
+  it('正常角色訊息不受影響，長度截斷規則照舊', () => {
+    const long = 'あ'.repeat(700);
+    const recent = [
+      { role: 'assistant', content: long },
+      ...Array.from({ length: 4 }, () => ({ role: 'user', content: '短' })),
+    ];
+    const out = buildPromptHistory(recent);
+    expect(out[0].content).toBe(long.slice(0, 600) + '…（後略）');
+    expect(out[4].content).toBe('短');
   });
 });

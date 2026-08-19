@@ -67,7 +67,26 @@
 - **症狀**：使用者在對話裡打的專有名詞（人名、地名）是對的，但角色回覆存進聊天後，某幾個字被換成別的寫法，看起來像模型自己打錯字。
 - **成因**：`normalizeCharacterOutput`（`auris-vue/src/services/outputLanguage.js`）落庫前會跑 OpenCC 的 `twp`（台灣詞彙）轉換，把供應商偶爾吐出的簡體／中國用語轉成台灣繁體與慣用詞。但 `twp` 的 `TWPhrases` 詞表裡混了一批「短音譯碎片」條目（例：格拉斯→葛拉斯、布爾→布林），只要碎片剛好是某個更長專有名詞的一部分，就會在該名字內部誤觸發，把本來就正確的繁體名字改壞。
 - **怎麼確認是我們改的、不是模型打錯**：串流當下畫面顯示的是正確寫法，**落庫後才變**——正規化是在 `persistReplySegments` 呼叫 `normalizeCharacterOutput` 那一步才跑，時間點在生成完成之後。可用診斷匯出或重現對話比對「串流當下」與「重新整理後」的文字是否一致來確認。
-- **怎麼修**：打開 `auris-vue/src/services/zhPhraseBlocklist.js`，把被改壞的詞條「來源詞」（`TWPhrases` 裡「來源 目標」那一行的來源那半）加進 `DROP_SOURCES` 集合，例如使用者打「肯特」卻被改成別的寫法，就把 `'肯特'` 加進去。再到 `auris-vue/src/services/__tests__/outputLanguage.test.js` 的「twp 詞表碎片誤觸發的迴歸鎖」補一條該名字的斷言。**只需要加一個詞、補一條測試，不必動任何轉換邏輯**（`zhTwWorker.js`、`outputLanguage.js` 的呼叫端都已經接好 `filterPhraseDict`）。
+- **先分辨是哪一種**（P137 更正：以前這裡只寫了第一種，會把人帶去改一個修不好的地方）：
+
+  | 情況 | 判斷方式 | 修法 |
+  |---|---|---|
+  | **① 詞表碎片誤觸發**（格林格拉斯→格林葛拉斯） | 被改壞的詞不是角色名／使用者名，而是對話裡出現的專有名詞 | 加 `DROP_SOURCES`（見下） |
+  | **② 角色名／使用者名被改字**（沈星回→沈星迴） | 被改壞的就是角色卡上的名字 | **P137 已根治**，不必改詞表 |
+
+- **① 的修法**：打開 `auris-vue/src/services/zhPhraseBlocklist.js`，把被改壞的詞條「來源詞」（`TWPhrases` 裡「來源 目標」那一行的來源那半）加進 `DROP_SOURCES` 集合，例如使用者打「肯特」卻被改成別的寫法，就把 `'肯特'` 加進去。再到 `auris-vue/src/services/__tests__/outputLanguage.test.js` 的「twp 詞表碎片誤觸發的迴歸鎖」補一條該名字的斷言。**只需要加一個詞、補一條測試，不必動任何轉換邏輯**（`zhTwWorker.js`、`outputLanguage.js` 的呼叫端都已經接好 `filterPhraseDict`）。
+- **② 為什麼加 `DROP_SOURCES` 沒用**：`filterPhraseDict` 只濾 `opencc-js/to/twp` 那份字典，但「星回 星迴」「低回 低迴」這批條目在 **`from/cn`（s2t）** 那份裡，濾不到。P137 起改成**轉換前先把角色名／使用者名整個遮起來**（`proseMask.convertProtectedProse`），名字不再經過任何詞表。**新角色不必做任何事**；若仍有名字被改，先確認該呼叫端有沒有把名字放進 `normalizeCharacterOutput(text, lang, { protect })`（目前 11 處呼叫端都已帶上）。
+
+### 角色回覆夾雜 `thought (System hint)`、「第一則／第二則」這類思考內容（P137 起已過濾）
+
+- **症狀**：角色的回覆前面多出一大段自言自語——當下時間、角色設定分析、「回應要點：1. …」，最後才是真正要說的話，而且常被切成好幾顆泡泡；有時整則都是這種內容。
+- **成因**：**模型端的行為**，不是我們的改動。它把思考／草稿當成回覆正文送進 `choices[0].delta.content`（實機：google / `gemini-3.5-flash`，2026-08）。舊版沒有任何一道過濾接得住——`thinkingFilter.js` 只認 `<thinking>` 這種**有標籤**的區塊。
+- **會自己惡化**：洩漏內容一旦落庫，下一輪會原封不動送回模型當範例，模型照抄自己上次的格式，比例會從偶發滾成每則都洩漏（實機 1/29 → 6/6）。
+- **P137 已修**：四層——`callLLM` 出口過濾、串流過濾（畫面上不會閃）、`buildPromptHistory` 歷史側過濾（**舊的洩漏訊息不必手動清，送 prompt 前就被剝掉，DB 一個字都不動**）、prompt 規則 `NO_META_OUTPUT`。
+- **若使用者說還是看得到**：
+  1. 先確認版本 ≥ P137（設定頁）。iOS PWA 有時要完全關掉再開才會拿到新版。
+  2. 若洩漏文字**開頭的標記是沒見過的新寫法**，把它加進 `auris-vue/src/services/metaLeakFilter.js` 的 `META_PARA_RES`，並在 `__tests__/metaLeakFilter.test.js` 補一條斷言。**進場閘門刻意很嚴（只認開頭），不要為了多攔一點就放寬成模糊比對**——那會開始誤砍正常演出。
+  3. **內容重複**（同一段話出現兩次、中間夾 `***`）是同一個模型退化的另一面，過濾器不處理（兩份用字略有不同，無法可靠分辨哪份是正式版）。這種情況建議使用者換模型。
 
 ### 角色把生日／紀念日講錯，而且糾正不回來（P135 起）
 

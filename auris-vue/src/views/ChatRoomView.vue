@@ -1564,6 +1564,7 @@ const EMPTY_REPLY_HINTS = {
   content_filter: '這則回覆被服務商的內容過濾擋下。長按「重新生成回覆」通常就過了。',
   no_parts: '服務商回報正常結束，卻沒有回傳任何內容。長按「重新生成回覆」再試一次。',
   no_candidates: '服務商沒有回傳任何候選回覆。長按「重新生成回覆」再試一次。',
+  meta_leak: '這次模型整段都在自言自語（把思考當成回覆），沒有真正說出口的話。長按「重新生成回覆」再試一次。',
 };
 
 function emptyReplyHint(reason) {
