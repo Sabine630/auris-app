@@ -5,27 +5,27 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <div class="ann-badge">P136 更新公告</div>
+      <div class="ann-badge">P137 更新公告</div>
 
       <div class="ann-pages">
         <transition name="ann-slide" mode="out-in">
           <div class="ann-page" :key="page">
 
-            <!-- 第一頁：P135–P136。一個新功能、一個修復，兩者是同一個故事的兩半 -->
+            <!-- 第一頁：P137。純修復版——8/13 起模型端行為改變造成的兩個症狀 -->
             <template v-if="page === 0">
-              <div class="ann-title">新功能與修復</div>
+              <div class="ann-title">修復</div>
               <div class="ann-items">
                 <div class="ann-item">
-                  <div class="ann-item-title">可以改他說過的話了 ✏️</div>
-                  <div class="ann-item-desc">長按角色的訊息 →「編輯內容」，直接改掉那句話。<b>不限最新一則，往前的訊息也能改。</b>只換這則的文字，不會重新生成、也不影響其他訊息。<br>這不只是修錯字——他一旦講錯事情（例如把生日講成別天），那句話會留在對話裡被他當成「記得」的事，之後怎麼糾正都沒用。直接把那句改掉才是根治。</div>
+                  <div class="ann-item-title">他回覆前面那串自言自語不見了 🧹</div>
+                  <div class="ann-item-desc">8 月中開始，角色的回覆前面常多出一大段<b>「thought (System hint):」</b>——當下時間、角色設定分析、「回應要點：1. …」，最後才是真正要說的話，還被切成好幾顆泡泡。<br>那是<b>模型自己把草稿當成回覆吐出來</b>（不是 Auris 改壞了）。這一版加了四道過濾把它擋掉，連打字動畫過程中都不會再閃出來。<br><span style="opacity:.75">※ 先前已經留在對話裡的那幾則不必手動清——送給他看的時候會自動剝掉，你的訊息紀錄不會被動到。</span></div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">他終於記得你們的日子了 🎂</div>
-                  <div class="ann-item-desc">角色生日、你的生日、相識紀念日、在一起紀念日——過去他<b>只有在當天</b>才知道，其他日子被問到就自己編一個，而且越糾正越堅持。現在這些日期他隨時都記得。<br>他不會沒事拿出來講，只有你問起或當天到了才會提。<br><span style="opacity:.75">※ 生日只記月和日，年齡以角色設定為準，所以他答不出出生年份是正常的。※ 日期要先在角色設定／我的設定裡填好才有用。</span></div>
+                  <div class="ann-item-title">名字不會再被偷偷改字 ✍️</div>
+                  <div class="ann-item-desc">角色名或你的名字裡若有某些字（例如「沈星<b>回</b>」被改成「沈星<b>迴</b>」），那是繁體正規化的詞表誤傷。現在名字在轉換前會整個被保護起來，不再經過詞表。<br><span style="opacity:.75">※ 已經存進聊天的舊訊息不會自動改回來，新的回覆開始就正常了。</span></div>
                 </div>
                 <div class="ann-item">
-                  <div class="ann-item-title">如果他還是講錯 🔁</div>
-                  <div class="ann-item-desc">先前講錯的那幾則還留在對話裡，他可能還會跟著錯。用上面的「編輯內容」把那幾則改掉就好——這正是這次加這個功能的原因。</div>
+                  <div class="ann-item-title">如果同一段話還是講了兩次 🔁</div>
+                  <div class="ann-item-desc">有些模型最近會先寫一版草稿、再寫一版正式的，兩份都送出來（中間常夾著 <b>***</b>）。兩份用字略有不同，程式沒辦法可靠分辨哪一份才是正式版，所以這一版<b>不會</b>自動處理。<br>若常遇到，建議到<b>設定 → API</b> 換一個模型試試。</div>
                 </div>
               </div>
             </template>
@@ -68,7 +68,7 @@
 
               <div class="ann-guide-section">
                 <div class="ann-guide-label">確認版本</div>
-                <div class="ann-guide-text">設定頁最底部顯示 <strong>P136</strong> 即為最新版</div>
+                <div class="ann-guide-text">設定頁最底部顯示 <strong>P137</strong> 即為最新版</div>
               </div>
 
               <div class="ann-guide-section">
@@ -103,7 +103,7 @@ import { ref } from 'vue';
 
 const emit = defineEmits(['close']);
 // 頁數集中在此：指示點與「下一頁／我知道了」都依它算，加頁時不會漏改其中一處。
-// P136 為「新功能與修復」與「更新指引」兩頁。增減頁面時只改這個常數即可。
+// P137 為「修復」與「更新指引」兩頁。增減頁面時只改這個常數即可。
 const PAGE_COUNT = 2;
 const page = ref(0);
 
