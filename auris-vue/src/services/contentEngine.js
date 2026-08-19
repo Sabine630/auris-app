@@ -82,7 +82,8 @@ ${timeLine}${youLine}${recentChat ? `【最近與對方的對話】\n${recentCha
   if (!text.trim()) return null;
   const normalized = await normalizeCharacterOutput(
     applyNameMacros(text.trim(), youName || '你', c.name),
-    c.lang
+    c.lang,
+    { protect: [c.name, youName] }
   );
   const { content, tags } = extractPostTags(normalized);
   return { content: dedupeRepeats(content), tags };
@@ -185,7 +186,7 @@ ${thread ? `\n這則貼文下面的留言串（由舊到新，最後一則是你
     { max_tokens: 400, temperature: 0.85 }
   );
   if (!text?.trim()) return '';
-  return normalizeCharacterOutput(applyNameMacros(text.trim(), youName, c.name), c.lang);
+  return normalizeCharacterOutput(applyNameMacros(text.trim(), youName, c.name), c.lang, { protect: [c.name, youName] });
 }
 
 export async function generateCommentReply(postId, charId, userComment) {
@@ -292,7 +293,8 @@ ${diaryLanguageRule(c.lang)}
   if (text.trim()) {
     const cleaned = dedupeRepeats(await normalizeCharacterOutput(
       applyNameMacros(text.trim(), youName || '你', c.name),
-      c.lang
+      c.lang,
+      { protect: [c.name, youName] }
     ));
     const lines = cleaned.split('\n');
     let mood = '📔';
@@ -349,7 +351,8 @@ ${youLine}${recentChat ? `最近和對方的對話：\n${recentChat}\n夢境可�
   if (text.trim()) {
     const cleaned = dedupeRepeats(await normalizeCharacterOutput(
       applyNameMacros(text.trim(), youName || '你', c.name),
-      c.lang
+      c.lang,
+      { protect: [c.name, youName] }
     ));
     const entry = { id: 'dream_' + Date.now(), charId, content: cleaned, createdAt: Date.now() };
     await dbPut('dreams', entry);

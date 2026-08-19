@@ -183,7 +183,8 @@ ${material}
     );
     letter = await normalizeCharacterOutput(
       applyNameMacros((text || '').trim(), youName || '你', c.name),
-      c.lang
+      c.lang,
+      { protect: [c.name, youName] }
     );
     if (!letter) throw new Error('AI 回傳空白，請稍後重試');
   }

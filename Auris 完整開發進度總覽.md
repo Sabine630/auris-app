@@ -1,7 +1,7 @@
 # 🎨 Auris 完整開發進度總覽
 
-**最後更新**：2026-08-08
-**當前版本**：P136（角色回覆可就地編輯）
+**最後更新**：2026-08-19
+**當前版本**：P137（思考外洩過濾與名字保護）
 **狀態**：上線後持續優化中
 
 ---
@@ -1969,7 +1969,7 @@ if (mmdd(char.birthday) === today) parts.push('今天是「' + char.name + '」�
 
 ---
 
-### P136 角色回覆可就地編輯（2026-08-08，當前版本）
+### P136 角色回覆可就地編輯（2026-08-08）
 
 **背景**：P135 把生日等重要日期注入 prompt 後，仍**救不回已經講錯的那幾則**——錯誤答案留在對話歷史裡，模型會同時看到「正確的設定」與「自己講過的錯答案」而繼續拉扯。
 
@@ -1998,6 +1998,60 @@ if (mmdd(char.birthday) === today) parts.push('今天是「' + char.name + '」�
 | `services/__tests__/messageEdit.test.js` | **新增** 18 項：正常編輯、僅空白差異、空字串／純空白／純換行、內容相同、msg 與 newContent 的非法型別、其他欄位不變、原物件無副作用 |
 
 **驗證**：全套 Vitest **758 綠**（新增 18 項）、production build 通過。`git diff` 確認 `ChatRoomView.vue` **沒有刪除任何既有行**（純加法）。另以 9 種對抗性輸入實測 `applyMessageEdit`——驗收時據此補掉一個破綻：陣列的 `typeof` 也是 `'object'`，未特別擋會被 `{ ...msg }` 展開成只有 `content` 的垃圾物件（實務上呼叫端不可能傳陣列，純粹是不留無意義的輸出路徑）。
+
+---
+### P137 角色回覆夾雜思考、名字被改字（2026-08-19，當前版本）
+
+**使用者回報**：8/13 起角色每則回覆都先跳出一段 `thought (System hint):`＋角色設定分析，接著才是「第一則」「第二則」「第三則」的內容；而且角色名「沈星回」被寫成「沈星迴」。
+
+**查證（匯出檔 1537 則訊息、角色訊息 1169 則）**：兩個症狀是**兩個不同的原因**。
+
+| 日期 | 含思考外洩的角色訊息 |
+|---|---|
+| 08-10 | 0 / 35 |
+| 08-11 | 1 / 29 |
+| 08-12 | 2 / 10 |
+| 08-13 | 10 / 24 |
+| 08-17 | 3 / 3 |
+| 08-18 | 6 / 6（已 100%） |
+
+**病灶 A：模型把思考當正文吐出來，我們沒有任何一道過濾接得住。**
+- 不是自家改動造成：正式版最後一次更新是 08-08 23:29（P136 合併），之後程式碼沒動；08-10 還有 35 則全乾淨。
+- 這些字是走**正文**進來的：SSE 只讀 `choices[0].delta.content`，推理通道的欄位根本不會被讀進來。
+- 唯一的思考過濾 `thinkingFilter.js` 只認成對的 `<thinking>` 類標籤，純文字的 `thought (System hint):` 不在攔截範圍。
+- **兩條放大鏈**：① `splitReply` 依空行切泡泡、`maxSegments = c.maxMsg || 2`，思考佔走前面的泡泡、真正的回覆被擠成一坨；② 洩漏內容已落庫，下一輪原封不動送回 prompt（最近 `memory` 則），模型照抄自己上次的格式。**硬證據**：08-17 那則的思考寫「現在時間仍為 2026/8/13」，但每則都注入當下時間（格式一字不差）→ 模型是照歷史裡的舊時間走，不是照注入值。比例 1/29 → 6/6 也符合這條。
+
+**病灶 B：名字是我們自己改的。** OpenCC 的 **`from/cn`（s2t）詞表**裡有 `星回 星迴`（同批還有 `低回 低迴`）。P134 的 `zhPhraseBlocklist` 只濾 `toTwp`（`filterPhraseDict(toTwp)`），**這條在 fromCn 側，把「星回」加進 `DROP_SOURCES` 完全無效**——逐詞封鎖在這一類上修不完，改成把名字整個遮起來再轉。佐證正規化確實有在跑：7/30 之後 289 則角色訊息裡 288 則已是轉換不動點。
+
+**修法（四層，缺一層就治不乾淨）**
+
+| 層 | 做法 |
+|---|---|
+| 出口過濾 | `metaLeakFilter.stripMetaLeak` 接在 `callLLM` 出口（`stripThinking` 之後），所有 provider／串流與非串流共用 |
+| 串流過濾 | `createMetaLeakStreamFilter` 串在 thinking filter 之後，思考從頭到尾不會逐字打在畫面上 |
+| 歷史側過濾 | `buildPromptHistory`（一對一）與群聊 `rawHistory` 在送 prompt 前剝掉舊訊息裡的殘留——**出口過濾只治得了新回覆**，已落庫的那幾則還在視窗裡當範例。只改送出去的副本，**使用者的 DB 一個字都不動** |
+| Prompt 規則 | `NO_META_OUTPUT` 從源頭少發生（一般回覆與主動訊息共用）；與過濾互補、不可互相取代 |
+
+**誤砍防線**：`stripMetaLeak` 只在**整段文字一開頭就是思考**（或開頭就是草稿標號）時才啟動，否則原字串一個字都不改；啟動後也只往下吃連續的思考段落，一碰到正文就停手。以使用者實機匯出檔 1169 則角色訊息回放：**22 則被清理（正是人工標記的那 22 則）、1147 則一字未動**。
+
+**空回應歸因**：整則都是思考時剝完會變空字串 → 走既有空回應路徑，新增枚舉 `meta_leak` 與對應文案（提示長按重新生成），不再與 `no_chunks`（代理不支援串流）混為一談。
+
+| 檔案 | 變更 |
+|------|------|
+| `services/metaLeakFilter.js` | **新增**：`stripMetaLeak`／`looksLikeMetaLeak`／`createMetaLeakStreamFilter` |
+| `services/llm.js` | `callLLM` 出口接上 meta 過濾；串流過濾鏈改為 thinking → meta → 呼叫端；空回應枚舉加 `meta_leak` |
+| `services/chatEngine.js` | 抽出並匯出 `buildPromptHistory`（含歷史側過濾）；新增 `NO_META_OUTPUT` prompt 規則；6 處 `normalizeCharacterOutput` 帶上 `protect` |
+| `services/proseMask.js` | **新增** `maskNames`／`unmaskNames`／`convertProtectedProse`：轉換前把名字換成私有使用區佔位符，轉完換回（單字名不保護，避免鎖住整篇同字） |
+| `services/outputLanguage.js`、`services/zhTwWorker.js` | `normalizeCharacterOutput(text, lang, { protect })`，Worker 與主執行緒退路共用同一條遮罩路徑 |
+| `services/contentEngine.js`、`services/reviewEngine.js` | 貼文／留言／日記／夢境／月報信一併帶上 `protect` |
+| `services/diag.js` | 空回應原因 allowlist 加 `meta_leak` |
+| `views/ChatRoomView.vue` | `EMPTY_REPLY_HINTS` 加 `meta_leak` 文案 |
+| `services/__tests__/metaLeakFilter.test.js`、`metaLeakPipeline.test.js` | **新增** 23 項：閘門正反例、實機樣本、串流分塊／邊界切割、與 thinking filter 併用 |
+| `services/__tests__/outputLanguage.test.js`、`chatEngine.test.js` | 新增 9 項：名字保護迴歸鎖（含「沒保護時真的會被改成沈星迴」的反證）、歷史側過濾 |
+
+**驗證**：全套 Vitest **790 綠**（新增 32 項）、production build 通過。另以使用者實機匯出檔（1537 則）回放過濾器，逐則核對命中與未命中。
+
+**已知限制**：這一版只治「思考外洩」。同批出現的**內容重複**（模型先寫一版草稿、再寫一版正式的，兩份都吐出來）是同一個模型退化的另一個面向，過濾器無法可靠分辨哪一份才是正式版（實機兩份用字略有不同），仍會照原樣顯示；若困擾，換模型仍是最直接的解法。模型把額度花在自言自語上也照樣計費，這是 prompt 規則能減少、但無法根除的部分。
 
 ---
 ## 🎨 當前技術棧（Vue 版現況）
@@ -2040,8 +2094,9 @@ API     OpenAI 相容 + Anthropic 原生 + Google AI Studio / Vertex AI 原生�
 | `capsules.js` | 時間膠囊：埋/拆/到期判定 CRUD，存 settings `capsules`（P111） |
 | `continuity.js` | 待續記憶純函式核心（P131）：候選閘門、日期驗證、operation schema 與狀態機、fingerprint 去重、提及判定、清理分類；擷取階段追蹤 ring buffer（P132） |
 | `continuityCleanup.js` | 待續事件每日清理：逾期轉 expired、關閉逾 30 天刪除（P131） |
-| `outputLanguage.js` | 角色輸出強制台灣繁體（P131）：完整 OpenCC 字典走**用完即釋放的 Worker**（`zhTwWorker.js`），主執行緒零常駐；`proseMask.js` 保護網址／程式碼片段 |
+| `outputLanguage.js` | 角色輸出強制台灣繁體（P131）：完整 OpenCC 字典走**用完即釋放的 Worker**（`zhTwWorker.js`），主執行緒零常駐；`proseMask.js` 保護網址／程式碼片段與角色名／使用者名（P137） |
 | `thinkingFilter.js` | 剝除模型輸出的 `<thinking>` 區塊（P132），串流另有 stateful filter 防閃現 |
+| `metaLeakFilter.js` | 剝除**不帶標籤**的思考／計畫外洩（P137）：`thought (System hint):`、「回應要點：」、草稿標號；串流另有 stateful filter 防閃現。與 `thinkingFilter` 互補 |
 | `keyboardViewport.js` | `.keyboard-page` 的 visual viewport 控制器（P115）：只縮當前頁、不動 `.phone` |
 | `keyboardRootScrollGuard.js` | iOS standalone root scroll 歸零守衛（P124） |
 | `keyboardAccessory.js` | iOS 表單輔助列讓位（P132）：輔助列浮在 visual viewport 內、`vv.height` 不扣它，以實機量到的 58px 從底部讓出 |

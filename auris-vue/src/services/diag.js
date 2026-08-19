@@ -29,7 +29,7 @@ const SAFE_CODES = new Set([
 const SAFE_REASONS = new Set([
   'max_tokens', 'safety', 'recitation', 'blocklist', 'prohibited_content',
   'spii', 'malformed_function_call', 'stop', 'end_turn', 'content_filter',
-  'no_candidates', 'no_parts', 'no_chunks', 'other', 'unknown',
+  'no_candidates', 'no_parts', 'no_chunks', 'meta_leak', 'other', 'unknown',
 ]);
 // 偵測用（safeLabel 拒收）與遮蔽用（實際 replace 成 [REDACTED]，g flag＋吃掉整段 key）
 const SECRETISH_TEST_RE = /(?:sk-[A-Za-z0-9_-]{12,}|AIza[0-9A-Za-z_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_|AKIA[0-9A-Z]{12,}|xox[bap]-)/i;

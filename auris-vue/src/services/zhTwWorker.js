@@ -11,16 +11,16 @@
 import { ConverterFactory } from 'opencc-js/core';
 import fromCn from 'opencc-js/from/cn';
 import toTwp from 'opencc-js/to/twp';
-import { convertVisibleProse } from './proseMask.js';
+import { convertProtectedProse } from './proseMask.js';
 import { filterPhraseDict } from './zhPhraseBlocklist.js';
 
 let converter = null;
 
 self.onmessage = (event) => {
-  const { text } = event.data || {};
+  const { text, protect } = event.data || {};
   try {
     if (!converter) converter = ConverterFactory(...fromCn, ...filterPhraseDict(toTwp));
-    self.postMessage({ ok: true, text: convertVisibleProse(text, converter) });
+    self.postMessage({ ok: true, text: convertProtectedProse(text, converter, protect) });
   } catch (error) {
     self.postMessage({ ok: false, error: String(error?.message || error) });
   }
