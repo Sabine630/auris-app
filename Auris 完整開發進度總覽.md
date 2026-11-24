@@ -2072,7 +2072,9 @@ if (mmdd(char.birthday) === today) parts.push('今天是「' + char.name + '」�
 | `composables/useModelList.js` | **新增**：debounce＋競態保護的共用 composable（兩個畫面共用） |
 | `views/ApiView.vue`、`views/OnboardingView.vue` | 移除寫死清單，改用共用模組；設定頁標題旁顯示「載入供應商清單中…」 |
 | `services/api.js` | `isReasoningModel` 改為涵蓋 gpt-5 以後世代與 o 系列任意位數 |
-| `services/__tests__/modelCatalog.test.js` | **新增** 29 項：請求組裝（含自訂 base）、過濾、合併、各種失敗退回、快取、`isReasoningModel` 已知／未知命名 |
+| `services/__tests__/modelCatalog.test.js`、`useModelList.test.js` | **新增** 36 項：請求組裝（含自訂 base）、過濾（含 chat 端點不可用的 codex／deep-research／search／-pro 款，且不誤擋 gemini-2.5-pro）、合併、各種失敗退回、快取、金鑰不完整（<20 字元）不發請求、`isReasoningModel` 已知／未知命名 |
+
+**審查補強**：OpenAI 清單另排除 chat/completions 不能用的款（codex、deep-research、search、僅 Responses API 的 -pro），只套在 OpenAI 命名（openai／openrouter 的 `openai/` 前綴）。金鑰去空白後不足 20 字元不發請求，避免輸入中途帶半截金鑰打供應商。
 
 ---
 ## 🎨 當前技術棧（Vue 版現況）

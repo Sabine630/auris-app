@@ -12,6 +12,7 @@ const {
 } = await import('../modelCatalog.js');
 const { isReasoningModel } = await import('../api.js');
 
+const KEY = 'sk-test-0123456789abcdefghij'; // ≥ 20 字元
 const ok = (body) => ({ ok: true, status: 200, json: async () => body });
 
 beforeEach(() => { clearModelListCache(); });
@@ -28,24 +29,29 @@ describe('內建清單單一來源', () => {
 
 describe('buildModelListRequest', () => {
   it('openai：預設端點、Bearer', () => {
-    const r = buildModelListRequest('openai', ' sk-x ', '');
+    const r = buildModelListRequest('openai', ` ${KEY} `, '');
     expect(r.url).toBe('https://api.openai.com/v1/models');
-    expect(r.headers.Authorization).toBe('Bearer sk-x');
+    expect(r.headers.Authorization).toBe(`Bearer ${KEY}`);
   });
   it('尊重自訂 api_base 並去尾斜線', () => {
-    const r = buildModelListRequest('openai', 'k', 'https://proxy.test/v1/');
+    const r = buildModelListRequest('openai', KEY, 'https://proxy.test/v1/');
     expect(r.url).toBe('https://proxy.test/v1/models');
   });
   it('anthropic：/v1/models + x-api-key 標頭', () => {
-    const r = buildModelListRequest('anthropic', 'k', '');
+    const r = buildModelListRequest('anthropic', KEY, '');
     expect(r.url).toBe('https://api.anthropic.com/v1/models?limit=1000');
-    expect(r.headers['x-api-key']).toBe('k');
+    expect(r.headers['x-api-key']).toBe(KEY);
     expect(r.headers['anthropic-version']).toBe('2023-06-01');
     expect(r.headers['anthropic-dangerous-direct-browser-access']).toBe('true');
   });
   it('google／openrouter 走各自預設 base', () => {
-    expect(buildModelListRequest('google', 'k', '').url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/models');
-    expect(buildModelListRequest('openrouter', 'k', '').url).toBe('https://openrouter.ai/api/v1/models');
+    expect(buildModelListRequest('google', KEY, '').url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/models');
+    expect(buildModelListRequest('openrouter', KEY, '').url).toBe('https://openrouter.ai/api/v1/models');
+  });
+  it('金鑰不完整（去空白後 < 20 字元）不發請求', () => {
+    expect(buildModelListRequest('openai', 'sk-proj-abc', '')).toBeNull();
+    expect(buildModelListRequest('openai', `  ${KEY.slice(0, 19)}  `, '')).toBeNull();
+    expect(buildModelListRequest('openai', KEY.slice(0, 20), '')).not.toBeNull();
   });
   it('沒金鑰或 vertex 不發請求', () => {
     expect(buildModelListRequest('openai', '  ', '')).toBeNull();
@@ -68,6 +74,28 @@ describe('非聊天模型過濾', () => {
     expect(isChatModelId('babbage-002', 'openai', { official: true })).toBe(false);
     expect(isChatModelId('some-weird-proxy-model', 'openai', { official: true })).toBe(false);
     expect(isChatModelId('some-weird-proxy-model', 'openai', { official: false })).toBe(true);
+  });
+});
+
+describe('chat 端點不可用的 OpenAI 款', () => {
+  it('openai：排除 codex／deep-research／search／-pro', () => {
+    const bad = ['gpt-5-codex', 'codex-mini-latest', 'o3-deep-research', 'o4-mini-deep-research', 'gpt-4o-search-preview',
+      'gpt-5-search-api', 'gpt-5-pro', 'gpt-5.2-pro', 'o1-pro', 'o3-pro', 'o3-pro-2025-06-10'];
+    for (const id of bad) expect(isChatModelId(id, 'openai'), id).toBe(false);
+    for (const id of ['gpt-5.4-mini', 'o3', 'o3-mini', 'gpt-4o', 'chatgpt-4o-latest', 'gpt-5'])
+      expect(isChatModelId(id, 'openai'), id).toBe(true);
+  });
+  it('openrouter 的 openai/ 前綴同樣排除', () => {
+    expect(isChatModelId('openai/o3-pro', 'openrouter')).toBe(false);
+    expect(isChatModelId('openai/gpt-5-codex', 'openrouter')).toBe(false);
+    expect(isChatModelId('openai/gpt-4o-mini', 'openrouter')).toBe(true);
+  });
+  it('不誤擋別家的 -pro 與 search', () => {
+    expect(isChatModelId('gemini-2.5-pro', 'google')).toBe(true);
+    expect(isChatModelId('google/gemini-2.5-pro', 'openrouter')).toBe(true);
+    expect(isChatModelId('claude-opus-4-8', 'anthropic')).toBe(true);
+    expect(isChatModelId('perplexity/sonar-pro', 'openrouter')).toBe(true);
+    expect(isChatModelId('gemini-2.5-pro', 'openai')).toBe(true); // 代理後的非 OpenAI 命名
   });
 });
 
@@ -131,7 +159,7 @@ describe('mergeModelList', () => {
 });
 
 describe('fetchProviderModels：失敗一律安靜回 null', () => {
-  const args = { provider: 'openai', apiKey: 'sk-test', apiBase: '' };
+  const args = { provider: 'openai', apiKey: KEY, apiBase: '' };
 
   it('成功：回過濾後的清單，並帶正確 URL／標頭', async () => {
     const fetchMock = vi.fn(async () => ok({ data: [{ id: 'gpt-5.5' }, { id: 'tts-1' }] }));
@@ -139,7 +167,7 @@ describe('fetchProviderModels：失敗一律安靜回 null', () => {
     const list = await fetchProviderModels(args);
     expect(list.map(m => m.id)).toEqual(['gpt-5.5']);
     expect(fetchMock.mock.calls[0][0]).toBe('https://api.openai.com/v1/models');
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer sk-test');
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${KEY}`);
   });
   it('金鑰錯（401）→ null', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401, json: async () => ({}) })));

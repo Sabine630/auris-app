@@ -1,7 +1,7 @@
 // 模型清單 composable（P138）：API 設定頁與 Onboarding 共用。
 // 有金鑰時（debounce）向供應商抓清單，失敗安靜退回內建；已選模型一律保留在清單內。
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
-import { getBuiltinModels, mergeModelList, fetchProviderModels } from '../services/modelCatalog.js';
+import { getBuiltinModels, mergeModelList, fetchProviderModels, hasPlausibleKey } from '../services/modelCatalog.js';
 
 // getters：{ provider, apiKey, apiBase?, selected? } 皆為 () => value
 export function useModelList({ provider, apiKey, apiBase = () => '', selected = () => '' }, { debounceMs = 700 } = {}) {
@@ -30,6 +30,11 @@ export function useModelList({ provider, apiKey, apiBase = () => '', selected = 
   watch([provider, apiKey, apiBase], ([p], [oldP]) => {
     if (p !== oldP) fetched.value = null;
     clearTimeout(timer);
+    // 金鑰明顯不完整就不排請求；並作廢進行中的舊請求（用過期金鑰的回應不該套用）
+    if (!hasPlausibleKey(apiKey())) {
+      seq++; ctrl?.abort(); loading.value = false; fetched.value = null;
+      return;
+    }
     timer = setTimeout(refresh, debounceMs);
   });
   onBeforeUnmount(() => { clearTimeout(timer); ctrl?.abort(); seq++; });

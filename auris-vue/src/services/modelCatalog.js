@@ -63,10 +63,24 @@ const OFFICIAL_CHAT_RE = {
   google: /^(?:gemini|gemma)/i,
 };
 
+// OpenAI 清單會夾帶 chat/completions 端點不能用的款（選了直接失敗）：codex、deep-research、
+// *-search*、以及僅 Responses API 可用的 -pro 款（gpt-5-pro、o1-pro、o3-pro…）。
+// 只套在 OpenAI 命名（provider=openai 的 gpt-/oN/chatgpt-，或 openrouter 的 openai/ 前綴），
+// 不誤擋 gemini-2.5-pro 這類別家的 -pro。（名單依經驗整理，未逐項對照 OpenAI 官方文件查證。）
+const OPENAI_NAME_RE = /^(?:openai\/)?(?:gpt-|o\d|chatgpt-|codex)/i;
+const OPENAI_NO_CHAT_RE = /codex|deep-research|search|-pro(?:$|-)/i;
+
+function isOpenAiNamed(id, provider) {
+  if (provider === 'openai') return OPENAI_NAME_RE.test(id);
+  if (provider === 'openrouter') return /^openai\//i.test(id) && OPENAI_NAME_RE.test(id);
+  return false;
+}
+
 export function isChatModelId(id, provider, { official = false } = {}) {
   if (!id || typeof id !== 'string') return false;
   if (id.startsWith('ft:')) return false;
   if (NON_CHAT_RE.test(id)) return false;
+  if (isOpenAiNamed(id, provider) && OPENAI_NO_CHAT_RE.test(id)) return false;
   if (official && OFFICIAL_CHAT_RE[provider] && !OFFICIAL_CHAT_RE[provider].test(id)) return false;
   return true;
 }
@@ -133,10 +147,16 @@ export function mergeModelList(builtin, fetched, selectedId) {
   return list;
 }
 
+// 金鑰還在輸入中（去空白後不到 20 字元）不發請求，避免每停頓一次就帶半截金鑰打供應商。
+export const MIN_KEY_LENGTH = 20;
+export function hasPlausibleKey(apiKey) {
+  return String(apiKey || '').trim().length >= MIN_KEY_LENGTH;
+}
+
 // 組出請求；Vertex 或缺金鑰回 null（維持內建清單）。base 尊重使用者自訂位址。
 export function buildModelListRequest(provider, apiKey, apiBase) {
   const key = String(apiKey || '').trim();
-  if (!key || provider === 'vertex') return null;
+  if (!hasPlausibleKey(key) || provider === 'vertex') return null;
   const base = (String(apiBase || '').trim() || getDefBase(provider)).replace(/\/+$/, '');
   if (provider === 'anthropic') {
     return {
