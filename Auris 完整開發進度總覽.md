@@ -1,7 +1,7 @@
 # 🎨 Auris 完整開發進度總覽
 
-**最後更新**：2026-08-19
-**當前版本**：P137（思考外洩過濾與名字保護）
+**最後更新**：2026-11-24
+**當前版本**：P138（動態模型清單）
 **狀態**：上線後持續優化中
 
 ---
@@ -2000,7 +2000,7 @@ if (mmdd(char.birthday) === today) parts.push('今天是「' + char.name + '」�
 **驗證**：全套 Vitest **758 綠**（新增 18 項）、production build 通過。`git diff` 確認 `ChatRoomView.vue` **沒有刪除任何既有行**（純加法）。另以 9 種對抗性輸入實測 `applyMessageEdit`——驗收時據此補掉一個破綻：陣列的 `typeof` 也是 `'object'`，未特別擋會被 `{ ...msg }` 展開成只有 `content` 的垃圾物件（實務上呼叫端不可能傳陣列，純粹是不留無意義的輸出路徑）。
 
 ---
-### P137 角色回覆夾雜思考、名字被改字（2026-08-19，當前版本）
+### P137 角色回覆夾雜思考、名字被改字（2026-08-19）
 
 **使用者回報**：8/13 起角色每則回覆都先跳出一段 `thought (System hint):`＋角色設定分析，接著才是「第一則」「第二則」「第三則」的內容；而且角色名「沈星回」被寫成「沈星迴」。
 
@@ -2052,6 +2052,29 @@ if (mmdd(char.birthday) === today) parts.push('今天是「' + char.name + '」�
 **驗證**：全套 Vitest **790 綠**（新增 32 項）、production build 通過。另以使用者實機匯出檔（1537 則）回放過濾器，逐則核對命中與未命中。
 
 **已知限制**：這一版只治「思考外洩」。同批出現的**內容重複**（模型先寫一版草稿、再寫一版正式的，兩份都吐出來）是同一個模型退化的另一個面向，過濾器無法可靠分辨哪一份才是正式版（實機兩份用字略有不同），仍會照原樣顯示；若困擾，換模型仍是最直接的解法。模型把額度花在自言自語上也照樣計費，這是 prompt 規則能減少、但無法根除的部分。
+
+---
+### P138 動態模型清單（2026-11-24，當前版本）
+
+**動機**：模型清單原本寫死在 `ApiView.vue` 與 `OnboardingView.vue` 兩份，新模型出來只能選「自訂」手動輸入 ID；`api.js` 的 `isReasoningModel` 只認 `gpt-5` / `o1-9`，新命名（如 gpt-6）會被當一般模型而送出不被接受的取樣參數。
+
+**做法**
+- **單一來源**：新增 `services/modelCatalog.js`，內建清單（五個供應商）收斂於此，兩個畫面共用，不再各抄一份。
+- **動態抓清單**：選了供應商且有金鑰（debounce 700ms）時，向供應商的模型端點抓可用模型——OpenAI 相容 `{base}/models`（Bearer）、Anthropic `{base}/models?limit=1000`（`x-api-key`）、Google 走相容端點 `{base}/models`（去 `models/` 前綴）、OpenRouter `{base}/models`；**尊重使用者自訂 api_base**。Vertex 維持內建清單。
+- **安靜退回**：離線／CORS／金鑰錯／逾時（8 秒）／回非 JSON／格式不符一律回 `null`，畫面照常用內建清單；不彈錯、不寫診斷（金鑰與位址不外洩到任何紀錄）。結果只在記憶體快取 10 分鐘；換供應商會丟棄舊清單，並以序號丟棄過期回應。Demo 模式不外連。
+- **過濾非聊天模型**：黑名單擋 embedding／tts／whisper／image／imagen／veo／video／moderation／realtime／audio／instruct／微調款（`ft:`）等；官方預設端點另加白名單（openai: gpt-/oN/chatgpt-、anthropic: claude-、google: gemini/gemma），自訂代理只套黑名單；OpenRouter 另看 `output_modalities`（需含文字、不含圖片／音訊）。
+- **合併規則**（`mergeModelList`）：內建款（有在動態清單內者，保留中文說明與順序）→ 其餘動態款（最多 60 筆，有 `created` 則新到舊）→ **使用者目前選的模型一律保留**；「自訂」輸入保留不變。API 設定頁若已存的自訂 ID 出現在動態清單，載入後自動改選清單項目。
+- **依模型名稱判斷行為的地方**：全 repo 只有 `isReasoningModel` 一處。改為 `gpt-5`～`gpt-20`（排除 Azure 的 `gpt-35`）與 `o` 系列任意位數（o1、o3、o10…）；其餘未知命名一律走「照常送取樣參數」的預設，不會因參數不對而失敗。
+
+| 檔案 | 改動 |
+|---|---|
+| `services/modelCatalog.js` | **新增**：內建清單、過濾、合併、請求組裝、`fetchProviderModels` |
+| `composables/useModelList.js` | **新增**：debounce＋競態保護的共用 composable（兩個畫面共用） |
+| `views/ApiView.vue`、`views/OnboardingView.vue` | 移除寫死清單，改用共用模組；設定頁標題旁顯示「載入供應商清單中…」 |
+| `services/api.js` | `isReasoningModel` 改為涵蓋 gpt-5 以後世代與 o 系列任意位數 |
+| `services/__tests__/modelCatalog.test.js`、`useModelList.test.js` | **新增** 36 項：請求組裝（含自訂 base）、過濾（含 chat 端點不可用的 codex／deep-research／search／-pro 款，且不誤擋 gemini-2.5-pro）、合併、各種失敗退回、快取、金鑰不完整（<20 字元）不發請求、`isReasoningModel` 已知／未知命名 |
+
+**審查補強**：OpenAI 清單另排除 chat/completions 不能用的款（codex、deep-research、search、僅 Responses API 的 -pro），只套在 OpenAI 命名（openai／openrouter 的 `openai/` 前綴）。金鑰去空白後不足 20 字元不發請求，避免輸入中途帶半截金鑰打供應商。
 
 ---
 ## 🎨 當前技術棧（Vue 版現況）

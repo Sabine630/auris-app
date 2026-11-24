@@ -47,7 +47,7 @@
       </div>
     </div>
 
-    <div class="sg-label">選擇模型</div>
+    <div class="sg-label">選擇模型<span v-if="modelsLoading" style="font-weight:300;color:var(--text-3)">　載入供應商清單中…</span></div>
     <div class="sg" style="margin-bottom:8px">
       <div id="model-list">
         <div v-for="m in availableModels" :key="m.id" class="model-opt" :class="{ sel: apiModel === m.id }" @click="apiModel = m.id; customModel = ''">
@@ -75,10 +75,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { getSetting, setSetting } from '../services/db.js';
 import { fetchWithTimeout, getVertexToken } from '../services/api.js';
 import { describeConnectionFailure } from '../services/connectionError.js';
+import { getBuiltinModels } from '../services/modelCatalog.js';
+import { useModelList } from '../composables/useModelList.js';
 
 const apiProvider = ref('openai');
 const apiModel = ref('gpt-5.4-mini');
@@ -87,50 +89,21 @@ const apiBase = ref('');
 const isTesting = ref(false);
 const customModel = ref('');
 
-// Model IDs verified from official docs (2026-05-22)
-const GOOGLE_MODELS = [
-  { id: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash',      desc: '最新穩定旗艦，頂尖性能' },
-  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', desc: '新一代省費穩定版' },
-  { id: 'gemini-2.5-pro',        name: 'Gemini 2.5 Pro',        desc: '複雜任務推薦' },
-  { id: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash',      desc: '速度快，價格平衡' },
-  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', desc: '最省費用' },
-];
+// 模型清單：內建清單在 services/modelCatalog.js（單一來源）；有金鑰時另向供應商動態抓，
+// 抓不到安靜退回內建，已選模型不會被洗掉（P138）。
+const { models: availableModels, loading: modelsLoading } = useModelList({
+  provider: () => apiProvider.value,
+  apiKey: () => apiKey.value,
+  apiBase: () => apiBase.value,
+  selected: () => apiModel.value,
+});
 
-const VERTEX_MODELS = [
-  { id: 'gemini-2.5-pro',        name: 'Gemini 2.5 Pro',        desc: '推薦：最強推理，Vertex AI 支援' },
-  { id: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash',      desc: '速度快，價格平衡' },
-  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', desc: '最省費用' },
-  { id: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash',      desc: '穩定版，廣泛相容' },
-];
-
-const OPENROUTER_MODELS = [
-  { id: 'mistralai/mistral-nemo',               name: 'Mistral Nemo',            desc: '輕量開源，回覆自然' },
-  { id: 'nousresearch/hermes-3-llama-3.1-405b', name: 'Hermes 3 (405B)',         desc: '推薦：RP 能力強' },
-  { id: 'gryphe/mythomax-l2-13b',               name: 'MythoMax L2 13B',         desc: '創作向，老牌 RP 模型' },
-  { id: 'anthropic/claude-sonnet-4-6',          name: 'Claude Sonnet 4.6',       desc: '透過 OpenRouter 走 Claude' },
-  { id: 'openai/gpt-4o-mini',                   name: 'GPT-4o mini',             desc: '透過 OpenRouter 走 OpenAI' },
-];
-
-const MODELS = {
-  openai: [
-    { id: 'gpt-5.5',      name: 'GPT-5.5',       desc: '最新旗艦，最強（$5/$30/MTok，1M context）' },
-    { id: 'gpt-5.4',      name: 'GPT-5.4',        desc: '平衡性能（$2.50/$15/MTok，1M context）' },
-    { id: 'gpt-5.4-mini', name: 'GPT-5.4 mini',   desc: '推薦：速度快費用低（$0.75/$4.50/MTok）' },
-    { id: 'gpt-5.4-nano', name: 'GPT-5.4 nano',   desc: '最省費，最低延遲' },
-    { id: 'gpt-4o',       name: 'GPT-4o',          desc: '前代旗艦，相容性佳' },
-    { id: 'gpt-4o-mini',  name: 'GPT-4o mini',     desc: '前代輕量，廣泛相容' },
-  ],
-  anthropic: [
-    { id: 'claude-opus-4-8',  name: 'Claude Opus 4.8',   desc: '最新旗艦，最強推理' },
-    { id: 'claude-sonnet-5',  name: 'Claude Sonnet 5',   desc: '推薦：速度與智能兼顧' },
-    { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5',  desc: '最快最省' },
-  ],
-  google: GOOGLE_MODELS,
-  vertex: VERTEX_MODELS,
-  openrouter: OPENROUTER_MODELS,
-};
-
-const availableModels = computed(() => MODELS[apiProvider.value] || MODELS.openai);
+// 動態清單抵達後，若先前因「不在內建清單」而落到自訂、且該 ID 其實在清單內，改回選清單項目。
+watch(availableModels, (list) => {
+  if (apiModel.value !== '__custom__') return;
+  const v = customModel.value.trim();
+  if (v && list.some(m => m.id === v)) { apiModel.value = v; customModel.value = ''; }
+});
 
 const hasValidKey = computed(() => {
   if (apiProvider.value === 'vertex') {
@@ -158,8 +131,9 @@ onMounted(async () => {
   apiProvider.value = (await getSetting('api_provider')) || 'openai';
   apiKey.value = (await getSetting('api_key')) || '';
   apiBase.value = (await getSetting('api_base')) || '';
-  const savedModel = (await getSetting('api_model')) || availableModels.value[0].id;
-  if (availableModels.value.find(m => m.id === savedModel)) {
+  const builtin = getBuiltinModels(apiProvider.value);
+  const savedModel = (await getSetting('api_model')) || builtin[0].id;
+  if (builtin.find(m => m.id === savedModel)) {
     apiModel.value = savedModel;
   } else {
     apiModel.value = '__custom__';
@@ -168,7 +142,7 @@ onMounted(async () => {
 });
 
 function onProviderChange() {
-  apiModel.value = availableModels.value[0].id;
+  apiModel.value = getBuiltinModels(apiProvider.value)[0].id;
   customModel.value = '';
   apiBase.value = '';
 }
