@@ -1,7 +1,7 @@
 # Auris — 架構規格說明
 
 > 維護這份文件的原則：每次新增頁面、服務、或重要設計決策時一起更新。  
-> 最後更新：2026-08-19（P137）
+> 最後更新：2026-11-24（P138）
 
 ---
 
@@ -347,6 +347,19 @@ iOS PWA 鍵盤問題的可證偽實機診斷層。正常網址保持惰性；只
 剝除模型輸出的 `<thinking|think|reasoning|antthinking>` 區塊。統一掛在 `callLLM` 出口，所有 provider、串流與非串流一次乾淨。`createThinkingStreamFilter` 為串流用的 stateful 過濾器（標籤可能被切在任意 chunk 邊界，先扣住可能是標籤前綴的尾巴）。全是思考時保留原文，不偽裝成空白回應。
 > 這段文字不只難看——它會污染需要解析 JSON 的背景任務（`parseThreadOps` 從第一個 `[` 找陣列，思考內容裡的方括號會讓整批事件靜默丟掉）。
 
+### `services/modelCatalog.js`（P138）＋ `composables/useModelList.js`
+模型清單單一來源。`BUILTIN_MODELS`（openai／anthropic／google／vertex／openrouter）＋動態抓取。
+
+| 函式 | 說明 |
+|---|---|
+| `getBuiltinModels(provider)` | 內建清單，未知供應商退回 openai |
+| `buildModelListRequest(provider, key, base)` | 組請求：OpenAI 相容／Google／OpenRouter 為 `{base}/models` + Bearer；Anthropic 為 `{base}/models?limit=1000` + `x-api-key`；無金鑰或 vertex 回 `null`；base 取使用者自訂值 |
+| `isChatModelId` / `parseModelListResponse` | 過濾非聊天模型（黑名單＋官方端點白名單＋OpenRouter `output_modalities`）、去 `models/` 前綴、去重 |
+| `mergeModelList(builtin, fetched, selected)` | 內建款優先 → 其餘動態款（≤60）→ 保留已選模型；`fetched` 為空即內建清單 |
+| `fetchProviderModels(...)` | 8 秒逾時、10 分鐘記憶體快取；任何失敗回 `null`，不拋錯不寫 log；Demo 模式不外連 |
+
+`useModelList({ provider, apiKey, apiBase, selected })`（Vue composable）：供應商／金鑰／位址變動時 debounce 重抓，回傳 `models`（已合併）與 `loading`。依模型名稱判斷行為的唯一處是 `api.js` 的 `isReasoningModel`。
+
 ### `services/metaLeakFilter.js`（P137）
 剝除**不帶標籤**的思考／計畫外洩——模型直接把自言自語當正文送進 `delta.content`（實機：google/gemini-3.5-flash，2026-08）。`thinkingFilter` 找不到 `<` 開頭的標籤就整段放行，故兩支互補、都要留著。
 - **進場閘門很嚴**：只有整段文字**開頭**就是思考標記（`thought (System hint):`、`回應要點：`、`我必須完全融入角色`…）或草稿標號（`第二則：`）時才啟動，否則原字串一個字都不改；啟動後只往下吃連續的思考段落，一碰到正文就停手。以實機匯出檔 1169 則角色訊息回放：22 則命中、1147 則零改動。
@@ -555,6 +568,10 @@ P114 起 SettingsView 切換主題時同步 `auris-theme` localStorage；`index.
 ---
 
 ## 12. 版本更新紀錄
+
+### P138（2026-11-24）動態模型清單
+
+模型清單不再寫死兩份：內建清單收斂到 `services/modelCatalog.js`（單一來源），API 設定頁與 Onboarding 共用；有金鑰時由 `composables/useModelList.js`（debounce 700ms、序號擋過期回應、換供應商丟舊清單）呼叫 `fetchProviderModels` 向供應商抓可用模型，失敗（離線／CORS／金鑰錯／8 秒逾時／格式不符）一律安靜退回內建，不寫診斷。過濾非聊天模型、合併時保留使用者已選款、額外款上限 60 筆。`isReasoningModel` 改為 gpt-5～gpt-20 與 o 系列任意位數，未知命名走一般取樣參數預設。細節見 `services/modelCatalog.js` 一節。
 
 ### P137（2026-08-19）思考外洩過濾與名字保護
 

@@ -104,8 +104,16 @@ export function getDefModel(provider) {
 
 // GPT-5 系列與 o 系列是「推理型」模型：只接受 temperature 預設值(1)，並會拒絕 frequency/presence_penalty。
 // 對這些模型一律不送取樣參數（送了會 400）。用模型名判斷即可，跨 provider 通用（含 openrouter 的 openai/ 前綴）。
+// P138：模型清單改為動態後會遇到沒見過的新命名，所以不只認 gpt-5，而是 gpt-5 以後所有世代
+// （gpt-6、gpt-10…，gpt-4／gpt-4o／gpt-3.5 不算）與 o 系列（o1、o3、o10…）。
+// 未知命名一律走「有送取樣參數」的舊路徑——一般聊天模型都接受；只有確認屬推理型才省略。
 export function isReasoningModel(model) {
-  return /(?:^|\/)(?:gpt-5|o[1-9])/i.test(model || '');
+  const m = String(model || '');
+  if (/(?:^|\/)o[1-9]\d*(?![a-z\d])/i.test(m)) return true;
+  const gpt = /(?:^|\/)gpt-(\d+)(?!\d)/i.exec(m);
+  if (!gpt) return false;
+  const major = Number(gpt[1]);
+  return major >= 5 && major <= 20; // 上限排除 Azure 的 gpt-35-turbo 這類「3.5」寫法
 }
 
 // 非串流一次性請求的薄包裝（貼文/日記/心聲/摘要/背景主動訊息等走這裡）。

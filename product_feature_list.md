@@ -2,7 +2,7 @@
 
 這是一份以「產品體驗」為出發點的功能盤點清單，協助我們釐清目前 Auris 已經擁有的能力，以及為接下來的進階開發提供清晰的基準點。
 
-> 對應版本：**P136**（2026-08-08）。技術細節見 `auris-vue/ARCHITECTURE.md`，逐版歷程見 `Auris 完整開發進度總覽.md`，未完成項目只在 `docs/ROADMAP.md` 維護。
+> 對應版本：**P138**（2026-11-24）。技術細節見 `auris-vue/ARCHITECTURE.md`，逐版歷程見 `Auris 完整開發進度總覽.md`，未完成項目只在 `docs/ROADMAP.md` 維護。
 
 ---
 
@@ -25,6 +25,7 @@
     *   **Google (AI Studio)** — Gemini 3.5 Flash / 3.1 Flash-Lite / 2.5 Pro / Flash / Flash-Lite
     *   **Google (Vertex AI)** — 以 service account JSON 認證，瀏覽器端產生 OAuth2 token，走 Vertex 原生格式（費用走 GCP 額度）
     *   **OpenRouter** — 一把 Key 接多家模型（OpenAI 相容格式）
+*   **動態模型清單 (P138)**：填入金鑰後自動向供應商（OpenAI／Anthropic／Google／OpenRouter，含自訂位址）抓可用模型，新模型上線不必再手動輸入 ID；自動排除 embedding、語音、圖片等非聊天模型；抓不到（離線、金鑰錯、逾時）時安靜退回內建清單，已選模型不會被洗掉。Vertex AI 維持內建清單。
 *   **自訂 API 位址與模型 ID**：支援代理伺服器與開源／非清單模型的自訂名稱。
 *   **連線健檢**：「測試連線」會實際讀取回應內容驗證（而非只看狀態碼），能揪出位址打錯（如 `/v1` 誤打成 `/v.1`）回了網頁卻假成功的情況，避免「測試成功、聊天卻空白」。
 
